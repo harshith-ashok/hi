@@ -40,3 +40,26 @@
 - [x] Wire Jarvis persona (reuse the memory-backed coding agent from graph.py)
 - [x] Alfred persona: macOS system-control tools (bluetooth, open app, brightness, lock)
 - [x] Vivilio persona: study-note tools writing to `Vault/hi/`
+
+---
+
+## Phase 5 – Renamed Personas, Dev Flows, Web Persona
+
+- [x] Rename personas: jarvis → code, alfred → butler, vivilio → docs
+- [x] `open_dev_flow(project)` tool: reads user-managed `dev_flows.json` (read-only,
+      no agent-facing add/edit) and opens its directory/apps/tmux layout
+- [x] Shared `tmux_util.run_tmux` helper (used by both cli.py and the dev-flow tool)
+- [x] Web persona (`--web`): Wikipedia search + summarize, using a separate
+      Ollama model
+
+---
+
+## Phase 6 – `~/.hi/` Home Directory + Real Install
+
+- [x] Move memory/, dev_flows.json, and Vault to a fixed `~/.hi/` home
+      (`~/.hi/memory/`, `~/.hi/dev_flows.json`, `~/.hi/vault/`), independent
+      of whatever directory `hi` is run from
+- [x] Migrate existing real data (conversation log, knowledge note, dev
+      flows) into `~/.hi/` and remove the now-stale repo-local copies
+- [x] Install `hi` as a real `PATH` command via `uv tool install --editable .`
+      (`/usr/bin` isn't writable on macOS — SIP-protected)

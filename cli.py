@@ -1,16 +1,16 @@
 """Command-line entry point for the `hi` terminal assistant.
 
-Running `hi --alfred` / `--jarvis` / `--vivilio` opens a dedicated tmux
+Running `hi --code` / `--butler` / `--docs` / `--web` opens a dedicated tmux
 workspace: the user's existing shell stays in the left pane, and the chosen
 assistant runs in a new right-hand pane. The user never loses their shell.
 """
 
 import argparse
 import os
-import subprocess
 import sys
 
 from personas import PERSONAS
+from tmux_util import run_tmux
 
 PANE_ENV_VAR = "HI_PERSONA_PANE"
 
@@ -27,14 +27,9 @@ def parse_persona(argv: list[str]) -> str:
 def launch_tmux(persona: str) -> None:
     """Open the persona in a right-hand tmux pane, leaving the user's shell untouched."""
     inner_command = f"env {PANE_ENV_VAR}={persona} hi --{persona}"
-    new_target = ["new-window"] if os.environ.get("TMUX") else ["new-session"]
-    result = subprocess.run(
-        ["tmux", *new_target, ";", "split-window", "-h", "-p", "25", inner_command],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        sys.exit(f"tmux failed to launch {persona}: {result.stderr.strip()}")
+    error = run_tmux([";", "split-window", "-h", "-p", "25", inner_command])
+    if error:
+        sys.exit(f"tmux failed to launch {persona}: {error}")
 
 
 def main() -> None:

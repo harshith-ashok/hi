@@ -10,24 +10,54 @@ There should be **no GUI**.
 
 ---
 
+# Installation
+
+`hi` is installed as a real command on `PATH` via:
+
+```bash
+uv tool install --editable .
+```
+
+run from the repo root. `--editable` means edits to this repo's source take
+effect immediately, without reinstalling. This puts a shim at
+`~/.local/bin/hi` (uv's tool bin directory), pointing at an isolated venv uv
+manages separately from this repo's own `.venv/` — `~/.local/bin` needs to
+be on `PATH` for this to work (`uv tool update-shell` can add it). `/usr/bin`
+is not a valid target on macOS: it's protected by System Integrity
+Protection and not writable, even as root.
+
+All of `hi`'s data — memory, conversations, dev flows, and study notes —
+lives under `~/.hi/`, fixed regardless of which directory `hi` is run from
+(see below). That's deliberate: since `hi` is a real installed command now,
+per-project-directory storage would scatter assistant files across
+whatever project you happened to run it from.
+
+---
+
 # Startup
 
 Running:
 
 ```bash
-hi --alfred
+hi --code
 ```
 
 or
 
 ```bash
-hi --jarvis
+hi --butler
 ```
 
 or
 
 ```bash
-hi --vivilio
+hi --docs
+```
+
+or
+
+```bash
+hi --web
 ```
 
 should automatically launch a dedicated tmux workspace.
@@ -51,7 +81,7 @@ Example layout:
 ```text
 +------------------------------------------------------+----------------------+
 |                                                      |                      |
-|                                                      | (jarvis) >           |
+|                                                      | (code) >             |
 |                                                      |                      |
 | User terminal                                        | Assistant            |
 |                                                      |                      |
@@ -74,15 +104,19 @@ The assistant prompt should always indicate the active mode.
 Examples:
 
 ```text
-(alfred) >
+(butler) >
 ```
 
 ```text
-(jarvis) >
+(code) >
 ```
 
 ```text
-(vivilio) >
+(docs) >
+```
+
+```text
+(web) >
 ```
 
 The prompt should be simple and fast.
@@ -102,7 +136,7 @@ Typical workflow:
 ```bash
 cd ~/Projects/Kaapi
 
-hi --jarvis
+hi --code
 ```
 
 Layout opens.
@@ -116,59 +150,105 @@ vim app.py
 Right pane:
 
 ```text
-(jarvis) > Explain this error
+(code) > Explain this error
 
-(jarvis) > Create a unit test
+(code) > Create a unit test
 
-(jarvis) > Refactor src/models.py
+(code) > Refactor src/models.py
 
-(jarvis) > Open the project README
+(code) > Open the project README
 ```
 
 The user can continue editing code while interacting with the assistant.
 
 ---
 
-# Alfred Workflow
+# Butler Workflow
 
 ```bash
-hi --alfred
+hi --butler
 ```
 
 ```text
-(alfred) > Turn Bluetooth off
+(butler) > Turn Bluetooth off
 
-(alfred) > Open Safari
+(butler) > Open Safari
 
-(alfred) > Increase brightness
+(butler) > Increase brightness
 
-(alfred) > Lock my Mac
+(butler) > Lock my Mac
 ```
 
 ---
 
-# Vivilio Workflow
+# Docs Workflow
 
 ```bash
 cd ~/University
 
-hi --vivilio
+hi --docs
 ```
 
 ```text
-(vivilio) > Explain virtual memory
+(docs) > Explain virtual memory
 
-(vivilio) > Summarize today's lecture
+(docs) > Summarize today's lecture
 
-(vivilio) > Save this explanation
+(docs) > Save this explanation
 ```
 
-New notes are created inside:
+New notes are created inside `~/.hi/vault/`, regardless of which directory
+`hi --docs` is run from.
+
+---
+
+# Web Workflow
+
+```bash
+hi --web
+```
 
 ```text
-Vault/
-└── hi/
+(web) > What is virtual memory?
+
+(web) > Summarize the Wikipedia article on the Byzantine Empire
 ```
+
+Web is a dedicated search-and-summarize assistant: it looks up the relevant
+Wikipedia article and returns a summary. It runs on a separate, faster
+cloud-hosted Ollama model (named `web`) rather than the model the other
+personas use, since lookups should feel closer to instant.
+
+---
+
+# Dev Flows
+
+The `code` persona can also open a saved development workspace for a
+project by name:
+
+```text
+(code) > I want to work on kaapi
+```
+
+Dev flows are configured in `~/.hi/dev_flows.json` — a project name mapped
+to its directory, the apps to open it in, and a two-pane tmux layout to
+start there:
+
+```json
+{
+  "kaapi": {
+    "directory": "/Users/harshith/Frappe/frappe-16/apps/kaapi",
+    "tmux": {
+      "left": "bench start",
+      "right": "htop"
+    },
+    "apps": ["zed", "open ."]
+  }
+}
+```
+
+`dev_flows.json` is user-managed only — the assistant can read and act on
+it, but has no tool to create, edit, or add entries to it.
 
 ---
 

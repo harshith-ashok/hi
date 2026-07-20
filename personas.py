@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-PERSONAS = ("alfred", "jarvis", "vivilio")
+PERSONAS = ("code", "butler", "docs", "web")
 
 
 @dataclass(frozen=True)
@@ -16,17 +16,21 @@ class Persona:
 def get_persona(name: str) -> Persona:
     """Build the requested persona, importing lazily so unrelated personas'
     dependencies (and model clients) aren't loaded."""
-    if name == "jarvis":
+    if name == "code":
         from graph import agent
         from tools import log_conversation
 
-        return Persona(name="jarvis", agent=agent, on_turn=log_conversation)
-    if name == "alfred":
-        from alfred import agent
+        return Persona(name="code", agent=agent, on_turn=log_conversation)
+    if name == "butler":
+        from butler import agent
 
-        return Persona(name="alfred", agent=agent)
-    if name == "vivilio":
-        from vivilio import agent
+        return Persona(name="butler", agent=agent)
+    if name == "docs":
+        from docs import agent
 
-        return Persona(name="vivilio", agent=agent)
+        return Persona(name="docs", agent=agent)
+    if name == "web":
+        from web import agent
+
+        return Persona(name="web", agent=agent)
     raise ValueError(f"Unknown persona: {name}")

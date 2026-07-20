@@ -4,7 +4,7 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 
-VAULT_DIR = Path("Vault") / "hi"
+VAULT_DIR = Path.home() / ".hi" / "vault"
 
 
 def _resolve_vault_path(path: str) -> Path:
@@ -16,7 +16,7 @@ def _resolve_vault_path(path: str) -> Path:
 
 @tool
 def create_note(path: str, content: str) -> str:
-    """Create a new Markdown note inside Vault/hi/, overwriting it if it exists.
+    """Create a new Markdown note inside ~/.hi/vault/, overwriting it if it exists.
 
     Args:
         path: Relative path for the note, e.g. "os/virtual-memory.md".
@@ -30,7 +30,7 @@ def create_note(path: str, content: str) -> str:
 
 @tool
 def append_note(path: str, content: str) -> str:
-    """Append Markdown content to a note inside Vault/hi/, creating it if needed.
+    """Append Markdown content to a note inside ~/.hi/vault/, creating it if needed.
 
     Args:
         path: Relative path for the note, e.g. "lectures/2026-07-20.md".
@@ -48,7 +48,7 @@ def append_note(path: str, content: str) -> str:
 
 @tool
 def read_note(path: str) -> str:
-    """Read the contents of a note inside Vault/hi/.
+    """Read the contents of a note inside ~/.hi/vault/.
 
     Args:
         path: Relative path for the note, e.g. "ideas.md".
@@ -61,7 +61,7 @@ def read_note(path: str) -> str:
 
 @tool
 def list_notes() -> str:
-    """List all existing notes inside Vault/hi/."""
+    """List all existing notes inside ~/.hi/vault/."""
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
     notes = sorted(str(p.relative_to(VAULT_DIR)) for p in VAULT_DIR.rglob("*.md"))
     if not notes:
@@ -74,7 +74,7 @@ model = ChatOllama(
     temperature=0,
 )
 
-PROMPT_PATH = Path(__file__).parent / "vivilio_prompt.md"
+PROMPT_PATH = Path(__file__).parent / "docs_prompt.md"
 
 agent = create_agent(
     model=model,

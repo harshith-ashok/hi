@@ -1,4 +1,4 @@
-"""Alfred: a macOS system-control persona built with a LangGraph ReAct agent."""
+"""Butler: a macOS system-control persona built with a LangGraph ReAct agent."""
 
 import shutil
 import subprocess
@@ -125,7 +125,7 @@ def lock_screen() -> str:
         return f"Failed to lock the screen: {e}"
 
 
-PROMPT_PATH = Path(__file__).parent / "alfred_prompt.md"
+PROMPT_PATH = Path(__file__).parent / "butler_prompt.md"
 
 agent = create_agent(
     model=model,

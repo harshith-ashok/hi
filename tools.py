@@ -3,7 +3,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-MEMORY_DIR = Path("memory")
+MEMORY_DIR = Path.home() / ".hi" / "memory"
 CONVERSATIONS_DIR = MEMORY_DIR / "conversations"
 KNOWLEDGE_DIR = MEMORY_DIR / "knowledge"
 
@@ -17,7 +17,7 @@ def _resolve_knowledge_path(path: str) -> Path:
 
 @tool
 def create_note(path: str, content: str) -> str:
-    """Create a new Markdown note inside memory/knowledge/, overwriting it if it exists.
+    """Create a new Markdown note inside ~/.hi/memory/knowledge/, overwriting it if it exists.
 
     Args:
         path: Relative path for the note, e.g. "projects/kaapi.md".
@@ -31,7 +31,7 @@ def create_note(path: str, content: str) -> str:
 
 @tool
 def append_note(path: str, content: str) -> str:
-    """Append Markdown content to a note inside memory/knowledge/, creating it if needed.
+    """Append Markdown content to a note inside ~/.hi/memory/knowledge/, creating it if needed.
 
     Args:
         path: Relative path for the note, e.g. "preferences.md".
@@ -49,7 +49,7 @@ def append_note(path: str, content: str) -> str:
 
 @tool
 def read_note(path: str) -> str:
-    """Read the contents of a note inside memory/knowledge/.
+    """Read the contents of a note inside ~/.hi/memory/knowledge/.
 
     Args:
         path: Relative path for the note, e.g. "ideas.md".
@@ -62,7 +62,7 @@ def read_note(path: str) -> str:
 
 @tool
 def list_notes() -> str:
-    """List all existing notes inside memory/knowledge/."""
+    """List all existing notes inside ~/.hi/memory/knowledge/."""
     KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
     notes = sorted(str(p.relative_to(KNOWLEDGE_DIR)) for p in KNOWLEDGE_DIR.rglob("*.md"))
     if not notes:
@@ -79,7 +79,7 @@ def _resolve_conversation_path(date: str) -> Path:
 
 @tool
 def list_conversations() -> str:
-    """List the dates of all logged conversations inside memory/conversations/."""
+    """List the dates of all logged conversations inside ~/.hi/memory/conversations/."""
     CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
     dates = sorted(p.stem for p in CONVERSATIONS_DIR.glob("*.md"))
     if not dates:
