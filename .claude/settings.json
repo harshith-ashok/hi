@@ -3,11 +3,11 @@
     "allow": [
       "Bash(set -e)",
       "Bash(mkdir -p ~/.hi/memory/conversations ~/.hi/memory/knowledge/personas ~/.hi/vault)",
-      "Bash(mv /Users/harshith/Dev/Projects/leo/memory/conversations/2026-07-20.md ~/.hi/memory/conversations/)",
-      "Bash(mv /Users/harshith/Dev/Projects/leo/memory/knowledge/personas/harshith.md ~/.hi/memory/knowledge/personas/)",
-      "Bash(mv /Users/harshith/Dev/Projects/leo/dev_flows.json ~/.hi/dev_flows.json)",
+      "Bash(mv /Users/harshith/Dev/Projects/hi/memory/conversations/2026-07-20.md ~/.hi/memory/conversations/)",
+      "Bash(mv /Users/harshith/Dev/Projects/hi/memory/knowledge/personas/harshith.md ~/.hi/memory/knowledge/personas/)",
+      "Bash(mv /Users/harshith/Dev/Projects/hi/dev_flows.json ~/.hi/dev_flows.json)",
       "Bash(python3 -)",
-      "Bash(uv --project /Users/harshith/Dev/Projects/leo run python -c ' *)",
+      "Bash(uv --project /Users/harshith/Dev/Projects/hi run python -c ' *)",
       "Bash(uv tool *)"
     ]
   }

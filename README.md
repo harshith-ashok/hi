@@ -24,12 +24,12 @@ dedicated LangGraph ReAct agent, launched straight into a tmux workspace.
 
 ## Personas
 
-| Flag       | Name     | What it's for                                                        | Model                 |
-| ---------- | -------- | --------------------------------------------------------------------- | ---------------------- |
-| `--code`   | `code`   | Coding assistant with persistent Markdown memory, dev-flow launcher   | `gpt-oss:120b-cloud`  |
-| `--butler` | `butler` | macOS system control — Bluetooth, apps, brightness, lock              | `gpt-oss:120b-cloud`  |
-| `--docs`   | `docs`   | Study assistant — explains concepts, saves notes to a vault           | `gpt-oss:120b-cloud`  |
-| `--web`    | `web`    | Search-and-summarize over Wikipedia, on a faster model                | `web`                  |
+| Flag       | Name     | What it's for                                                       | Model                |
+| ---------- | -------- | ------------------------------------------------------------------- | -------------------- |
+| `--code`   | `code`   | Coding assistant with persistent Markdown memory, dev-flow launcher | `gpt-oss:120b-cloud` |
+| `--butler` | `butler` | macOS system control — Bluetooth, apps, brightness, lock            | `gpt-oss:120b-cloud` |
+| `--docs`   | `docs`   | Study assistant — explains concepts, saves notes to a vault         | `gpt-oss:120b-cloud` |
+| `--web`    | `web`    | Search-and-summarize over Wikipedia, on a faster model              | `web`                |
 
 ```text
 (code) > Explain this error
@@ -54,7 +54,7 @@ Prerequisites: [`uv`](https://docs.astral.sh/uv/), `tmux`, and
 
 ```bash
 git clone <this repo>
-cd leo
+cd hi
 uv tool install --editable .
 ```
 
