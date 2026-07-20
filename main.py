@@ -1,6 +1,23 @@
-def main():
-    print("Hello from leo!")
+from graph import agent
+from tools import log_conversation
 
+while True:
+    query = input("> ")
 
-if __name__ == "__main__":
-    main()
+    if query == "exit":
+        break
+
+    result = agent.invoke(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": query,
+                }
+            ]
+        }
+    )
+
+    response = result["messages"][-1].content
+    print(response)
+    log_conversation(query, response)
