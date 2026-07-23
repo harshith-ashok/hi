@@ -9,8 +9,8 @@ import argparse
 import os
 import sys
 
-from personas import PERSONAS
-from tmux_util import run_tmux
+from hi.personas import PERSONAS
+from hi.tmux_util import run_tmux
 
 PANE_ENV_VAR = "HI_PERSONA_PANE"
 
@@ -36,7 +36,7 @@ def main() -> None:
     persona = parse_persona(sys.argv[1:])
 
     if os.environ.get(PANE_ENV_VAR) == persona:
-        from repl import run_repl
+        from hi.repl import run_repl
 
         run_repl(persona)
         return

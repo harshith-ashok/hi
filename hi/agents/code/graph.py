@@ -8,8 +8,8 @@ from langchain_ollama import ChatOllama
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
-from dev_flow_tool import open_dev_flow
-from tools import (
+from hi.agents.code.dev_flow_tool import open_dev_flow
+from hi.agents.code.tools import (
     append_note,
     create_note,
     list_conversations,

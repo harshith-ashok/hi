@@ -1,6 +1,6 @@
 """Generic interactive loop shared by all `hi` personas."""
 
-from personas import get_persona
+from hi.personas import get_persona
 
 EXIT_WORDS = {"exit", "quit"}
 

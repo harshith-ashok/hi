@@ -121,19 +121,19 @@ create or edit entries in it.
 ## Architecture
 
 ```text
-cli.py             argparse + tmux launcher, dispatches to a persona
-personas.py         registry: persona name -> agent, on-turn hook
-repl.py             generic input loop shared by every persona
-tmux_util.py         shared tmux new-session/new-window helper
+hi/cli.py                  argparse + tmux launcher, dispatches to a persona
+hi/personas.py              registry: persona name -> agent, on-turn hook
+hi/repl.py                  generic input loop shared by every persona
+hi/tmux_util.py              shared tmux new-session/new-window helper
 
-graph.py + tools.py + dev_flow_tool.py    the `code` persona
-butler.py                                  the `butler` persona
-docs.py                                    the `docs` persona
-web.py                                      the `web` persona
+hi/agents/code/    (graph.py + tools.py + dev_flow_tool.py)    the `code` persona
+hi/agents/butler/  (butler.py)                                  the `butler` persona
+hi/agents/docs/    (docs.py)                                    the `docs` persona
+hi/agents/web/     (web.py)                                      the `web` persona
 ```
 
 ## Further documentation
 
-- [assistants.md](assistants.md) — terminal interface specification
+- [docs/assistants.md](docs/assistants.md) — terminal interface specification
 - [CLAUDE.md](CLAUDE.md) — memory system implementation notes
-- [TODO.md](TODO.md) — implementation progress
+- [docs/TODO.md](docs/TODO.md) — implementation progress

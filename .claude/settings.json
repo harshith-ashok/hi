@@ -8,7 +8,8 @@
       "Bash(mv /Users/harshith/Dev/Projects/hi/dev_flows.json ~/.hi/dev_flows.json)",
       "Bash(python3 -)",
       "Bash(uv --project /Users/harshith/Dev/Projects/hi run python -c ' *)",
-      "Bash(uv tool *)"
+      "Bash(uv tool *)",
+      "Bash(mkdir -p hi/personas/code hi/personas/butler hi/personas/docs hi/personas/web docs archive)"
     ]
   }
 }

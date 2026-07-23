@@ -11,7 +11,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from tmux_util import run_tmux
+from hi.tmux_util import run_tmux
 
 DEV_FLOWS_PATH = Path.home() / ".hi" / "dev_flows.json"
 
