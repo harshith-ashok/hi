@@ -9,7 +9,15 @@
       "Bash(python3 -)",
       "Bash(uv --project /Users/harshith/Dev/Projects/hi run python -c ' *)",
       "Bash(uv tool *)",
-      "Bash(mkdir -p hi/personas/code hi/personas/butler hi/personas/docs hi/personas/web docs archive)"
+      "Bash(mkdir -p hi/personas/code hi/personas/butler hi/personas/docs hi/personas/web docs archive)",
+      "Bash(python3 /private/tmp/claude-501/-Users-harshith-Dev-Projects-hi/5730ecfc-c015-46f5-9c03-ffe3fc23c677/scratchpad/migrate.py)",
+      "Bash(rm -rf ~/.hi/memory)",
+      "Read(//Users/harshith/.hi/**)",
+      "Read(//Users/harshith/.hi/vault/**)",
+      "Bash(rmdir ~/.hi/vault)",
+      "Bash(grep -A3 \"^├── hi$\\\\|└── hi$\" ~/.hi/tree_cache.md | head -20)",
+      "Bash(ollama ps *)",
+      "Bash(timeout 60 ollama run gpt-oss:120b-cloud \"Say hello in one sentence.\")"
     ]
   }
 }

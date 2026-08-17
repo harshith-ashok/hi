@@ -28,7 +28,7 @@ dedicated LangGraph ReAct agent, launched straight into a tmux workspace.
 | ---------- | -------- | ------------------------------------------------------------------- | -------------------- |
 | `--code`   | `code`   | Coding assistant with persistent Markdown memory, dev-flow launcher | `gpt-oss:120b-cloud` |
 | `--butler` | `butler` | macOS system control — Bluetooth, apps, brightness, lock            | `gpt-oss:120b-cloud` |
-| `--docs`   | `docs`   | Study assistant — explains concepts, saves notes to a vault         | `gpt-oss:120b-cloud` |
+| `--docs`   | `docs`   | Obsidian vault search — cites and summarizes only your own notes    | `gpt-oss:120b-cloud` |
 | `--web`    | `web`    | Search-and-summarize over Wikipedia, on a faster model              | `web`                |
 
 ```text
@@ -38,8 +38,8 @@ dedicated LangGraph ReAct agent, launched straight into a tmux workspace.
 (butler) > Turn Bluetooth off
 (butler) > Lock my Mac
 
-(docs) > Summarize today's lecture
-(docs) > Save this explanation
+(docs) > What does my Docker note say about volumes?
+(docs) > Save this: <content> to preferences.md
 
 (web) > What is virtual memory?
 ```
@@ -83,17 +83,33 @@ opens a new tmux window (or session, if you weren't already in one) split
 
 ## Data — `~/.hi/`
 
-Everything `hi` reads or writes lives under one fixed home directory,
-regardless of which project directory you launched it from:
+`hi`'s own config lives under one fixed home directory, regardless of which
+project directory you launched it from:
 
 ```text
 ~/.hi/
-├── memory/
-│   ├── knowledge/        # code's Markdown notes, organized by topic
-│   └── conversations/    # one dated log per day, human-readable
-├── dev_flows.json        # user-managed, read-only to the agent
-└── vault/                # docs's study notes
+├── .env             # VAULT_PATH + per-persona model overrides
+├── dev_flows.json   # user-managed, read-only to the agent
+└── tree_cache.md    # cached `tree -L 4` snapshot of the vault
 ```
+
+All actual memory — knowledge notes and conversation logs, from every
+persona — is written into the user's own Obsidian vault, at the path
+configured by `VAULT_PATH` in `~/.hi/.env` (defaults to `~/.hi/vault` if
+unset):
+
+```text
+<VAULT_PATH>/hi/
+├── knowledge/        # Markdown notes, organized by topic, tagged `hi`
+└── conversations/    # one dated log per day, every persona, tagged `hi`
+```
+
+Every note and conversation log carries Obsidian-compatible YAML frontmatter
+(`tags: [hi]`), so the vault's own tag search finds them like any other note.
+
+`docs` can additionally *read* any note anywhere in the vault (not just
+`hi/knowledge/`) to answer questions, but only ever *writes* inside
+`hi/knowledge/` — your own notes are never edited or overwritten.
 
 ## Dev Flows
 
@@ -125,11 +141,15 @@ hi/cli.py                  argparse + tmux launcher, dispatches to a persona
 hi/personas.py              registry: persona name -> agent, on-turn hook
 hi/repl.py                  generic input loop shared by every persona
 hi/tmux_util.py              shared tmux new-session/new-window helper
+hi/config.py                 reads ~/.hi/.env: VAULT_PATH + per-persona models
+hi/vault.py                   shared Markdown memory tools, backed by the vault
+hi/memory_graph.py            shared grounding graph: select notes -> load -> agent
+hi/tree_cache.py               `tree -L 4` snapshot of the vault, for grounding
 
-hi/agents/code/    (graph.py + tools.py + dev_flow_tool.py)    the `code` persona
-hi/agents/butler/  (butler.py)                                  the `butler` persona
-hi/agents/docs/    (docs.py)                                    the `docs` persona
-hi/agents/web/     (web.py)                                      the `web` persona
+hi/agents/code/    (graph.py + dev_flow_tool.py)    the `code` persona
+hi/agents/butler/  (butler.py)                       the `butler` persona
+hi/agents/docs/    (docs.py)                          the `docs` persona
+hi/agents/web/     (web.py)                            the `web` persona
 ```
 
 ## Further documentation

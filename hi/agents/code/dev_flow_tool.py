@@ -11,7 +11,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from hi.tmux_util import run_tmux
+from hi.tmux_util import run_tmux_raw, tmux_new_target
 
 DEV_FLOWS_PATH = Path.home() / ".hi" / "dev_flows.json"
 
@@ -44,6 +44,14 @@ def _open_app(command: str, directory: str) -> str | None:
         return f"'{command}' failed: {e.stderr.strip() or e}"
 
 
+def _keep_alive(command: str) -> str:
+    """Append a fallback to drop into an interactive shell once `command`
+    finishes, instead of tmux closing the pane (and the window, if it's the
+    last pane) the moment a short-lived command like `source .venv/bin/activate`
+    exits."""
+    return f"{command}; exec $SHELL -l"
+
+
 @tool
 def open_dev_flow(project: str) -> str:
     """Open a saved development workspace for a project: launches its
@@ -73,21 +81,43 @@ def open_dev_flow(project: str) -> str:
 
     tmux_layout = flow.get("tmux")
     if tmux_layout:
-        error = run_tmux(
+        # Create the window first and capture its id explicitly, then target
+        # that id for the split — rather than chaining both commands with
+        # ";" and relying on implicit "current window" continuity, which
+        # breaks if the left pane's command exits before the split happens.
+        new_window = run_tmux_raw(
             [
+                tmux_new_target(),
+                "-P",
+                "-F",
+                "#{window_id}",
                 "-c",
                 directory,
-                tmux_layout["left"],
-                ";",
-                "split-window",
-                "-h",
-                "-c",
-                directory,
-                tmux_layout["right"],
+                _keep_alive(tmux_layout["left"]),
             ]
         )
-        if error:
-            problems.append(f"tmux workspace failed: {error}")
+        if new_window.returncode != 0:
+            problems.append(
+                "tmux workspace failed: "
+                f"{new_window.stderr.strip() or 'window creation failed'}"
+            )
+        else:
+            window_id = new_window.stdout.strip()
+            split = run_tmux_raw(
+                [
+                    "split-window",
+                    "-t",
+                    window_id,
+                    "-h",
+                    "-c",
+                    directory,
+                    _keep_alive(tmux_layout["right"]),
+                ]
+            )
+            if split.returncode != 0:
+                problems.append(
+                    f"tmux split failed: {split.stderr.strip() or 'split-window failed'}"
+                )
 
     if problems:
         return f"Opened dev flow '{key}' in {directory}, with issues:\n" + "\n".join(problems)

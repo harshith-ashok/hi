@@ -183,6 +183,11 @@ hi --butler
 
 # Docs Workflow
 
+`docs` is a search-and-cite tool for the user's Obsidian vault, not a
+general study assistant: it only answers from what's actually written in
+the vault's notes, and says so plainly when it can't find anything —
+it never falls back to its own general knowledge.
+
 ```bash
 cd ~/University
 
@@ -190,15 +195,17 @@ hi --docs
 ```
 
 ```text
-(docs) > Explain virtual memory
+(docs) > What does my notes say about virtual memory?
 
-(docs) > Summarize today's lecture
+(docs) > Summarize today's lecture note
 
-(docs) > Save this explanation
+(docs) > Save this: <content> to preferences.md
 ```
 
-New notes are created inside `~/.hi/vault/`, regardless of which directory
-`hi --docs` is run from.
+It can read any note anywhere in the vault (configured via `VAULT_PATH` in
+`~/.hi/.env`) to find an answer, but it only ever creates or edits notes
+inside `hi/knowledge/` under that vault — the user's own notes are never
+written to, regardless of which directory `hi --docs` is run from.
 
 ---
 

@@ -8,10 +8,12 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 
+from hi.config import BUTLER_MODEL
+
 BRIGHTNESS_KEY_CODES = {"up": "144", "down": "145"}
 
 model = ChatOllama(
-    model="gpt-oss:120b-cloud",
+    model=BUTLER_MODEL,
     temperature=0,
 )
 

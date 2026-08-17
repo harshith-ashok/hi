@@ -8,17 +8,22 @@ import os
 import subprocess
 
 
+def tmux_new_target() -> str:
+    """'new-window' if already inside tmux, else 'new-session'."""
+    return "new-window" if os.environ.get("TMUX") else "new-session"
+
+
+def run_tmux_raw(args: list[str]) -> subprocess.CompletedProcess:
+    """Run `tmux <args>` and return the completed process, stdout/stderr captured."""
+    return subprocess.run(["tmux", *args], capture_output=True, text=True)
+
+
 def run_tmux(args: list[str]) -> str | None:
     """Run `tmux (new-window|new-session) <args>`.
 
     Returns an error string on failure, or None on success.
     """
-    new_target = "new-window" if os.environ.get("TMUX") else "new-session"
-    result = subprocess.run(
-        ["tmux", new_target, *args],
-        capture_output=True,
-        text=True,
-    )
+    result = run_tmux_raw([tmux_new_target(), *args])
     if result.returncode != 0:
         return result.stderr.strip() or f"tmux exited with status {result.returncode}"
     return None

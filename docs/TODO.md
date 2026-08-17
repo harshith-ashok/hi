@@ -63,3 +63,28 @@
       flows) into `~/.hi/` and remove the now-stale repo-local copies
 - [x] Install `hi` as a real `PATH` command via `uv tool install --editable .`
       (`/usr/bin` isn't writable on macOS — SIP-protected)
+
+---
+
+## Phase 7 – Obsidian Vault Integration + Tweaks (see root `TODO.md`)
+
+- [x] `hi/config.py`: read `~/.hi/.env` for `VAULT_PATH` + per-persona model
+      overrides (`CODE_MODEL`, `BUTLER_MODEL`, `DOCS_MODEL`, `WEB_MODEL`)
+- [x] `hi/vault.py`: shared Markdown memory tools (replacing the separate
+      `code`/`docs` copies), storing knowledge and conversation logs inside
+      `<VAULT_PATH>/hi/{knowledge,conversations}/` with Obsidian `tags: [hi]`
+      frontmatter
+- [x] Every persona (`code`, `butler`, `docs`, `web`) now logs conversations,
+      not just `code`
+- [x] `hi/memory_graph.py`: extracted the note-grounding LangGraph (select
+      relevant notes/logs -> load context -> agent) out of `code` so `docs`
+      uses the same grounded-answer pipeline
+- [x] `hi/tree_cache.py`: `tree -L 4` snapshot of the vault, refreshed and
+      fed into the grounding prompt as extra structural context
+- [x] Migrated the pre-existing `~/.hi/memory/` data (1 knowledge note, 3
+      conversation logs) into the vault and removed the stale directory
+- [x] Fixed `open_dev_flow`'s tmux split: short-lived pane commands (e.g.
+      `source .venv/bin/activate`) were closing the pane/window before the
+      split happened — now each command keeps the pane alive afterward, and
+      `split-window` targets the new window's captured id explicitly instead
+      of relying on implicit "current window" continuity

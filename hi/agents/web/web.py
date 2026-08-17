@@ -10,12 +10,14 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 
+from hi.config import WEB_MODEL
+
 SEARCH_URL = "https://en.wikipedia.org/w/api.php"
 SUMMARY_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
 TIMEOUT_SECONDS = 10
 
 model = ChatOllama(
-    model="gpt-oss:120b-cloud",
+    model=WEB_MODEL,
     temperature=0,
 )
 
