@@ -1,13 +1,35 @@
 """Generic interactive loop shared by all `hi` personas."""
 
+import readline
+
 from hi.personas import get_persona
 
 EXIT_WORDS = {"exit", "quit"}
+CLEAR_WORDS = {"clear", "cls"}
+
+CLEAR_SCREEN = "\033[H\033[2J"
+
+
+def _bind_clear_screen_key() -> None:
+    """Best-effort: bind Ctrl-L to clear the screen during input(). macOS's
+    stdlib `readline` module is actually libedit, which needs its own
+    editrc-style bind syntax rather than GNU readline's inputrc syntax."""
+    try:
+        if "libedit" in (readline.__doc__ or ""):
+            readline.parse_and_bind("bind ^L ed-clear-screen")
+        else:
+            readline.parse_and_bind(r'"\C-l": clear-screen')
+    except Exception:
+        pass
 
 
 def run_repl(persona_name: str) -> None:
     persona = get_persona(persona_name)
+    _bind_clear_screen_key()
     prompt = f"({persona_name}) > "
+
+    if persona.greeting:
+        print(persona.greeting)
 
     while True:
         try:
@@ -18,6 +40,9 @@ def run_repl(persona_name: str) -> None:
         stripped = query.strip()
         if stripped.lower() in EXIT_WORDS:
             break
+        if stripped.lower() in CLEAR_WORDS:
+            print(CLEAR_SCREEN, end="", flush=True)
+            continue
         if not stripped:
             continue
 

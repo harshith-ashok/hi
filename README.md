@@ -27,7 +27,7 @@ dedicated LangGraph ReAct agent, launched straight into a tmux workspace.
 | Flag       | Name     | What it's for                                                       | Model                |
 | ---------- | -------- | ------------------------------------------------------------------- | -------------------- |
 | `--code`   | `code`   | Coding assistant with persistent Markdown memory, dev-flow launcher | `gpt-oss:120b-cloud` |
-| `--butler` | `butler` | macOS system control — Bluetooth, apps, brightness, lock            | `gpt-oss:120b-cloud` |
+| `--butler` | `butler` | macOS system control, TODO list — Bluetooth, apps, brightness, lock | `gpt-oss:120b-cloud` |
 | `--docs`   | `docs`   | Obsidian vault search — cites and summarizes only your own notes    | `gpt-oss:120b-cloud` |
 | `--web`    | `web`    | Search-and-summarize over Wikipedia, on a faster model              | `web`                |
 
@@ -37,6 +37,7 @@ dedicated LangGraph ReAct agent, launched straight into a tmux workspace.
 
 (butler) > Turn Bluetooth off
 (butler) > Lock my Mac
+(butler) > Add buy milk to my todo list
 
 (docs) > What does my Docker note say about volumes?
 (docs) > Save this: <content> to preferences.md
@@ -45,7 +46,8 @@ dedicated LangGraph ReAct agent, launched straight into a tmux workspace.
 ```
 
 Typing `exit` or `quit` ends the assistant process only — the tmux window
-stays open.
+stays open. Typing `clear`/`cls`, or pressing Ctrl-L, clears the terminal
+without restarting the persona.
 
 ## Installation
 

@@ -8,6 +8,7 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 
+from hi.agents.butler.todo import add_task, complete_task, list_tasks, remove_task
 from hi.config import BUTLER_MODEL
 
 BRIGHTNESS_KEY_CODES = {"up": "144", "down": "145"}
@@ -131,6 +132,15 @@ PROMPT_PATH = Path(__file__).parent / "butler_prompt.md"
 
 agent = create_agent(
     model=model,
-    tools=[toggle_bluetooth, open_app, adjust_brightness, lock_screen],
+    tools=[
+        toggle_bluetooth,
+        open_app,
+        adjust_brightness,
+        lock_screen,
+        add_task,
+        complete_task,
+        remove_task,
+        list_tasks,
+    ],
     system_prompt=PROMPT_PATH.read_text(),
 )

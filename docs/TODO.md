@@ -88,3 +88,30 @@
       split happened — now each command keeps the pane alive afterward, and
       `split-window` targets the new window's captured id explicitly instead
       of relying on implicit "current window" continuity
+- [x] `docs` reworked into a strict, whole-vault, citation-only RAG tool
+      (`hi/agents/docs/vault_rag.py`): it searches every note in the vault
+      (not just `hi/knowledge/`), always cites what it drew from, and
+      refuses to answer from general knowledge when nothing relevant is
+      found — separate grounding graph from `code`'s, which can still
+      fall back to general knowledge
+- [x] `hi/model_warmup.py`: retry helper for Ollama Cloud's intermittent
+      empty `done_reason='load'` responses, used both for a startup
+      warm-up call and for the note-selection call in the grounding graphs
+
+---
+
+## Phase 8 – REPL Responsiveness + Butler TODO List
+
+- [x] Persona startup no longer blocks on a model warm-up network call —
+      it now runs in a background thread, so the prompt appears and
+      accepts input immediately after launch
+- [x] `clear`/`cls` typed commands, plus a Ctrl-L keybinding (bound for
+      both GNU readline and macOS's libedit-backed `readline` module,
+      which need different bind syntax), clear the terminal without
+      restarting the persona
+- [x] `hi/agents/butler/todo.py`: `add_task`/`complete_task`/`remove_task`/
+      `list_tasks` tools backed by a Markdown checklist at
+      `<VAULT_PATH>/hi/todo.md`
+- [x] `butler` greets the user with a "Today's Tasks:" summary of pending
+      items at session start (via a new `Persona.greeting` field in
+      `hi/personas.py`, printed once by `hi/repl.py` before the prompt loop)

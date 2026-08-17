@@ -169,6 +169,17 @@ The user can continue editing code while interacting with the assistant.
 hi --butler
 ```
 
+If there are pending tasks on the TODO list (kept as a Markdown checklist
+at `hi/todo.md` in the vault), the session opens with a summary of them
+before the prompt:
+
+```text
+Today's Tasks:
+1. Buy Milk
+2. Fix something
+(butler) >
+```
+
 ```text
 (butler) > Turn Bluetooth off
 
@@ -177,6 +188,12 @@ hi --butler
 (butler) > Increase brightness
 
 (butler) > Lock my Mac
+
+(butler) > Add "buy milk" to my todo list
+
+(butler) > Check off the milk task
+
+(butler) > Remove the "fix something" task
 ```
 
 ---
@@ -276,6 +293,13 @@ quit
 should terminate the assistant process only.
 
 The tmux window should remain open.
+
+---
+
+# Clearing the Screen
+
+Typing `clear` or `cls`, or pressing Ctrl-L, clears the terminal without
+restarting the assistant or losing its memory of the conversation so far.
 
 ---
 

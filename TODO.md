@@ -14,3 +14,14 @@
 - [x] movie the models used for each mode and move it to `~/.hi/,env`
 
 # Phase 3: Addons
+
+- [x] I want the `butler` agent to use the existing vault `hi` folder to create, delete and check off tasks from the TODO file start conversation with the items pending in the TODO:
+      Eg:
+
+```
+      Today's Tasks:
+  1. Buy Milk
+  2. Fix something
+     (butler) >
+
+```

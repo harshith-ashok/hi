@@ -28,7 +28,7 @@ def _resolve_path(base_dir: Path, path: str) -> Path:
     return resolved
 
 
-def _with_frontmatter(content: str, tags: list[str]) -> str:
+def with_frontmatter(content: str, tags: list[str]) -> str:
     if content.startswith("---\n"):
         return content
     tag_list = ", ".join(tags)
@@ -46,7 +46,7 @@ def create_note(path: str, content: str) -> str:
     """
     note_path = _resolve_path(KNOWLEDGE_DIR, path)
     note_path.parent.mkdir(parents=True, exist_ok=True)
-    note_path.write_text(_with_frontmatter(content, ["hi"]))
+    note_path.write_text(with_frontmatter(content, ["hi"]))
     return f"Created note '{path}'."
 
 
@@ -62,7 +62,7 @@ def append_note(path: str, content: str) -> str:
     note_path = _resolve_path(KNOWLEDGE_DIR, path)
     note_path.parent.mkdir(parents=True, exist_ok=True)
     if not note_path.exists():
-        note_path.write_text(_with_frontmatter("", ["hi"]))
+        note_path.write_text(with_frontmatter("", ["hi"]))
     with note_path.open("a") as f:
         if note_path.stat().st_size > 0:
             f.write("\n")
@@ -127,7 +127,7 @@ def log_conversation(persona: str, user_message: str, assistant_message: str) ->
     CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
     log_path = CONVERSATIONS_DIR / f"{date.today().isoformat()}.md"
     if not log_path.exists():
-        log_path.write_text(_with_frontmatter("", ["hi", "conversation"]))
+        log_path.write_text(with_frontmatter("", ["hi", "conversation"]))
     with log_path.open("a") as f:
         f.write(f"## {datetime.now().strftime('%H:%M:%S')} — {persona}\n\n")
         f.write(f"**User:** {user_message}\n\n")
