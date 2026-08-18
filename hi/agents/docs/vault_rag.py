@@ -3,7 +3,7 @@ question is answered by searching the whole vault for relevant notes,
 citing them, and summarizing only what they say — never from the model's
 own general knowledge.
 
-hi/conversations/ (this assistant's own chat logs, shared with `code`) is
+hi/conversations/ (this assistant's own chat logs, shared with `term`) is
 excluded from the search scope: this is about the user's actual notes, not
 the assistant's memory of past conversations.
 """
@@ -13,7 +13,6 @@ from typing import Annotated, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -93,8 +92,15 @@ def build_vault_rag_graph(note_agent, model: BaseChatModel) -> CompiledStateGrap
             f"User question:\n{question}\n\n"
             "Which of the notes listed above, if any, are relevant to "
             "answering the question? Judge relevance from each note's path, "
-            "filename, and folder. Reply with only the relevant note paths, "
-            "or NONE if none apply."
+            "filename, and folder — a folder name is itself a strong signal "
+            "of what its notes are about collectively (e.g. a 'people' "
+            "folder holds notes about people the user knows, even if no "
+            "individual filename shares words with the question), so for a "
+            "broad or aggregate question ('who do I know', 'what projects "
+            "am I working on', 'list my X'), include every note under the "
+            "folder that category clearly belongs to, not just ones with "
+            "literal keyword overlap. Reply with only the relevant note "
+            "paths, or NONE if none apply."
         )
         reply = invoke_with_retry(model, [SystemMessage(selection_prompt)])
         relevant_notes = [path for path in known_notes if path in reply]
@@ -121,14 +127,13 @@ def build_vault_rag_graph(note_agent, model: BaseChatModel) -> CompiledStateGrap
         )
         return {"messages": [RemoveMessage(id=last_message.id), enriched]}
 
-    def run_agent(state: State, config: RunnableConfig) -> dict:
-        result = note_agent.invoke({"messages": state["messages"]}, config)
-        return {"messages": result["messages"]}
-
     graph_builder = StateGraph(State)
     graph_builder.add_node("select_relevant_notes", select_relevant_notes)
     graph_builder.add_node("load_note_context", load_note_context)
-    graph_builder.add_node("agent", run_agent)
+    # note_agent is embedded directly as a subgraph node (not wrapped in a
+    # function that calls .invoke()) so its own token-level streaming is
+    # visible to callers streaming *this* graph.
+    graph_builder.add_node("agent", note_agent)
 
     graph_builder.add_edge(START, "select_relevant_notes")
     graph_builder.add_edge("select_relevant_notes", "load_note_context")

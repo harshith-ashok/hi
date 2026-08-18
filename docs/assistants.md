@@ -39,7 +39,7 @@ whatever project you happened to run it from.
 Running:
 
 ```bash
-hi --code
+hi --term
 ```
 
 or
@@ -58,6 +58,13 @@ or
 
 ```bash
 hi --web
+```
+
+or, for auto-routing mode (no flag — each prompt is classified and routed
+to a persona automatically, see Auto-Routing Mode below):
+
+```bash
+hi
 ```
 
 should automatically launch a dedicated tmux workspace.
@@ -81,7 +88,7 @@ Example layout:
 ```text
 +------------------------------------------------------+----------------------+
 |                                                      |                      |
-|                                                      | (code) >             |
+|                                                      | (term) >             |
 |                                                      |                      |
 | User terminal                                        | Assistant            |
 |                                                      |                      |
@@ -108,7 +115,7 @@ Examples:
 ```
 
 ```text
-(code) >
+(term) >
 ```
 
 ```text
@@ -118,6 +125,9 @@ Examples:
 ```text
 (web) >
 ```
+
+Auto-routing mode starts as `(hi) >` and updates to show whichever persona
+just handled the turn.
 
 The prompt should be simple and fast.
 
@@ -136,7 +146,7 @@ Typical workflow:
 ```bash
 cd ~/Projects/Kaapi
 
-hi --code
+hi --term
 ```
 
 Layout opens.
@@ -150,13 +160,13 @@ vim app.py
 Right pane:
 
 ```text
-(code) > Explain this error
+(term) > Explain this error
 
-(code) > Create a unit test
+(term) > what's in this directory
 
-(code) > Refactor src/models.py
+(term) > remember that this project uses Postgres, not SQLite
 
-(code) > Open the project README
+(term) > Open the project README
 ```
 
 The user can continue editing code while interacting with the assistant.
@@ -245,13 +255,57 @@ personas use, since lookups should feel closer to instant.
 
 ---
 
-# Dev Flows
+# Term Workflow
 
-The `code` persona can also open a saved development workspace for a
-project by name:
+```bash
+hi --term
+```
 
 ```text
-(code) > I want to work on kaapi
+(term) > what are the files in this folder
+
+(term) > what are the permissions on the first one
+```
+
+Term turns what you ask into real shell commands and runs them **visibly
+in your left pane** — the same shell you're already using — rather than
+invisibly in its own process. It remembers the conversation within a
+session (unlike every other persona, which only sees the current turn), so
+a follow-up question like "the first one" can be resolved from a previous
+command's output; it decides for itself whether it already has enough
+context to answer, or needs to run something new (possibly a more targeted
+command informed by what it already knows) to find out.
+
+Before running anything that looks destructive or hard to reverse — `rm`,
+`mv`, `sudo`, `chmod`, force-pushes, `kill`, shell redirection, and the
+like — it prints the command and asks for a `y`/`N` confirmation first.
+Read-only/informational commands run immediately, no confirmation needed.
+
+Term is also the general-purpose assistant: it has the same persistent,
+Markdown-based memory `code` used to have (there is no separate `code`
+persona anymore — its functionality was folded into `term`), grounded in
+`hi/knowledge/` and `hi/conversations/` the same way, plus per-person notes
+and the dev-flow launcher below:
+
+```text
+(term) > remember that this project uses Postgres, not SQLite
+
+(term) > who do I know
+
+(term) > I want to work on kaapi
+```
+
+Term requires the standard two-pane `hi` tmux layout — it needs a sibling
+pane to run commands in, so it can't run standalone outside tmux.
+
+---
+
+# Dev Flows
+
+`term` can also open a saved development workspace for a project by name:
+
+```text
+(term) > I want to work on kaapi
 ```
 
 Dev flows are configured in `~/.hi/dev_flows.json` — a project name mapped
@@ -300,6 +354,20 @@ The tmux window should remain open.
 
 Typing `clear` or `cls`, or pressing Ctrl-L, clears the terminal without
 restarting the assistant or losing its memory of the conversation so far.
+
+---
+
+# Voice Input
+
+Pressing Ctrl-V, in any persona, starts recording from the default
+microphone. The prompt shows `listening...` while it records; once the
+user stops talking (silence detected after they've spoken), it transcribes
+what was said with a local `faster-whisper` model and submits it
+immediately — the same as typing it and pressing Enter.
+
+There's no push-to-talk or manual stop: recording ends on its own once
+speech is detected and then silence follows, capped at a maximum length so
+a stuck-open mic can't hang the assistant indefinitely.
 
 ---
 

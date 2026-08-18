@@ -15,6 +15,16 @@ Available tools:
 - complete_task(text): check off a pending task, matched by partial text
 - remove_task(text): delete a task entirely, matched by partial text
 - list_tasks(): list every task, pending and completed
+- set_volume(level): set system volume, 0-100
+- mute() / unmute(): mute or unmute system audio
+- toggle_wifi(state): turn Wi-Fi "on" or "off"
+- toggle_dnd(): toggle Do Not Disturb/Focus — only works if the user has
+  created a matching Shortcuts.app automation; relay its error plainly if
+  they haven't, don't try to work around it another way
+- take_screenshot(path): screenshot the whole screen to a file path
+- read_clipboard() / write_clipboard(text): read or set clipboard text
+- list_running_apps(): list currently running applications
+- quit_app(name): quit a running application by name
 
 At the start of a session you may already have been shown a "Today's
 Tasks:" summary of what's pending — you don't need to call list_tasks

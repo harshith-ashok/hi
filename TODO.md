@@ -25,3 +25,44 @@
      (butler) >
 
 ```
+
+- [x] new agent called `term` that converts nlp into terminal commands and executes them in the left pane. it also uses the output of the commands as context so i can do something like
+      Eg:
+
+  ```
+  (term) > what are the files in the folder
+  (executes `ls -l` in left pane and takes in output as context )
+  (term) > what are the permissions for the first file
+  (uses the output from the previous output(s) and executes and answers based on the said context)
+  ```
+
+- [x] `ctrl + v` enables speech-to-text using whisper for all the agent. shows `listening...` and auto executes the prompt when sentence is completed. Use faster-whisper
+
+# Phase 4: Redesign
+
+- [x] I want to now convert all of this into a simple agent wrapper that automatically chooses the agent based on the prompt. Its starts out as `(hi) > ` and after my prompt it goes into lets say `(term) > ` and executes the command or whatever.
+- [x] I want the output from the LLMs to be streamed and not placed after the whole thing is returned cus it takes a lot of time.
+- [x] Along with choosing which agent to deploy I also want to use the claude tier based choosing of LLMs the haiku, opus and sonnet tier. (pull the relevant model you need using ollama pull)
+- [x] I also want to expand functionality of the butler agent to have more control over my Mac.
+- [x] Remove the auto return in the voice assistant cus I still want to be able to edit my prompt.
+
+# Phase 5: Bigger Features
+
+- [ ] Add support for multiple requests in a single prompt like "commit the changes with a relevant commit name and push the changes" for all agents
+- [ ] fix the terminal based issues when the command isnt properly executed resulting in something like this
+
+```
+➜  Test git:(main) echo "__HI_START_16a1b33a__"; python a.py <<EOF
+heredoc> 2
+heredoc> EOF; echo "__HI_DONE_ffbcd55f_$?__"
+heredoc>
+heredoc>
+heredoc>
+heredoc>
+```
+
+- [ ] before starting the session quickly give me the day's tasks (from vault)(docs agent), last edited file (also from vault)(docs agent), last project I had opened (last modified from ~/Dev folder)(term agent) and then with all three as context suggest a one line suggestion as prompt something like "do you want to check of the push the repo task?" and if yes then automatically do the task
+- [ ] always use the current directory as the active "project".
+- [ ] Always use the preferences file in the vault before answering anything to check if more info is required to answer a question.
+- [ ] Add ability to add a current working directory as a dev flow.
+- [ ] Add ability for term agent to ask questions to clarify before proceeding.

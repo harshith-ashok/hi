@@ -1,10 +1,10 @@
-"""LangGraph wrapper that grounds `code`'s answers in its own hi/knowledge/
+"""LangGraph wrapper that grounds `term`'s answers in its own hi/knowledge/
 and hi/conversations/ memory: before the underlying ReAct agent runs, it
 asks the model which existing notes/conversation logs are relevant to the
 question, folds their content into the prompt, and refreshes the tree-cache
 snapshot of the vault's structure as extra context for that selection.
 
-`code` can still fall back to general knowledge when nothing relevant is
+`term` can still fall back to general knowledge when nothing relevant is
 found — unlike `docs` (see hi/agents/docs/vault_rag.py), which is a strict,
 whole-vault, citation-only RAG assistant with its own graph.
 """
@@ -13,7 +13,6 @@ from typing import Annotated, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
@@ -92,14 +91,15 @@ def build_memory_graph(note_agent, model: BaseChatModel) -> CompiledStateGraph:
         )
         return {"messages": [RemoveMessage(id=last_message.id), enriched]}
 
-    def run_agent(state: State, config: RunnableConfig) -> dict:
-        result = note_agent.invoke({"messages": state["messages"]}, config)
-        return {"messages": result["messages"]}
-
     graph_builder = StateGraph(State)
     graph_builder.add_node("select_relevant_notes", select_relevant_notes)
     graph_builder.add_node("load_note_context", load_note_context)
-    graph_builder.add_node("agent", run_agent)
+    # note_agent is embedded directly as a subgraph node (not wrapped in a
+    # function that calls .invoke()) so its own token-level streaming is
+    # visible to callers streaming *this* graph — verified that a wrapper
+    # function only surfaces whole-message chunks, not real token deltas,
+    # even with the run config threaded through.
+    graph_builder.add_node("agent", note_agent)
 
     graph_builder.add_edge(START, "select_relevant_notes")
     graph_builder.add_edge("select_relevant_notes", "load_note_context")

@@ -17,7 +17,14 @@
       "Bash(rmdir ~/.hi/vault)",
       "Bash(grep -A3 \"^├── hi$\\\\|└── hi$\" ~/.hi/tree_cache.md | head -20)",
       "Bash(ollama ps *)",
-      "Bash(timeout 60 ollama run gpt-oss:120b-cloud \"Say hello in one sentence.\")"
+      "Bash(timeout 60 ollama run gpt-oss:120b-cloud \"Say hello in one sentence.\")",
+      "Bash(tmux new-session *)",
+      "Bash(tmux split-window *)",
+      "Bash(tmux list-panes *)",
+      "Bash(tmux list-sessions *)",
+      "Bash(TMUX_PANE=%61 uv run python -c ' *)",
+      "Bash(tmux kill-session *)",
+      "Bash(TMUX_PANE=%63 uv run python -c ' *)"
     ]
   }
 }

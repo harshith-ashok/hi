@@ -7,6 +7,7 @@ import urllib.request
 from pathlib import Path
 
 from langchain.agents import create_agent
+from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 
@@ -15,11 +16,6 @@ from hi.config import WEB_MODEL
 SEARCH_URL = "https://en.wikipedia.org/w/api.php"
 SUMMARY_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/{title}"
 TIMEOUT_SECONDS = 10
-
-model = ChatOllama(
-    model=WEB_MODEL,
-    temperature=0,
-)
 
 
 @tool
@@ -81,9 +77,19 @@ def search_wikipedia(query: str) -> str:
 
 
 PROMPT_PATH = Path(__file__).parent / "web_prompt.md"
+TOOLS = [search_wikipedia]
 
-agent = create_agent(
-    model=model,
-    tools=[search_wikipedia],
-    system_prompt=PROMPT_PATH.read_text(),
+
+def build_agent(model: BaseChatModel):
+    """Build a fresh web agent bound to `model` — used directly below for
+    the default WEB_MODEL instance, and by hi/router.py to build one on a
+    router-selected tier instead."""
+    return create_agent(model=model, tools=TOOLS, system_prompt=PROMPT_PATH.read_text())
+
+
+model = ChatOllama(
+    model=WEB_MODEL,
+    temperature=0,
+    keep_alive="30m",
 )
+agent = build_agent(model)

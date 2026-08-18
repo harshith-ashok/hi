@@ -5,18 +5,26 @@ import subprocess
 from pathlib import Path
 
 from langchain.agents import create_agent
+from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 
+from hi.agents.butler.mac_control import (
+    list_running_apps,
+    mute,
+    quit_app,
+    read_clipboard,
+    set_volume,
+    take_screenshot,
+    toggle_dnd,
+    toggle_wifi,
+    unmute,
+    write_clipboard,
+)
 from hi.agents.butler.todo import add_task, complete_task, list_tasks, remove_task
 from hi.config import BUTLER_MODEL
 
 BRIGHTNESS_KEY_CODES = {"up": "144", "down": "145"}
-
-model = ChatOllama(
-    model=BUTLER_MODEL,
-    temperature=0,
-)
 
 
 @tool
@@ -129,18 +137,38 @@ def lock_screen() -> str:
 
 
 PROMPT_PATH = Path(__file__).parent / "butler_prompt.md"
+TOOLS = [
+    toggle_bluetooth,
+    open_app,
+    adjust_brightness,
+    lock_screen,
+    add_task,
+    complete_task,
+    remove_task,
+    list_tasks,
+    set_volume,
+    mute,
+    unmute,
+    toggle_wifi,
+    toggle_dnd,
+    take_screenshot,
+    read_clipboard,
+    write_clipboard,
+    list_running_apps,
+    quit_app,
+]
 
-agent = create_agent(
-    model=model,
-    tools=[
-        toggle_bluetooth,
-        open_app,
-        adjust_brightness,
-        lock_screen,
-        add_task,
-        complete_task,
-        remove_task,
-        list_tasks,
-    ],
-    system_prompt=PROMPT_PATH.read_text(),
+
+def build_agent(model: BaseChatModel):
+    """Build a fresh butler agent bound to `model` — used directly below
+    for the default BUTLER_MODEL instance, and by hi/router.py to build one
+    on a router-selected tier instead."""
+    return create_agent(model=model, tools=TOOLS, system_prompt=PROMPT_PATH.read_text())
+
+
+model = ChatOllama(
+    model=BUTLER_MODEL,
+    temperature=0,
+    keep_alive="30m",
 )
+agent = build_agent(model)
