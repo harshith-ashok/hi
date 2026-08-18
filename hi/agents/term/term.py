@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from langchain.agents import create_agent
@@ -5,11 +6,13 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
 
-from hi.agents.term.danger import looks_destructive
-from hi.agents.term.dev_flow_tool import open_dev_flow
+from hi.agents.term.danger import looks_destructive, looks_long_running
+from hi.agents.term.dev_flow_tool import add_dev_flow, open_dev_flow
 from hi.agents.term.people import add_person_info, delete_person, get_person_info, list_people
 from hi.agents.term.shell_pane import run_in_left_pane
+from hi.agents.term.tmux_control import _add_pane, add_pane
 from hi.config import TERM_MODEL
+from hi.mcp_tools import get_mcp_tools
 from hi.memory_graph import build_memory_graph
 from hi.vault import (
     append_note,
@@ -29,6 +32,14 @@ def run_shell_command(command: str) -> str:
     Args:
         command: The literal shell command to run, e.g. "ls -l".
     """
+    if looks_long_running(command):
+        # A dev server or watch-mode command will never print the
+        # completion marker — waiting on it just burns the timeout (or
+        # needs a manual Ctrl-J). Redirect it to its own pane instead of
+        # relying on the model to remember to do that itself.
+        result = _add_pane(command, "horizontal")
+        return f"This looks like a long-running process, so it was started in its own pane instead of waiting on it. {result}"
+
     if looks_destructive(command):
         print(f"\nterm wants to run: {command}")
         confirm = input("Run this? [y/N] ").strip().lower()
@@ -37,16 +48,19 @@ def run_shell_command(command: str) -> str:
 
     output, exit_code = run_in_left_pane(command)
     if exit_code is None:
-        return (
-            f"Command timed out waiting for a result (may still be running):\n{output}"
-        )
+        # `output` already explains why (Ctrl-J interrupt vs. genuine
+        # timeout are different situations, not both just "timed out").
+        return output
     return f"Exit code: {exit_code}\nOutput:\n{output}"
 
 
 PROMPT_PATH = Path(__file__).parent / "term_prompt.md"
+LAUNCH_CWD_ENV_VAR = "HI_LAUNCH_CWD"
 TOOLS = [
     run_shell_command,
+    add_pane,
     open_dev_flow,
+    add_dev_flow,
     create_note,
     append_note,
     read_note,
@@ -107,7 +121,21 @@ def build_agent(model: BaseChatModel):
     loaded as context before the ReAct agent (with its shell/notes/people/
     dev-flow tools) runs — then the whole thing is wrapped in
     _StatefulAgent so that context persists across turns too."""
-    note_agent = create_agent(model=model, tools=TOOLS, system_prompt=PROMPT_PATH.read_text())
+    system_prompt = PROMPT_PATH.read_text()
+    launch_cwd = os.environ.get(LAUNCH_CWD_ENV_VAR)
+    if launch_cwd:
+        # Shell commands already run there for free (the left pane's real
+        # shell starts in that directory) — this is purely for the
+        # model's own reasoning/dev-flow awareness, so "commit and push"
+        # or "what does this project do" don't require the user to name
+        # the directory explicitly.
+        system_prompt += f"\n\nYou were launched from: {launch_cwd}\nTreat this as the active project's directory unless told otherwise."
+    # get_mcp_tools() is cached (hi/mcp_tools.py) — only the first call in
+    # the process actually connects to any MCP servers; a slow/misbehaving
+    # server is bounded by its own per-server timeout rather than hanging
+    # agent construction indefinitely.
+    all_tools = TOOLS + get_mcp_tools()
+    note_agent = create_agent(model=model, tools=all_tools, system_prompt=system_prompt)
     grounded_agent = build_memory_graph(note_agent, model)
     return _StatefulAgent(grounded_agent)
 

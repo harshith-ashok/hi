@@ -281,6 +281,14 @@ Before running anything that looks destructive or hard to reverse — `rm`,
 like — it prints the command and asks for a `y`/`N` confirmation first.
 Read-only/informational commands run immediately, no confirmation needed.
 
+If a command never finishes (a dev server left running on purpose is the
+common case), term normally waits up to its timeout with the prompt
+unresponsive that whole time. Pressing Ctrl-J stops that wait immediately
+without killing the command — it's presumed still running in the left
+pane. For anything you already expect to run forever, ask term to split
+it into its own pane instead (see Splitting Panes below) rather than
+waiting on it at all.
+
 Term is also the general-purpose assistant: it has the same persistent,
 Markdown-based memory `code` used to have (there is no separate `code`
 persona anymore — its functionality was folded into `term`), grounded in
@@ -294,6 +302,19 @@ and the dev-flow launcher below:
 
 (term) > I want to work on kaapi
 ```
+
+Term is aware of the directory `hi` was launched from — the implicit
+active project for anything not otherwise scoped, so "commit and push" or
+"what does this project do" don't require naming the directory. Shell
+commands already ran there regardless (the left pane's real shell starts
+there); this is about term's own reasoning.
+
+For a genuinely ambiguous request — more than one reasonable
+interpretation, or missing something needed to act safely — term asks a
+short clarifying question instead of guessing, rather than risk guessing
+wrong on something like a destructive shell command. The conversation
+persists across turns, so the original request and the answer both stay
+in context for the next turn to resolve correctly.
 
 Term requires the standard two-pane `hi` tmux layout — it needs a sibling
 pane to run commands in, so it can't run standalone outside tmux.
@@ -325,8 +346,45 @@ start there:
 }
 ```
 
-`dev_flows.json` is user-managed only — the assistant can read and act on
-it, but has no tool to create, edit, or add entries to it.
+`term` can also save the directory it was launched from as a new dev flow:
+
+```text
+(term) > save this directory as a dev flow called kaapi
+```
+
+`dev_flows.json` remains a plain file the user can hand-edit anytime
+either way — a flow saved this way starts with just a name and directory
+(tmux layout and apps are optional), refined by hand afterward if wanted.
+
+---
+
+# Splitting Panes
+
+Term can grow the current workspace beyond the fixed left/right layout —
+splitting a new pane in the same window (not a new window) for something
+that's meant to keep running, like a dev server or a log tail, so it
+doesn't tie up the pane term runs ordinary commands in:
+
+```text
+(term) > split a pane and run npm run dev
+```
+
+The command runs immediately in the new pane, visible alongside the
+others. There's no tool to close a pane this way — exit it normally (type
+`exit`, or tmux's own pane-close shortcut) like any other pane.
+
+---
+
+# Daily Briefing
+
+Auto-routing mode (`hi`, no flag) opens with a one-line briefing before
+the first prompt: pending TODO items, the most recently edited vault note,
+and the most recently opened project under `~/Dev/Projects/`, distilled
+into one concrete, actionable suggestion phrased as a yes/no question —
+e.g. "Want to check off the push-the-repo task?". Answering with a bare
+`y`/`yes`/`sure`/etc. as the very first input carries out the suggested
+action for real, through the normal classify-and-route pipeline. Any other
+first input is treated as an ordinary turn and the suggestion is dropped.
 
 ---
 

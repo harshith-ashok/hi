@@ -49,3 +49,9 @@ WHISPER_MODEL = _env.get("WHISPER_MODEL", "base.en")
 HAIKU_MODEL = _env.get("HAIKU_MODEL", "gpt-oss:20b-cloud")
 SONNET_MODEL = _env.get("SONNET_MODEL", DEFAULT_MODEL)
 OPUS_MODEL = _env.get("OPUS_MODEL", "qwen3.5:397b-cloud")
+
+# MCP (Model Context Protocol) server credentials (hi/mcp_tools.py). Both
+# None if unset — the corresponding server is simply left out rather than
+# failing, so `hi` works the same with or without them configured.
+GITHUB_PERSONAL_ACCESS_TOKEN = _env.get("GITHUB_PERSONAL_ACCESS_TOKEN") or None
+OBSIDIAN_REST_API_KEY = _env.get("OBSIDIAN_REST_API_KEY") or None

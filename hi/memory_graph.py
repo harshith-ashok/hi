@@ -19,7 +19,9 @@ from langgraph.graph.state import CompiledStateGraph
 
 from hi.model_warmup import invoke_with_retry
 from hi.tree_cache import read_tree_cache, refresh_tree_cache
-from hi.vault import list_conversations, list_notes, read_conversation, read_note
+from hi.vault import KNOWLEDGE_DIR, list_conversations, list_notes, read_conversation, read_note
+
+PREFERENCES_PATH = "preferences.md"
 
 
 class State(TypedDict):
@@ -67,18 +69,29 @@ def build_memory_graph(note_agent, model: BaseChatModel) -> CompiledStateGraph:
         return {"relevant_notes": relevant_notes, "relevant_logs": relevant_logs}
 
     def load_note_context(state: State) -> dict:
-        note_paths = state["relevant_notes"]
+        note_paths = [p for p in state["relevant_notes"] if p != PREFERENCES_PATH]
         log_dates = state["relevant_logs"]
-        if not note_paths and not log_dates:
-            return {}
 
-        sections = [
+        sections = []
+        # Always included, not just when the relevance-selection step
+        # happens to surface it — selection is keyword/topic based and
+        # won't reliably match an unrelated question to a general
+        # preferences note, but preferences should apply regardless of
+        # what the question is about.
+        if (KNOWLEDGE_DIR / PREFERENCES_PATH).exists():
+            sections.append(
+                f"### knowledge/{PREFERENCES_PATH} (always included)\n\n"
+                f"{read_note.invoke({'path': PREFERENCES_PATH})}"
+            )
+        sections += [
             f"### knowledge/{path}\n\n{read_note.invoke({'path': path})}" for path in note_paths
         ]
         sections += [
             f"### conversations/{d}\n\n{read_conversation.invoke({'date': d})}"
             for d in log_dates
         ]
+        if not sections:
+            return {}
         context = "\n\n".join(sections)
 
         last_message = state["messages"][-1]

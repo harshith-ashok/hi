@@ -264,3 +264,197 @@
 - [x] README / `docs/assistants.md` updated throughout — every `--code`/
       `(code) >` reference replaced with `--term`/`(term) >`, with a note
       explaining the merge where it's first mentioned
+
+---
+
+## Phase 13 – Multi-Step Robustness, CWD Awareness, Agent-Creatable Dev
+Flows, Clarifying Questions, Daily Briefing
+
+- [x] Confirmed live that LangChain's `create_agent` ReAct loop already
+      chains multiple tool calls per turn — no new mechanism was needed
+      for "commit with a message and push" style multi-part requests.
+      What actually broke that test was a real, separate bug (next item)
+- [x] `hi/agents/term/shell_pane.py`: fixed two "command doesn't behave
+      like a simple synchronous foreground process" bugs sharing one root
+      cause — (1) a command that opens a pager (`git diff`/`log`) blocks
+      forever since nothing can send it a keystroke to exit; fixed with a
+      one-off `PAGER=cat GIT_PAGER=cat` env prefix. Verified live: this
+      had stalled a real turn for 2+ minutes before the fix, down to
+      0.24s after. (2) heredocs/multi-line commands break when typed as
+      one compound `;`-joined line (everything after `<<EOF` on that
+      "line" gets swallowed into the heredoc body) — fixed by writing
+      multi-line commands to a temp script and running that instead,
+      verified against the TODO's own garbled-heredoc example
+- [x] `HI_LAUNCH_CWD` env var (`hi/cli.py`, threaded the same way
+      `HI_PERSONA_PANE` already is) gives `term` awareness of the
+      directory `hi` was launched from, folded into its system prompt —
+      shell commands already ran there for free (the left pane's real
+      shell inherits cwd naturally), this is about the model's own
+      reasoning awareness
+- [x] `hi/memory_graph.py`: `hi/knowledge/preferences.md` (already
+      existed with real content) is now always loaded into context, not
+      just when the relevance-selection step happens to match it —
+      verified live it's present even for a fully unrelated question
+- [x] `hi/agents/term/dev_flow_tool.py`: new `add_dev_flow` tool saves
+      `HI_LAUNCH_CWD` as a new `~/.hi/dev_flows.json` entry — reverses the
+      explicit "you cannot create, edit, or add one" restriction written
+      into the prompt during Phase 3, now that it was explicitly asked
+      for. `dev_flows.json` stays hand-editable either way
+- [x] `term_prompt.md`: added guidance to ask a short clarifying question
+      for genuinely ambiguous requests instead of guessing, relying on
+      `_StatefulAgent`'s existing cross-turn memory to resolve the answer
+      next turn — verified live with "delete the old branches" (asked
+      which repo/criteria rather than guessing) and confirmed the
+      follow-up turn correctly recalled the original request
+- [x] `hi/briefing.py` (new): gathers pending tasks
+      (`hi.agents.butler.todo.pending_tasks_greeting`, already existed),
+      most-recently-edited vault note, and most-recently-opened project
+      via plain filesystem mtime lookups (no LLM needed for gathering),
+      then one haiku-tier call synthesizes a one-line actionable
+      suggestion — shown once at the start of auto-routing mode
+      specifically (`run_router_repl`, not every `--flag` launch, since
+      "before starting the session" describes the general entry point).
+      Found during implementation that `~/Dev` is actually a *different*
+      Obsidian vault on this machine (its own `.obsidian`/`.stfolder`
+      markers) — real project directories live in `~/Dev/Projects/`,
+      confirmed directly before using that path instead of the literal
+      one named in the TODO item
+- [x] `hi/repl.py`: a bare affirmative (`y`/`yes`/etc.) as the first
+      router-mode input submits the briefing's stored suggested action
+      through the normal classify → route → stream pipeline instead of
+      trying to route the literal word "yes" — verified end-to-end with
+      scripted input through the real pipeline (not mocked past the
+      classify step)
+
+---
+
+## Phase 14 – Ctrl-J Wait-Interrupt + tmux add_pane
+
+- [x] Verified directly (not assumed) that Ctrl-J (raw byte `\x0a`,
+      linefeed) is genuinely distinguishable from Enter (`\r`, carriage
+      return) at the terminal level, via `prompt_toolkit`'s pipe-input
+      test harness — a `c-j` binding fires on the raw byte without being
+      swallowed by the default accept-line behavior
+- [x] Realized a `prompt_toolkit` `KeyBindings` entry (the Ctrl-L/Ctrl-V
+      mechanism, `hi/repl.py`) categorically cannot handle this: the
+      "stuck" moment is inside `run_in_left_pane`'s synchronous polling
+      loop, entirely outside `prompt_toolkit`'s event loop, which isn't
+      reading input at all during that window
+- [x] `hi/agents/term/shell_pane.py`: `_check_interrupt` replaces the
+      polling loop's `time.sleep(0.2)` — puts the terminal in cbreak mode
+      just for a non-blocking `select.select(...)` check, restored
+      immediately via `finally` every iteration, falling back to a plain
+      sleep when `sys.stdin.isatty()` is false. No background thread
+      needed (the original instinct) — the loop already had a sleep to
+      replace. Verified live: the non-tty fallback behaves identically to
+      a plain sleep (this sandbox has no real TTY), and no regression in
+      the normal-completion or genuine-timeout paths
+- [x] Real Ctrl-J-press verification needs an actual terminal with a real
+      TTY, which this sandbox doesn't have — noted plainly rather than
+      claimed, same caveat as the voice-input work earlier
+- [x] `hi/agents/term/tmux_control.py` (new): `add_pane(command, split)`
+      splits a new pane in the *current* window (not a new window,
+      matching "existing environment" in the TODO item) via
+      `hi.tmux_util.run_tmux_raw`, reusing `shell_pane.py`'s window/pane
+      resolution (`left_pane_id`, made public — second consumer now).
+      Verified live in an isolated tmux session: pane count increases,
+      the command actually runs in the new pane — both directly and
+      through the real agent via natural language ("split a new pane and
+      run: ...")
+- [x] `term_prompt.md`: guidance to prefer `add_pane` over
+      `run_shell_command` for anything expected to run forever (dev
+      servers, log tails), and to treat a Ctrl-J-interrupted result as
+      "still running," not a failure
+
+---
+
+## Phase 15 – Last-Modified Fix, Long-Running-Process Fix, MCP Integration
+
+- [x] `hi/briefing.py`: `_last_edited_note()` excluded `hi/` (the
+      assistant's own `conversations/`/`knowledge/`/`todo.md`) from its
+      scan — `hi/conversations/` gets touched on every turn of every
+      persona, so without this it always won "most recently edited" and
+      the briefing never actually reflected a note the user wrote.
+      Verified live: now correctly returns a real note instead
+- [x] `hi/agents/term/danger.py`: new `looks_long_running()` heuristic
+      (same shape as the existing `looks_destructive`) — `run_shell_command`
+      now auto-redirects matching commands to their own pane instead of
+      relying on prompt guidance the model wasn't reliably following.
+      Unit-tested against 19 real/non-matching commands, all correct
+- [x] Found and fixed a second real bug while verifying the redirect live:
+      `add_pane`'s split pane had no keep-alive fallback, so a command
+      that fails fast (verified: `npm run dev` outside a JS project)
+      closed its own pane before its error was visible — same bug
+      category already fixed once for `dev_flow_tool.py`'s `_keep_alive`
+      earlier this session, so that helper was promoted to a shared
+      `hi.tmux_util.keep_alive` and reused here instead of duplicated
+- [x] Researched rather than assumed which MCP servers actually exist and
+      what they need before building anything: `langchain-mcp-adapters`
+      is the standard LangChain/LangGraph MCP client; official servers
+      exist for GitHub (`github/github-mcp-server`, local via Docker + a
+      personal access token) and Playwright (`microsoft/playwright-mcp`,
+      via `npx`, no credentials); Obsidian needs the community "Local
+      REST API" plugin installed *inside* Obsidian (confirmed not
+      currently installed in this vault) plus its API key; no official
+      Amazon price-tracking server exists, only paid third-party scrapers
+      — asked the user directly which to use rather than guess, and they
+      chose to skip it for now; evaluated existing macOS-control MCP
+      servers and found none better than butler's existing, tested
+      osascript tools, so didn't replace them
+- [x] Verified directly (not assumed) that MCP tools are async-only —
+      calling `.invoke()` on one raises `NotImplementedError` — before
+      building anything on top of that assumption. `hi/mcp_tools.py`
+      (new) bridges each tool with one `asyncio.run()` call per
+      invocation rather than converting the whole (otherwise entirely
+      synchronous) agent execution path to async
+- [x] Servers are included in the client config conditionally — Playwright
+      always (just checks `npx` is on `PATH`), GitHub/Obsidian only when
+      their credential is set in `~/.hi/.env` (both added as commented-out
+      placeholders with setup instructions) — gracefully absent rather
+      than crashing when not configured. A server that fails to connect
+      is caught, logged, and skipped without taking any other server or
+      the persona down with it
+- [x] Wired into `term`'s tool list (cached — only the first `build_agent`
+      call in a process actually connects). Verified end-to-end through
+      the real agent via natural language: "go to https://example.com and
+      tell me the exact page title" correctly navigated a real browser and
+      returned the real title, not a guess — installing a usable Chromium
+      for the Playwright MCP server along the way required a genuine
+      system-level install (`npx playwright install chrome` downloaded
+      real Google Chrome to `/Applications`, not just a Playwright-managed
+      cache), flagged clearly rather than treated as a routine dependency
+      install
+- [x] Full regression check with the ~24 new Playwright tools added to
+      term's tool list: shell commands, vault grounding + people notes,
+      and the long-running-process redirect all still verified working
+      together in the same session
+
+---
+
+## Phase 16 – Real GitHub/Obsidian Credentials, `uv tool` Resync, Obsidian Cert Fix
+
+- [x] `uv tool upgrade hi` again — the installed `hi` command's separate
+      venv didn't have `langchain-mcp-adapters` after `uv add`, same class
+      of issue as every previous dependency addition this session
+- [x] User provided real credentials in `~/.hi/.env` — confirmed GitHub
+      and Obsidian both now appear in `_server_configs()`
+- [x] GitHub MCP still fails — Docker (Rancher Desktop) isn't currently
+      running. Confirmed the failure is graceful (logged warning, other
+      servers unaffected, no crash) rather than trying to start a GUI VM
+      app on the user's behalf, which felt like a bigger, more invasive
+      action than appropriate to take autonomously
+- [x] Obsidian MCP failed with `CERTIFICATE_VERIFY_FAILED: self-signed
+      certificate` — diagnosed with the full exception (not the generic
+      caught-and-logged summary) rather than guessing, confirmed via
+      direct `curl -k` that the Local REST API plugin itself was actually
+      reachable (Obsidian was running) before concluding it was a cert
+      issue specifically. Fixed with a custom `httpx_client_factory`
+      (`verify=False`) scoped to just the Obsidian connection — a
+      reasonable trade-off since it's loopback-only (127.0.0.1), never
+      leaves the machine
+- [x] Verified fully end-to-end after the fix: 16 real Obsidian tools
+      load, a direct `vault_list` call returned the actual real vault
+      folder structure, and the full `term` agent correctly listed the
+      same real folders via natural language ("list the top-level folders
+      in my vault") — Obsidian MCP is no longer best-effort/unverified,
+      it's confirmed working

@@ -1,19 +1,25 @@
-"""Tool for opening a saved development workspace from dev_flows.json.
-
-dev_flows.json is user-managed config (not editable by the agent): it maps
-a project name to a directory, a list of apps to open it in, and a two-pane
-tmux layout to start there.
+"""Tools for opening and saving development workspaces in dev_flows.json:
+a project name mapped to a directory, a list of apps to open it in, and an
+optional two-pane tmux layout to start there. Still a plain file the user
+can hand-edit anytime — add_dev_flow just gives the agent a way to add to
+it too, rather than every entry needing to be created by hand.
 """
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 from langchain_core.tools import tool
 
-from hi.tmux_util import run_tmux_raw, tmux_new_target
+from hi.tmux_util import keep_alive, run_tmux_raw, tmux_new_target
 
 DEV_FLOWS_PATH = Path.home() / ".hi" / "dev_flows.json"
+LAUNCH_CWD_ENV_VAR = "HI_LAUNCH_CWD"
+
+
+def _current_project_directory() -> str:
+    return os.environ.get(LAUNCH_CWD_ENV_VAR) or os.getcwd()
 
 
 def _load_flows() -> dict:
@@ -42,14 +48,6 @@ def _open_app(command: str, directory: str) -> str | None:
         return f"'{command}' timed out"
     except subprocess.CalledProcessError as e:
         return f"'{command}' failed: {e.stderr.strip() or e}"
-
-
-def _keep_alive(command: str) -> str:
-    """Append a fallback to drop into an interactive shell once `command`
-    finishes, instead of tmux closing the pane (and the window, if it's the
-    last pane) the moment a short-lived command like `source .venv/bin/activate`
-    exits."""
-    return f"{command}; exec $SHELL -l"
 
 
 @tool
@@ -93,7 +91,7 @@ def open_dev_flow(project: str) -> str:
                 "#{window_id}",
                 "-c",
                 directory,
-                _keep_alive(tmux_layout["left"]),
+                keep_alive(tmux_layout["left"]),
             ]
         )
         if new_window.returncode != 0:
@@ -111,7 +109,7 @@ def open_dev_flow(project: str) -> str:
                     "-h",
                     "-c",
                     directory,
-                    _keep_alive(tmux_layout["right"]),
+                    keep_alive(tmux_layout["right"]),
                 ]
             )
             if split.returncode != 0:
@@ -122,3 +120,43 @@ def open_dev_flow(project: str) -> str:
     if problems:
         return f"Opened dev flow '{key}' in {directory}, with issues:\n" + "\n".join(problems)
     return f"Opened dev flow '{key}' in {directory}."
+
+
+@tool
+def add_dev_flow(
+    name: str,
+    left_command: str | None = None,
+    right_command: str | None = None,
+    apps: list[str] | None = None,
+) -> str:
+    """Save the directory you were launched from as a new dev flow, so
+    open_dev_flow(name) can reopen it later. tmux/apps are optional — a
+    bare name is enough to save now; the resulting entry in
+    ~/.hi/dev_flows.json can always be hand-edited afterward to add or
+    change a layout.
+
+    Args:
+        name: A short name for this project, e.g. "kaapi".
+        left_command: Command for the left tmux pane when reopened, e.g.
+            "bench start". Needs right_command too, or neither is saved.
+        right_command: Command for the right tmux pane, e.g. "htop".
+        apps: Commands to launch when reopened, e.g. ["zed", "open ."].
+    """
+    flows = _load_flows()
+    if any(k.lower() == name.lower() for k in flows):
+        return (
+            f"A dev flow named '{name}' already exists. Use a different "
+            "name, or edit ~/.hi/dev_flows.json directly to change it."
+        )
+
+    directory = _current_project_directory()
+    entry: dict = {"directory": directory}
+    if left_command and right_command:
+        entry["tmux"] = {"left": left_command, "right": right_command}
+    if apps:
+        entry["apps"] = apps
+
+    flows[name] = entry
+    DEV_FLOWS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DEV_FLOWS_PATH.write_text(json.dumps(flows, indent=2))
+    return f"Saved dev flow '{name}' for {directory}."

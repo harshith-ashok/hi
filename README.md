@@ -45,6 +45,8 @@ Most AI coding assistants want their own window, their own editor, their own eve
 | **Deep macOS control** | Bluetooth, volume, Wi-Fi, Do Not Disturb, screenshots, clipboard, brightness, lock, app/window management |
 | **Dev-flow launcher** | Reopen a saved project's directory, apps, and tmux layout by name — or save your current directory as a new one, hands-free |
 | **A daily briefing** | Auto-routing mode opens with your pending tasks, most recently touched note, and most recent project, boiled down into one actionable yes/no suggestion |
+| **Real browsing + MCP servers** | `term` can navigate real web pages via Playwright (no setup needed), and connect to GitHub or Obsidian once you provide your own credentials — one config layer, more servers are just a config entry away |
+| **Never stuck on a runaway process** | Dev servers and watch-mode commands are detected and redirected to their own tmux pane automatically, before you ever have to wait on one |
 
 ## Quick Start
 
@@ -187,11 +189,25 @@ configured in `~/.hi/dev_flows.json`:
 (term) > save this directory as a dev flow called kaapi
 ```
 
-`dev_flows.json` stays a plain file you can hand-edit anytime either way — this just gives `term` a way to add to it too. `term` can also split a new pane in the current workspace for something meant to keep running (a dev server, a log tail), rather than tying up the pane it runs ordinary commands in:
+`dev_flows.json` stays a plain file you can hand-edit anytime either way — this just gives `term` a way to add to it too. `term` can also split a new pane in the current workspace for something meant to keep running (a log tail, a second shell), rather than tying up the pane it runs ordinary commands in:
 
 ```text
-(term) > split a pane and run npm run dev
+(term) > split a pane and run tail -f server.log
 ```
+
+Dev servers and watch-mode commands (`npm run dev`, `vite`, `bench start`, and similar) are detected automatically and redirected to their own pane the moment you ask for them through `run_shell_command` — you don't need to explicitly ask for `add_pane` for those specifically, it happens either way.
+
+### MCP Servers
+
+`term` can connect to [MCP](https://modelcontextprotocol.io) servers for capabilities beyond what's built in — one client layer (`hi/mcp_tools.py`), so adding another server later is a config entry, not new plumbing.
+
+| Server | Needs | Status |
+|---|---|---|
+| Playwright (real web browsing) | Node.js + `npx` | Enabled by default, no setup — verified live: real navigation, real page titles back |
+| GitHub (repos, issues, PRs, Actions) | `GITHUB_PERSONAL_ACCESS_TOKEN` in `~/.hi/.env`, Docker actually running | Off until you add a token; needs Docker (e.g. Rancher Desktop) started separately |
+| Obsidian | The community ["Local REST API"](https://github.com/coddingtonbear/obsidian-local-rest-api) plugin installed in Obsidian itself, then `OBSIDIAN_REST_API_KEY` in `~/.hi/.env` from its settings | Verified live: real vault listing, both directly and through `term` via natural language |
+
+A server that isn't configured is simply absent — no crash, `term` works the same either way. A server that fails to connect (Docker not running, a bad token) is skipped with a logged warning, not a hard failure for the whole persona. The Obsidian plugin's self-signed local certificate needs certificate verification disabled specifically for that connection (`hi/mcp_tools.py`) — reasonable since it's loopback-only (127.0.0.1), never leaves the machine.
 
 ## Architecture
 
@@ -214,13 +230,14 @@ hi/tree_cache.py               `tree -L 4` snapshot of the vault, for grounding
 hi/model_warmup.py             background warm-up + retry around Ollama Cloud's
                                  occasional empty done_reason='load' response
 hi/voice.py                     Ctrl-V mic capture + faster-whisper transcription
+hi/mcp_tools.py                 MCP client layer: configured servers -> sync-callable tools
 
 hi/agents/butler/  (butler.py + todo.py + mac_control.py)          the `butler` persona
 hi/agents/docs/    (docs.py + vault_rag.py)                         the `docs` persona
 hi/agents/web/     (web.py)                                          the `web` persona
 hi/agents/term/    (term.py + shell_pane.py + danger.py +             the `term` persona:
                     dev_flow_tool.py + people.py +                    shell + memory + people +
-                    tmux_control.py)                                  dev flows + pane splitting
+                    tmux_control.py)                                  dev flows + pane splitting + MCP
 ```
 
 Every persona module exposes both a `model`/`agent` pair built at import time (used by `--flag` launches) and a `build_agent(model)` factory (used by the router to build the same persona bound to a different, tier-selected model) — the direct-flag path is unaffected by the router's dynamic model selection.
@@ -232,10 +249,11 @@ Every persona module exposes both a `model`/`agent` pair built at import time (u
 | | |
 |---|---|
 | Personas | 4 dedicated + 1 auto-router |
-| Tools across all personas | 39 |
-| Python source | 2,366 lines across 31 files |
+| Built-in tools across all personas | 39 |
+| + Playwright MCP tools (`term`, on by default) | 24 more |
+| Python source | 2,561 lines across 32 files |
 | Model tiers | 3 (haiku / sonnet / opus) |
-| Direct dependencies | 13 |
+| Direct dependencies | 10 |
 | Built | July – August 2026 |
 
 *(counted directly from the source tree and tool registries, not estimated)*

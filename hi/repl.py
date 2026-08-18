@@ -11,6 +11,7 @@ from hi.vault import log_conversation
 
 EXIT_WORDS = {"exit", "quit"}
 CLEAR_WORDS = {"clear", "cls"}
+AFFIRMATIVE_WORDS = {"y", "yes", "yeah", "yep", "sure", "ok", "okay"}
 
 
 def _build_key_bindings() -> KeyBindings:
@@ -92,6 +93,14 @@ def run_router_repl() -> None:
     agent_cache: dict[tuple[str, str], object] = {}
     prompt_label = "hi"
 
+    from hi.briefing import build_briefing
+
+    briefing = build_briefing()
+    suggested_action = None
+    if briefing:
+        display, suggested_action = briefing
+        print(display)
+
     while True:
         try:
             query = session.prompt(f"({prompt_label}) > ")
@@ -106,6 +115,13 @@ def run_router_repl() -> None:
             continue
         if not stripped:
             continue
+
+        # If the briefing showed a suggestion and this is a bare
+        # affirmative, run the suggested action instead of trying to
+        # classify/route the literal word "yes" on its own.
+        if suggested_action and stripped.lower() in AFFIRMATIVE_WORDS:
+            stripped = suggested_action
+        suggested_action = None
 
         persona_name, tier = classify(stripped)
         key = (persona_name, tier)

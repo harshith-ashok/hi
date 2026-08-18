@@ -16,6 +16,7 @@ from hi.personas import PERSONAS
 from hi.tmux_util import run_tmux
 
 PANE_ENV_VAR = "HI_PERSONA_PANE"
+LAUNCH_CWD_ENV_VAR = "HI_LAUNCH_CWD"
 ROUTER_MARKER = "router"
 
 
@@ -34,7 +35,15 @@ def launch_tmux(persona: str | None) -> None:
     """Open the persona (or auto-routing mode, if None) in a right-hand
     tmux pane, leaving the user's shell untouched."""
     flag = f" --{persona}" if persona else ""
-    inner_command = f"env {PANE_ENV_VAR}={persona or ROUTER_MARKER} hi{flag}"
+    # The left pane inherits the launch directory naturally (tmux's own
+    # cwd inheritance), but the right pane's Python process needs it
+    # passed explicitly — env vars, not cwd, cross the `env VAR=val hi`
+    # boundary — so `term` can be aware of "the project" without the user
+    # having to say so.
+    inner_command = (
+        f"env {PANE_ENV_VAR}={persona or ROUTER_MARKER} "
+        f'{LAUNCH_CWD_ENV_VAR}="{os.getcwd()}" hi{flag}'
+    )
     error = run_tmux([";", "split-window", "-h", "-p", "25", inner_command])
     if error:
         sys.exit(f"tmux failed to launch {persona or 'hi'}: {error}")
