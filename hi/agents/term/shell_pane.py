@@ -6,15 +6,12 @@ instead of running them invisibly in its own process.
 
 import os
 import re
-import select
-import sys
 import tempfile
-import termios
 import time
-import tty
 import uuid
 from pathlib import Path
 
+from hi.cancellation import check_interrupt
 from hi.tmux_util import run_tmux_raw
 
 # Disables pagers for the one command being run (POSIX `VAR=val cmd` is a
@@ -25,14 +22,15 @@ from hi.tmux_util import run_tmux_raw
 # live: this stalled a real multi-step turn for 2+ minutes before this fix.
 _NO_PAGER_ENV = "PAGER=cat GIT_PAGER=cat "
 
-# Ctrl-J, checked for during the wait loop below so a command that will
-# never print the completion marker (a dev server, started on purpose to
-# keep running) doesn't leave the whole assistant unresponsive for the
-# full timeout. Distinct from Enter (\r) at the raw byte level — verified
-# directly, a prompt_toolkit key binding on "c-j" fires on this byte
-# without being swallowed by the default accept-line behavior, which is
-# bound to \r, not \n.
-_INTERRUPT_KEY = "\x0a"
+# Ctrl-J, checked for during the wait loop below (via hi/cancellation.py's
+# shared check_interrupt — this used to be a private copy local to this
+# file, now the same primitive hi/streaming.py's generation-cancellation
+# uses too) so a command that will never print the completion marker (a
+# dev server, started on purpose to keep running) doesn't leave the whole
+# assistant unresponsive for the full timeout. Distinct from Enter (\r)
+# at the raw byte level — verified directly, a prompt_toolkit key binding
+# on "c-j" fires on this byte without being swallowed by the default
+# accept-line behavior, which is bound to \r, not \n.
 
 
 def _own_pane_id() -> str:
@@ -67,29 +65,6 @@ def _capture_pane_text(pane_id: str) -> str:
     return run_tmux_raw(["capture-pane", "-p", "-S", "-2000", "-t", pane_id]).stdout
 
 
-def _check_interrupt(timeout_slice: float) -> bool:
-    """Waits up to `timeout_slice` seconds (same role as a plain
-    time.sleep in the polling loop below), returning True if Ctrl-J was
-    pressed during that window. Needs the terminal in cbreak mode to see
-    a single keystroke without waiting for Enter — set and restored every
-    call so a normal sleep (no real TTY, e.g. any non-interactive
-    invocation) is the exact fallback, and a later prompt_toolkit
-    session.prompt() call is never left with altered terminal settings
-    regardless of whether this ever fires."""
-    if not sys.stdin.isatty():
-        time.sleep(timeout_slice)
-        return False
-
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setcbreak(fd)
-        ready, _, _ = select.select([sys.stdin], [], [], timeout_slice)
-        if ready:
-            return sys.stdin.read(1) == _INTERRUPT_KEY
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    return False
 
 
 def run_in_left_pane(command: str, timeout: float = 30.0) -> tuple[str, int | None]:
@@ -148,7 +123,7 @@ def run_in_left_pane(command: str, timeout: float = 30.0) -> tuple[str, int | No
             output_start = start_idx + len(start_marker) if start_idx != -1 else 0
             output = text[output_start : end_match.start()].strip()
             return output, int(end_match.group(1))
-        if _check_interrupt(0.2):
+        if check_interrupt(0.2):
             return (
                 "(Ctrl-J pressed — stopped waiting. The command is presumed "
                 "still running in the left pane, not failed.)",
