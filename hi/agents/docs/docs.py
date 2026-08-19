@@ -2,14 +2,14 @@ from pathlib import Path
 
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
-from langchain_ollama import ChatOllama
-
 from hi.agents.docs.vault_rag import build_vault_rag_graph, list_vault_notes, read_vault_note
+from hi.chat_model import make_chat_model
 from hi.config import DOCS_MODEL
 from hi.vault import append_note, create_note, list_notes, read_note
+from hi.widget_store import recall_widget
 
 PROMPT_PATH = Path(__file__).parent / "docs_prompt.md"
-TOOLS = [list_vault_notes, read_vault_note, create_note, append_note, read_note, list_notes]
+TOOLS = [list_vault_notes, read_vault_note, create_note, append_note, read_note, list_notes, recall_widget]
 
 
 def build_agent(model: BaseChatModel):
@@ -20,9 +20,5 @@ def build_agent(model: BaseChatModel):
     return build_vault_rag_graph(note_agent, model)
 
 
-model = ChatOllama(
-    model=DOCS_MODEL,
-    temperature=0,
-    keep_alive="30m",
-)
+model = make_chat_model(DOCS_MODEL, temperature=0, keep_alive="30m")
 agent = build_agent(model)

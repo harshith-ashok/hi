@@ -25,6 +25,11 @@ Available tools:
   assistant's own hi/knowledge/ namespace in the vault
 - append_note(path, content): append to a note under hi/knowledge/
 - read_note(path) / list_notes(): read/list notes under hi/knowledge/
+- recall_widget(query): re-show a previously-shown MCP-UI widget (a
+  tool's own rendered view, not text) — use this for "show me that
+  again"/"show me that PR diff again" style requests. Pass an empty
+  string or the user's own vague wording ("that again") if they gave no
+  specific detail; recall_widget() falls back to the most recent one.
 
 create_note and append_note only ever write inside hi/knowledge/ — you can
 read anywhere in the vault, but you never edit or overwrite the user's own

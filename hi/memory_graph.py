@@ -12,12 +12,13 @@ whole-vault, citation-only RAG assistant with its own graph.
 from typing import Annotated, TypedDict
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage, SystemMessage
+from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 
 from hi.model_warmup import invoke_with_retry
+from hi.note_preview import note_preview
 from hi.tree_cache import read_tree_cache, refresh_tree_cache
 from hi.vault import KNOWLEDGE_DIR, list_conversations, list_notes, read_conversation, read_note
 
@@ -47,10 +48,19 @@ def build_memory_graph(note_agent, model: BaseChatModel) -> CompiledStateGraph:
         refresh_tree_cache()
         tree = read_tree_cache()
 
+        # BLOCKERS.md #4: selection used to see only bare paths, never
+        # content — a note titled misc.md could never be picked no matter
+        # how relevant it actually was. One preview line per note fixes
+        # that at near-zero cost (still one selection call, just a
+        # richer prompt) without needing a full embedding index (9c).
+        notes_with_preview = "\n".join(
+            f"{path} — {note_preview(read_note.invoke({'path': path}))}" for path in known_notes
+        )
+
         question = state["messages"][-1].content
         selection_prompt = (
-            "Knowledge notes (paths under hi/knowledge/):\n"
-            f"{notes}\n\n"
+            "Knowledge notes (path — content preview):\n"
+            f"{notes_with_preview}\n\n"
             "Conversation logs (dates under hi/conversations/):\n"
             f"{logs}\n\n"
             "Vault folder structure, for extra context on how notes are "
@@ -62,7 +72,19 @@ def build_memory_graph(note_agent, model: BaseChatModel) -> CompiledStateGraph:
             "question? Reply with only the relevant note paths and/or "
             "dates, or NONE if none apply."
         )
-        reply = invoke_with_retry(model, [SystemMessage(selection_prompt)])
+        # A HumanMessage, not SystemMessage: verified live that this
+        # model (whichever tier's persona is currently active — sonnet
+        # by default) returns an empty done_reason='load' response for a
+        # SystemMessage-ONLY conversation, every single attempt, not a
+        # transient cold-start — retrying never helped, since the cause
+        # wasn't "not loaded yet." This silently made relevant_notes/
+        # relevant_logs always empty (an empty reply matches no real
+        # path via `in`), on top of burning invoke_with_retry's full
+        # 3-attempt retry loop for nothing, every single term turn.
+        # hi/router.py's classify() already made the same fix, but
+        # attributed it only to the smaller haiku-tier model — that
+        # turned out to be too narrow; this call needed it too.
+        reply = invoke_with_retry(model, [HumanMessage(selection_prompt)])
 
         relevant_notes = [path for path in known_notes if path in reply]
         relevant_logs = [d for d in known_logs if d in reply]

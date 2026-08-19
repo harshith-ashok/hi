@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Annotated, TypedDict
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage, SystemMessage
+from langchain_core.messages import AnyMessage, HumanMessage, RemoveMessage
 from langchain_core.tools import tool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -20,6 +20,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from hi.config import VAULT_PATH
 from hi.model_warmup import invoke_with_retry
+from hi.note_preview import note_preview
 from hi.tree_cache import read_tree_cache, refresh_tree_cache
 from hi.vault import CONVERSATIONS_DIR
 
@@ -82,10 +83,18 @@ def build_vault_rag_graph(note_agent, model: BaseChatModel) -> CompiledStateGrap
         refresh_tree_cache()
         tree = read_tree_cache()
 
+        # BLOCKERS.md #4: same fix as hi/memory_graph.py — selection used
+        # to see only bare paths, never content. One preview line per
+        # note makes selection content-aware at near-zero added cost.
+        notes_with_preview = "\n".join(
+            f"{path} — {note_preview(read_vault_note.invoke({'path': path}))}"
+            for path in known_notes
+        )
+
         question = state["messages"][-1].content
         selection_prompt = (
-            "Notes in the user's Obsidian vault (paths relative to the vault root):\n"
-            f"{notes}\n\n"
+            "Notes in the user's Obsidian vault (path — content preview):\n"
+            f"{notes_with_preview}\n\n"
             "Vault folder structure, for extra context on how notes are "
             "organized and titled:\n"
             f"{tree}\n\n"
@@ -102,7 +111,18 @@ def build_vault_rag_graph(note_agent, model: BaseChatModel) -> CompiledStateGrap
             "literal keyword overlap. Reply with only the relevant note "
             "paths, or NONE if none apply."
         )
-        reply = invoke_with_retry(model, [SystemMessage(selection_prompt)])
+        # A HumanMessage, not SystemMessage — see hi/memory_graph.py's
+        # identical fix and its comment for the live-verified root
+        # cause: this model returns an empty done_reason='load' response
+        # for a SystemMessage-ONLY conversation on every single attempt,
+        # not a transient cold-start retrying could ever get past. For
+        # `docs` specifically this was a real, silent correctness bug,
+        # not just wasted latency: an always-empty reply matches no real
+        # note path via `in`, so `docs` — "a strict, whole-vault,
+        # citation-only RAG assistant" per this file's own docstring —
+        # would have always reported "no relevant notes found" regardless
+        # of what actually exists in the vault.
+        reply = invoke_with_retry(model, [HumanMessage(selection_prompt)])
         relevant_notes = [path for path in known_notes if path in reply]
         return {"relevant_notes": relevant_notes}
 
