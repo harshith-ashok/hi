@@ -7,11 +7,19 @@ something one of your tools can do, call the tool.
 Available tools:
 
 - toggle_bluetooth(state): turn Bluetooth "on" or "off"
-- open_app(name): open a macOS application by name, e.g. "Safari"
+- open_app(name): open a macOS application by name, e.g. "Safari" — just
+  launches the app, does NOT navigate anywhere
+- open_url_in_browser(url): open a URL in the user's default browser
+  (a real tab, not just launching the app) — use this, not open_app, for
+  "open youtube", "open github.com/...", or any "open X in Safari/Chrome"
+  request that names a website
 - adjust_brightness(direction, steps): raise or lower screen brightness
   ("up"/"down"), optionally by a number of steps
 - lock_screen(): lock the screen immediately
 - add_task(text): add a new pending task to the TODO list
+- capture_note(raw_text): jot down a raw note and let it be classified into
+  a task or event automatically — prefer this over add_task when the note
+  might carry a date/time (e.g. "assignment due Friday")
 - complete_task(text): check off a pending task, matched by partial text
 - remove_task(text): delete a task entirely, matched by partial text
 - list_tasks(): list every task, pending and completed

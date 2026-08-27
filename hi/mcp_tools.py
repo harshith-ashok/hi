@@ -4,14 +4,24 @@ configured MCP servers and returns their tools as ordinary, synchronously
 Adding a new server is meant to be a small config entry here, not new
 plumbing each time.
 
-The rest of this codebase is entirely synchronous (no asyncio anywhere
-else), but MCP tools are async-native — verified directly that a tool
-from `MultiServerMCPClient.get_tools()` raises NotImplementedError on a
-plain `.invoke()`. Rather than converting the whole agent execution path
-to async, every tool gets wrapped to bridge with one `asyncio.run()` call
-per invocation — verified this works end-to-end against a real MCP server
-(Playwright, navigating to a real page and getting the real page title
-back) before relying on it.
+Most of this codebase is synchronous, but MCP tools are async-native —
+verified directly that a tool from `MultiServerMCPClient.get_tools()`
+raises NotImplementedError on a plain `.invoke()`. Rather than converting
+the whole agent execution path to async, every tool gets wrapped to
+bridge with one `asyncio.run()` call per invocation — verified this
+works end-to-end against a real MCP server (Playwright, navigating to a
+real page and getting the real page title back) before relying on it.
+
+`get_mcp_tools()` also runs once, lazily, whenever a persona module is
+first imported (`hi/agents/term/term.py`'s own module-level
+`build_agent(model)` call) — including from *inside* an already-running
+event loop, since `hi/orchestrator/graph.py`'s DAG executor (TODO.md
+Phase 16) can trigger that first import of a persona module its own
+`asyncio.run()` call is still on the stack for. A bare `asyncio.run()`
+here would raise ("cannot be called from a running event loop") in
+exactly that case — confirmed live, not hypothetical, the first time the
+orchestrator planned a task routed to a persona no synchronous caller
+had imported yet this process. `_run_sync()` below handles both cases.
 
 Servers are included in the client config *conditionally* — a server only
 gets added if what it actually needs is present (a token, a binary on
@@ -22,6 +32,7 @@ warning, without taking any other server or the persona down with it.
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import shutil
 
@@ -29,7 +40,15 @@ import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from hi.config import GITHUB_PERSONAL_ACCESS_TOKEN, OBSIDIAN_REST_API_KEY
+# `import hi.config as config`, not `from hi.config import X, Y` — a plain
+# `from`-import snapshots the value at import time, which would make
+# `hi/mcp_install.py`'s `configure_mcp_server()` writing a fresh
+# credential into the config module invisible here for the rest of this
+# process (this module only ever gets re-imported once). Reading
+# `config.GITHUB_PERSONAL_ACCESS_TOKEN` fresh inside `_server_configs()`
+# instead means a newly-configured server can actually activate within
+# the same session, not just after a restart.
+import hi.config as config
 
 log = logging.getLogger(__name__)
 
@@ -40,10 +59,14 @@ _cached_tools: list[BaseTool] | None = None
 
 def _sync_wrap(async_tool: BaseTool) -> BaseTool:
     """Wrap an async-only MCP tool so it can be called via .invoke() like
-    any other LangChain tool — bridges with one asyncio.run() per call."""
+    any other LangChain tool — bridges with one call per invocation,
+    same "already-running loop?" handling as get_mcp_tools() itself
+    (an orchestrated subagent, TODO.md Phase 16, can invoke this tool
+    from inside graph.py's own running event loop, not just a
+    synchronous persona's turn)."""
 
     def sync_func(**kwargs):
-        return asyncio.run(async_tool.ainvoke(kwargs))
+        return _run_sync(async_tool.ainvoke(kwargs))
 
     return StructuredTool.from_function(
         func=sync_func,
@@ -75,7 +98,7 @@ def _server_configs() -> dict:
     else:
         log.warning("npx not found on PATH — skipping the Playwright MCP server.")
 
-    if GITHUB_PERSONAL_ACCESS_TOKEN and shutil.which("docker"):
+    if config.GITHUB_PERSONAL_ACCESS_TOKEN and shutil.which("docker"):
         servers["github"] = {
             "command": "docker",
             "args": [
@@ -88,11 +111,11 @@ def _server_configs() -> dict:
                 "GITHUB_TOOLSETS=repos,issues,pull_requests,actions",
                 "ghcr.io/github/github-mcp-server",
             ],
-            "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": GITHUB_PERSONAL_ACCESS_TOKEN},
+            "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": config.GITHUB_PERSONAL_ACCESS_TOKEN},
             "transport": "stdio",
         }
 
-    if OBSIDIAN_REST_API_KEY:
+    if config.OBSIDIAN_REST_API_KEY:
         # The Local REST API Obsidian plugin's built-in MCP endpoint uses a
         # self-signed certificate by default, which httpx's default async
         # client rejects — verified directly (CERTIFICATE_VERIFY_FAILED)
@@ -101,12 +124,29 @@ def _server_configs() -> dict:
         # connection (127.0.0.1) that never leaves the machine.
         servers["obsidian"] = {
             "url": "https://127.0.0.1:27124/mcp/",
-            "headers": {"Authorization": f"Bearer {OBSIDIAN_REST_API_KEY}"},
+            "headers": {"Authorization": f"Bearer {config.OBSIDIAN_REST_API_KEY}"},
             "transport": "streamable_http",
             "httpx_client_factory": _insecure_local_client,
         }
 
     return servers
+
+
+def _run_sync(coro):
+    """Runs `coro` to completion and returns its result, whether or not
+    an event loop is already running on the calling thread.
+    `asyncio.run()` alone only works with no loop running — true for
+    every caller this project had until the orchestrator's async DAG
+    executor existed. A fresh thread gets a fresh event loop, sidestepping
+    the "already running" conflict entirely rather than trying to
+    schedule onto the existing loop from the wrong thread."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)  # no loop running — the common, unchanged case
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 
 async def _fetch_tools() -> list[BaseTool]:
@@ -130,6 +170,6 @@ def get_mcp_tools() -> list[BaseTool]:
     not once per turn."""
     global _cached_tools
     if _cached_tools is None:
-        raw_tools = asyncio.run(_fetch_tools())
+        raw_tools = _run_sync(_fetch_tools())
         _cached_tools = [_sync_wrap(t) for t in raw_tools]
     return _cached_tools

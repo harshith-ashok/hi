@@ -14,8 +14,11 @@ TIERS = ("haiku", "sonnet", "opus")
 PERSONA_DESCRIPTIONS = {
     "butler": (
         "macOS system control (Bluetooth, volume, Wi-Fi, Do Not Disturb, "
-        "screenshots, clipboard, apps, TODO list). Controlling the Mac or "
-        "managing tasks."
+        "saving a screenshot file to disk, clipboard, which apps/windows "
+        "are currently running or open, quitting an app, TODO list). "
+        "Controlling the Mac or managing tasks. NOT for questions about "
+        "what's visually displayed on screen or in the browser right now "
+        "— that's term."
     ),
     "docs": (
         "Strict, read-only search over the user's own Obsidian vault "
@@ -31,8 +34,21 @@ PERSONA_DESCRIPTIONS = {
         "questions, running commands), and is also the general-purpose "
         "assistant with persistent memory (notes, people, dev-flow "
         "launcher, remembering facts) and coding/project questions — the "
-        "default choice when nothing else fits better. Remembers command "
-        "output and conversation context across turns."
+        "default choice when nothing else fits better. Also the ONLY "
+        "persona that can visually read/describe what's actually "
+        "displayed on screen right now or in the browser's current tab — "
+        "'what's on my screen', 'what does this error say', 'describe "
+        "this image/diagram' (NOT 'what apps are running', that's "
+        "butler). Also the ONLY persona that can read/list/search actual "
+        "project files on disk directly — a README, source code, config "
+        "— not just the user's Obsidian vault notes: 'read the README', "
+        "'what does this file do', 'find the file that handles X', "
+        "'search this project for Y', 'save this project to the vault'. "
+        "Also the ONLY persona that can propose/apply real file edits and "
+        "run tests to iterate on them, and that can summarize/find "
+        "patterns across the ENTIRE vault at once (not just answer a "
+        "specific note-lookup question). Remembers command output and "
+        "conversation context across turns."
     ),
 }
 

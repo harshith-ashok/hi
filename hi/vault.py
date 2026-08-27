@@ -16,6 +16,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from hi.config import VAULT_PATH
+from hi.frontmatter import with_frontmatter as _build_frontmatter
 
 KNOWLEDGE_DIR = VAULT_PATH / "hi" / "knowledge"
 CONVERSATIONS_DIR = VAULT_PATH / "hi" / "conversations"
@@ -28,25 +29,28 @@ def _resolve_path(base_dir: Path, path: str) -> Path:
     return resolved
 
 
-def with_frontmatter(content: str, tags: list[str]) -> str:
-    if content.startswith("---\n"):
-        return content
-    tag_list = ", ".join(tags)
-    return f"---\ntags: [{tag_list}]\n---\n\n{content}"
+def with_frontmatter(content: str, tags: list[str], due: str | None = None) -> str:
+    fields: dict[str, str | list[str]] = {"tags": tags}
+    if due:
+        fields["due"] = due
+    return _build_frontmatter(content, fields)
 
 
 @tool
-def create_note(path: str, content: str) -> str:
+def create_note(path: str, content: str, due: str | None = None) -> str:
     """Create a new Markdown note inside the vault's hi/knowledge/ folder,
     overwriting it if it exists.
 
     Args:
         path: Relative path for the note, e.g. "projects/kaapi.md".
         content: Markdown content to write to the note.
+        due: Optional ISO date/datetime (e.g. "2026-09-10") if this note
+            represents something with a deadline — any vault note can
+            declare one this way via frontmatter, no separate entry system.
     """
     note_path = _resolve_path(KNOWLEDGE_DIR, path)
     note_path.parent.mkdir(parents=True, exist_ok=True)
-    note_path.write_text(with_frontmatter(content, ["hi"]))
+    note_path.write_text(with_frontmatter(content, ["hi"], due=due))
     return f"Created note '{path}'."
 
 

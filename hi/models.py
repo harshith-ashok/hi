@@ -8,6 +8,7 @@ import subprocess
 
 from langchain_ollama import ChatOllama
 
+from hi.chat_model import make_chat_model
 from hi.config import HAIKU_MODEL, OPUS_MODEL, SONNET_MODEL
 
 TIER_MODELS = {
@@ -18,6 +19,7 @@ TIER_MODELS = {
 
 _pulled: set[str] = set()
 _model_cache: dict[str, ChatOllama] = {}
+_fast_model_cache: dict[str, ChatOllama] = {}
 
 
 def _is_pulled(model_name: str) -> bool:
@@ -61,5 +63,33 @@ def get_tier_model(tier: str) -> ChatOllama:
     if tier not in _model_cache:
         model_name = TIER_MODELS[tier]
         ensure_pulled(model_name)
-        _model_cache[tier] = ChatOllama(model=model_name, temperature=0, keep_alive="30m")
+        _model_cache[tier] = make_chat_model(model_name, temperature=0, keep_alive="30m")
     return _model_cache[tier]
+
+
+def get_tier_model_fast(tier: str) -> ChatOllama:
+    """Same tier/model as `get_tier_model()`, but WITHOUT reasoning
+    enabled — a separate cached instance, not a mutation of the shared
+    one `get_tier_model()` returns.
+
+    Real, measured motive: `chat_model.py`'s `make_chat_model()` turns on
+    `reasoning=True` for any model that supports it (HAIKU_MODEL
+    `gpt-oss:20b-cloud` does), which makes the model "think" through
+    even a trivial classification/yes-no judgment before answering.
+    Measured directly (not assumed) against `hi/orchestrator/complexity.py`'s
+    `classify_with_plan()` — which runs on literally every single REPL
+    turn before the real answer even starts — a plain reasoning-off
+    call answering the identical prompt came back meaningfully faster
+    than the reasoning-on default. Use this for a quick, cheap
+    judgment call (classification, a one-line safety check) where the
+    answer doesn't need visible chain-of-thought; keep using
+    `get_tier_model()` for anything a user might actually want to see
+    the model's real reasoning on.
+    """
+    if tier not in TIER_MODELS:
+        raise ValueError(f"Unknown tier '{tier}'. Expected one of: {sorted(TIER_MODELS)}")
+    if tier not in _fast_model_cache:
+        model_name = TIER_MODELS[tier]
+        ensure_pulled(model_name)
+        _fast_model_cache[tier] = ChatOllama(model=model_name, temperature=0, keep_alive="30m")
+    return _fast_model_cache[tier]

@@ -9,8 +9,7 @@ from pathlib import Path
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
-
+from hi.chat_model import make_chat_model
 from hi.config import WEB_MODEL
 
 SEARCH_URL = "https://en.wikipedia.org/w/api.php"
@@ -87,9 +86,5 @@ def build_agent(model: BaseChatModel):
     return create_agent(model=model, tools=TOOLS, system_prompt=PROMPT_PATH.read_text())
 
 
-model = ChatOllama(
-    model=WEB_MODEL,
-    temperature=0,
-    keep_alive="30m",
-)
+model = make_chat_model(WEB_MODEL, temperature=0, keep_alive="30m")
 agent = build_agent(model)

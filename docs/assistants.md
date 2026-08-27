@@ -179,9 +179,9 @@ The user can continue editing code while interacting with the assistant.
 hi --butler
 ```
 
-If there are pending tasks on the TODO list (kept as a Markdown checklist
-at `hi/todo.md` in the vault), the session opens with a summary of them
-before the prompt:
+If there are pending tasks on the TODO list (kept as one Markdown file per
+task under `hi/tasks/` in the vault — see `hi/capture/schema.py`), the
+session opens with a summary of them before the prompt:
 
 ```text
 Today's Tasks:

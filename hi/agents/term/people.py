@@ -8,6 +8,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
+from hi.action_tiers import confirm_destructive
 from hi.vault import KNOWLEDGE_DIR, with_frontmatter
 
 PEOPLE_DIR = KNOWLEDGE_DIR / "people"
@@ -91,6 +92,8 @@ def delete_person(name: str) -> str:
     if not path:
         return f"No notes about '{name}' to delete."
     display_name = _display_name(path)
+    if not confirm_destructive(f"delete the note for {display_name}"):
+        return f"Not deleted — user declined: {display_name}"
     path.unlink()
     return f"Deleted the note for {display_name}."
 

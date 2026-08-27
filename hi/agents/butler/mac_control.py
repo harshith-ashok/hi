@@ -8,6 +8,8 @@ import subprocess
 
 from langchain_core.tools import tool
 
+from hi.action_tiers import confirm_destructive
+
 
 def _run_osascript(script: str) -> subprocess.CompletedProcess:
     return subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
@@ -162,6 +164,8 @@ def quit_app(name: str) -> str:
     Args:
         name: The application's name, e.g. "Safari".
     """
+    if not confirm_destructive(f"quit {name}"):
+        return f"Not quit — user declined: {name}"
     result = _run_osascript(f'quit app "{name}"')
     if result.returncode != 0:
         return f"Failed to quit '{name}': {result.stderr.strip()}"
