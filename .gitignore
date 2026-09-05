@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Playwright MCP server's own console/page log dumps (hi/mcp_tools.py),
+# written to whatever directory `hi` happens to be run from
+.playwright-mcp/
+
+# Swift Package Manager build output (voice_companion/) — includes the
+# packaged .app bundle, rebuilt by Scripts/build_app.sh, not checked in
+voice_companion/.build/
