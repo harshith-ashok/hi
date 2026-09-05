@@ -1,0 +1,59 @@
+/* Design tokens ported directly from /ui.html — the same source
+   voice_companion/Sources/HiVoice/Theme.swift already matches, so all
+   three surfaces (mockup, native app, this frontend) share one palette,
+   not three independently-eyeballed ones. */
+
+:root {
+  --bg-desk: #0a0c0e;
+  --bg-panel: #15181c;
+  --bg-row: #1a1e23;
+  --hairline: #262b31;
+  --text: #e4e1d6;
+  --text-dim: #7c848c;
+  --text-faint: #4b5157;
+  --teal: #4fa69c;
+  --teal-dim: #2e5f59;
+  --amber: #c99a3e;
+  --rust: #b4563a;
+
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-desk);
+  background-image:
+    radial-gradient(circle at 20% 15%, rgba(79, 166, 156, 0.06), transparent 40%),
+    radial-gradient(circle at 80% 85%, rgba(180, 86, 58, 0.05), transparent 45%);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 4px;
+}
+
+code {
+  font-family: var(--mono);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.9em;
+  color: var(--amber);
+}
