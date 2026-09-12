@@ -217,37 +217,58 @@ async def stream_orchestrated_as_agui(prompt: str, thread_id: str) -> AsyncItera
     # assumption PendingActionsMonitor.swift's polling already makes.
     seen_pending: dict[str, str] = {}
 
-    while not task.done():
+    try:
+        while not task.done():
+            for ag_event in _pending_action_events(seen_pending):
+                yield ag_event
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=0.5)
+            except asyncio.TimeoutError:
+                continue
+            for ag_event in _dag_event_to_agui(event, open_message_ids):
+                yield ag_event
+
         for ag_event in _pending_action_events(seen_pending):
             yield ag_event
+        while not queue.empty():
+            for ag_event in _dag_event_to_agui(queue.get_nowait(), open_message_ids):
+                yield ag_event
+
         try:
-            event = await asyncio.wait_for(queue.get(), timeout=0.5)
-        except asyncio.TimeoutError:
-            continue
-        for ag_event in _dag_event_to_agui(event, open_message_ids):
-            yield ag_event
+            result = await task
+        except Exception as e:
+            yield ag.RunErrorEvent(message=str(e))
+            return
 
-    for ag_event in _pending_action_events(seen_pending):
-        yield ag_event
-    while not queue.empty():
-        for ag_event in _dag_event_to_agui(queue.get_nowait(), open_message_ids):
-            yield ag_event
+        if result is None:
+            yield ag.RunFinishedEvent(
+                thread_id=thread_id, run_id=run_id,
+                result="(this turned out not to need a multi-step plan after all)",
+            )
+            return
 
-    try:
-        result = await task
-    except Exception as e:
-        yield ag.RunErrorEvent(message=str(e))
-        return
-
-    if result is None:
-        yield ag.RunFinishedEvent(
-            thread_id=thread_id, run_id=run_id,
-            result="(this turned out not to need a multi-step plan after all)",
-        )
-        return
-
-    answer, _tasks, _results = result
-    yield ag.RunFinishedEvent(thread_id=thread_id, run_id=run_id, result=answer)
+        answer, _tasks, _results = result
+        yield ag.RunFinishedEvent(thread_id=thread_id, run_id=run_id, result=answer)
+    finally:
+        # Reached not just on a normal return above, but also when this
+        # generator is abandoned early and Python closes it (a client
+        # disconnect mid-stream — hi/ipc/server.py's do_POST stops
+        # draining on BrokenPipeError/ConnectionResetError, which
+        # abandons this generator without ever awaiting `task`). Without
+        # this, `task` (run_orchestrated(), holding an open
+        # AsyncSqliteSaver connection) was left to be garbage-collected
+        # asynchronously with no event loop backing it — a real crash
+        # found live ("Exception ignored while closing generator ...
+        # no current event loop in thread"), not hypothetical. Explicitly
+        # cancelling and awaiting it here means its cleanup runs now,
+        # under this generator's own still-current loop, not later under
+        # none at all.
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 def _dag_event_to_agui(event: DAGEvent, open_message_ids: dict[str, str]) -> list[ag.BaseEvent]:
@@ -311,12 +332,33 @@ def stream_orchestrated_as_agui_sync(prompt: str, thread_id: str) -> Iterator[ag
     HTTP request already gets its own OS thread, so a fresh loop per
     call is the natural scope, not a shared one)."""
     loop = asyncio.new_event_loop()
+    # A freshly-created loop is NOT automatically "the current loop for
+    # this thread" — asyncio only tracks that via set_event_loop(). Any
+    # library code below that calls the implicit asyncio.get_event_loop()
+    # instead of taking a loop explicitly (aiosqlite's own connection
+    # teardown does) raises "no current event loop in this thread"
+    # without this — a real crash found live, not hypothetical.
+    asyncio.set_event_loop(loop)
+    agen = stream_orchestrated_as_agui(prompt, thread_id)
     try:
-        agen = stream_orchestrated_as_agui(prompt, thread_id)
         while True:
             try:
                 yield loop.run_until_complete(agen.__anext__())
             except StopAsyncIteration:
                 break
     finally:
+        # Runs whether we got here via a clean StopAsyncIteration, an
+        # exception propagating out of __anext__(), or this generator
+        # being abandoned early (do_POST's client-disconnect handling
+        # stops iterating without exhausting it, which raises
+        # GeneratorExit here) — aclose() the async generator on ITS OWN
+        # still-open loop before that loop goes away, so
+        # stream_orchestrated_as_agui's own finally (which cancels and
+        # awaits its pending task) actually gets to run under a real
+        # event loop instead of none at all.
+        try:
+            loop.run_until_complete(agen.aclose())
+        except Exception:
+            pass
+        asyncio.set_event_loop(None)
         loop.close()

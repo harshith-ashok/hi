@@ -12,7 +12,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage
 
 from hi.agents.butler.todo import pending_tasks_greeting
-from hi.config import VAULT_PATH
+import hi.config as config
 from hi.model_warmup import invoke_with_retry
 from hi.models import get_tier_model
 from hi.tracking.applications import due_follow_ups
@@ -29,21 +29,21 @@ PROJECTS_DIR = Path.home() / "Dev" / "Projects"
 
 
 def _last_edited_note() -> str | None:
-    if not VAULT_PATH.is_dir():
+    if not config.VAULT_PATH.is_dir():
         return None
-    hi_dir = VAULT_PATH / "hi"
+    hi_dir = config.VAULT_PATH / "hi"
     # hi/ is the assistant's own namespace (conversations/, knowledge/,
     # todo.md) — hi/conversations/ gets touched on every single turn of
     # every persona, so without this exclusion it always wins "most
     # recently edited" and this part of the briefing never actually
     # reflects a note the user wrote.
     notes = [
-        p for p in VAULT_PATH.rglob("*.md") if p.is_file() and not p.is_relative_to(hi_dir)
+        p for p in config.VAULT_PATH.rglob("*.md") if p.is_file() and not p.is_relative_to(hi_dir)
     ]
     if not notes:
         return None
     latest = max(notes, key=lambda p: p.stat().st_mtime)
-    return str(latest.relative_to(VAULT_PATH))
+    return str(latest.relative_to(config.VAULT_PATH))
 
 
 def _idle_repos_line() -> str | None:

@@ -38,9 +38,13 @@ import hi.config as config
 from hi.action_tiers import confirm_destructive
 from hi.env_file import ENV_PATH, write_env_var
 
-# name -> (env var this server needs, or None if it needs no credential;
-# one-line description of what it unlocks)
-_CATALOG: dict[str, tuple[str | None, str]] = {
+# name -> (env var(s) this server needs, or None if it needs no credential;
+# one-line description of what it unlocks). Most servers need exactly one
+# credential (a plain str here); n8n needs two (its own instance URL plus
+# a bearer token) — a tuple of env var names for that case, handled
+# separately from configure_mcp_server()'s single-credential contract by
+# configure_n8n_server() below.
+_CATALOG: dict[str, tuple[str | tuple[str, str] | None, str]] = {
     "playwright": (
         None,
         "Browser automation (navigate, click, read page content). "
@@ -56,6 +60,12 @@ _CATALOG: dict[str, tuple[str | None, str]] = {
         "Direct access to the Obsidian Local REST API plugin's own "
         "endpoint. Needs that plugin's API key.",
     ),
+    "n8n": (
+        ("N8N_MCP_URL", "N8N_MCP_TOKEN"),
+        "Trigger/inspect n8n workflows on your own instance. Needs that "
+        "instance's MCP URL and a bearer token — configure via "
+        "configure_n8n_server(), not configure_mcp_server().",
+    ),
 }
 
 
@@ -69,6 +79,9 @@ def list_available_mcp_servers() -> str:
     for name, (env_var, desc) in _CATALOG.items():
         if env_var is None:
             status = "available" if shutil.which("npx") else "unavailable (npx not found on PATH)"
+        elif isinstance(env_var, tuple):
+            missing = [v for v in env_var if not getattr(config, v, None)]
+            status = "configured" if not missing else f"needs {', '.join(missing)}"
         else:
             status = "configured" if getattr(config, env_var, None) else f"needs {env_var}"
         lines.append(f"- {name}: {status} — {desc}")
@@ -91,6 +104,8 @@ def configure_mcp_server(name: str, credential: str) -> str:
     if name not in _CATALOG:
         return f"Unknown server '{name}'. Known servers: {', '.join(_CATALOG)}."
     env_var, _desc = _CATALOG[name]
+    if isinstance(env_var, tuple):
+        return f"'{name}' needs {len(env_var)} values, not one credential — use configure_n8n_server() instead."
     if env_var is None:
         return f"'{name}' needs no credential — nothing to configure. It's available if `npx` is on PATH."
     credential = credential.strip()
@@ -111,7 +126,40 @@ def configure_mcp_server(name: str, credential: str) -> str:
     )
 
 
+@tool
+def configure_n8n_server(url: str, token: str) -> str:
+    """Configure the n8n MCP server by writing its instance URL and
+    bearer token into ~/.hi/.env — n8n needs two values, not the single
+    credential configure_mcp_server() handles, so it gets its own tool.
+
+    Args:
+        url: The n8n instance's own MCP endpoint, e.g.
+            "http://localhost:5678/mcp-server/http".
+        token: The bearer token for that instance.
+    """
+    url = url.strip()
+    token = token.strip()
+    if not url or not token:
+        return "Both url and token are required — nothing written."
+
+    if not confirm_destructive(f"write N8N_MCP_URL and N8N_MCP_TOKEN into {ENV_PATH}"):
+        return "Not configured — user declined writing the n8n credentials."
+
+    write_env_var("N8N_MCP_URL", url, path=ENV_PATH)
+    write_env_var("N8N_MCP_TOKEN", token, path=ENV_PATH)
+    config.N8N_MCP_URL = url
+    config.N8N_MCP_TOKEN = token
+    _bust_mcp_tools_cache()
+    return (
+        f"Wrote N8N_MCP_URL and N8N_MCP_TOKEN to {ENV_PATH}. The 'n8n' MCP server will be "
+        "available the next time an agent that uses MCP tools is built "
+        "this session, or on the next `hi` restart — not retroactively "
+        "for an agent already in use this turn."
+    )
+
+
 def _bust_mcp_tools_cache() -> None:
     import hi.mcp_tools as mcp_tools
 
     mcp_tools._cached_tools = None
+    mcp_tools._cached_tools_by_server = None

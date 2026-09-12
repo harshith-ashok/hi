@@ -18,9 +18,10 @@ from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 
 from hi.model_warmup import invoke_with_retry
+from hi.models import fast_variant
 from hi.note_preview import note_preview
 from hi.tree_cache import read_tree_cache, refresh_tree_cache
-from hi.vault import KNOWLEDGE_DIR, list_conversations, list_notes, read_conversation, read_note
+from hi.vault import knowledge_dir, list_conversations, list_notes, read_conversation, read_note
 
 PREFERENCES_PATH = "preferences.md"
 
@@ -84,7 +85,19 @@ def build_memory_graph(note_agent, model: BaseChatModel) -> CompiledStateGraph:
         # hi/router.py's classify() already made the same fix, but
         # attributed it only to the smaller haiku-tier model — that
         # turned out to be too narrow; this call needed it too.
-        reply = invoke_with_retry(model, [HumanMessage(selection_prompt)])
+        #
+        # fast_variant(model), not model: this is a plain "which paths
+        # match" judgment call, the same shape as router.py's own
+        # persona/tier classification — reported live as "always
+        # searches the vault and returns NONE before doing anything
+        # else," which measuring confirmed was this call thinking
+        # through a trivial selection with reasoning on (the same
+        # multi-second cost Phase 6/11 already found and fixed for the
+        # scope guard and complexity classifier — this one had never
+        # gotten the same fix). Reasoning off cuts it to sub-second
+        # without changing what gets selected; the selection quality
+        # itself is unrelated to whether the model showed its work.
+        reply = invoke_with_retry(fast_variant(model), [HumanMessage(selection_prompt)])
 
         relevant_notes = [path for path in known_notes if path in reply]
         relevant_logs = [d for d in known_logs if d in reply]
@@ -100,7 +113,7 @@ def build_memory_graph(note_agent, model: BaseChatModel) -> CompiledStateGraph:
         # won't reliably match an unrelated question to a general
         # preferences note, but preferences should apply regardless of
         # what the question is about.
-        if (KNOWLEDGE_DIR / PREFERENCES_PATH).exists():
+        if (knowledge_dir() / PREFERENCES_PATH).exists():
             sections.append(
                 f"### knowledge/{PREFERENCES_PATH} (always included)\n\n"
                 f"{read_note.invoke({'path': PREFERENCES_PATH})}"

@@ -20,8 +20,12 @@ import Combine
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = AppState()
     private let recognizer = SpeechRecognizer()
-    private let speechOutput = SpeechOutput()
     private let backend = BackendClient()
+    // lazy, not a plain default value: SpeechOutput(backend:) needs
+    // `backend` above, which a class's stored-property default-value
+    // expressions can't reference (only a lazy var's initializer, run
+    // on first access, can see other already-initialized properties).
+    private lazy var speechOutput = SpeechOutput(backend: backend)
     private lazy var healthMonitor = BackendHealthMonitor(backend: backend)
     private lazy var pendingMonitor = PendingActionsMonitor(backend: backend)
 
@@ -215,6 +219,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         state.beginAssistantTurn(persona: name)
                     case .runStarted:
                         break  // the assistant turn already began above; nothing more to do here
+                    case .thinkingStart:
+                        state.beginThinking()
+                    case .thinkingDelta(let text):
+                        state.appendThinking(text)
+                    case .thinkingEnd:
+                        state.endThinking()
                     case .textDelta(let text, let subagentID):
                         // A Phase 16 orchestrated subagent's own text is
                         // background progress, not the growing answer —
@@ -224,8 +234,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         if subagentID == nil {
                             state.appendToken(text)
                         }
-                    case .toolCallStart, .toolCallResult:
-                        break  // not rendered in the transcript, same as before this phase
+                    case .toolCallStart(let name):
+                        state.beginToolCall(name: name)
+                    case .toolCallResult(let content):
+                        state.appendToolResult(content)
                     case .subagentStarted, .subagentFinished, .subagentError:
                         break  // milestone-level DAG progress — a real future UI surface, not built here (see TODO.md Phase 18/19's own scoping note)
                     case .runFinished(let result):

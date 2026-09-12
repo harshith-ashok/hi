@@ -93,6 +93,8 @@ def build_subagent(
     persona: str,
     tool_scope: list[str] | None = None,
     archetype: str | None = None,
+    extra_tools: list | None = None,
+    extra_prompt: str | None = None,
 ):
     """Builds a scoped ReAct agent for one DAG task.
 
@@ -110,14 +112,26 @@ def build_subagent(
             An unrecognized value is silently ignored rather than
             raising — a planner-invented archetype name shouldn't sink
             an otherwise-valid task.
+        extra_tools: appended to the persona's own tool list (after
+            `tool_scope` narrowing, if any) — e.g. one MCP server's
+            tools for an on-demand agent assigned to it
+            (`hi/agents_ondemand.py`), additive rather than a
+            replacement for the persona's normal tools.
+        extra_prompt: appended to the system prompt, after any
+            `archetype` overlay — a short, situational instruction that
+            doesn't belong in the persona's own permanent prompt file.
     """
     tools, prompt = _persona_tools_and_prompt(persona)
     if tool_scope:
         allowed = set(tool_scope)
         scoped = [t for t in tools if t.name in allowed]
         tools = scoped or tools
+    if extra_tools:
+        tools = tools + extra_tools
     if archetype:
         overlay = ARCHETYPES.get(archetype.lower())
         if overlay:
             prompt = f"{prompt}\n\n{overlay}"
+    if extra_prompt:
+        prompt = f"{prompt}\n\n{extra_prompt}"
     return create_agent(model=model, tools=tools, system_prompt=prompt)

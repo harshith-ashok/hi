@@ -15,10 +15,11 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from hi.config import VAULT_PATH
+import hi.config as config
 from hi.frontmatter import dump_frontmatter, parse_frontmatter
 
-APPLICATIONS_DIR = VAULT_PATH / "hi" / "tasks" / "applications"
+def _applications_dir():
+    return config.VAULT_PATH / "hi" / "tasks" / "applications"
 
 STATUSES = ("applied", "OA", "interview", "rejected", "offer")
 FOLLOW_UP_DAYS_DEFAULT = 7
@@ -43,10 +44,10 @@ class Application:
         return _slugify(self.target)
 
     def path(self) -> Path:
-        return APPLICATIONS_DIR / f"{self.slug}.md"
+        return _applications_dir() / f"{self.slug}.md"
 
     def save(self) -> Path:
-        APPLICATIONS_DIR.mkdir(parents=True, exist_ok=True)
+        _applications_dir().mkdir(parents=True, exist_ok=True)
         fields: dict[str, str | list[str]] = {
             "tags": ["hi", "application"],
             "target": self.target,
@@ -77,9 +78,9 @@ def _load(path: Path) -> Application:
 
 
 def list_applications_data() -> list[Application]:
-    if not APPLICATIONS_DIR.is_dir():
+    if not _applications_dir().is_dir():
         return []
-    return [_load(p) for p in sorted(APPLICATIONS_DIR.glob("*.md"))]
+    return [_load(p) for p in sorted(_applications_dir().glob("*.md"))]
 
 
 def find_application(target: str) -> Application | None:

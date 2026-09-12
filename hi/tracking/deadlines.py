@@ -13,8 +13,8 @@ from datetime import datetime
 from langchain_core.tools import tool
 
 from hi.capture.schema import Event, Task
-from hi.capture.store import TASKS_DIR, list_items
-from hi.config import VAULT_PATH
+from hi.capture.store import list_items, tasks_dir
+import hi.config as config
 from hi.frontmatter import parse_frontmatter
 
 _DATE_FORMATS = ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d")
@@ -59,10 +59,10 @@ def _from_vault_notes() -> list[Deadline]:
     """Any other vault note declaring `due:` — hi/tasks/ is excluded so
     the tasks/events already picked up above aren't double-counted."""
     deadlines = []
-    if not VAULT_PATH.is_dir():
+    if not config.VAULT_PATH.is_dir():
         return deadlines
-    for path in VAULT_PATH.rglob("*.md"):
-        if path.is_relative_to(TASKS_DIR):
+    for path in config.VAULT_PATH.rglob("*.md"):
+        if path.is_relative_to(tasks_dir()):
             continue
         try:
             content = path.read_text()
@@ -78,7 +78,7 @@ def _from_vault_notes() -> list[Deadline]:
                 title=_title_from_body(body, path.stem),
                 due=due,
                 category=category if isinstance(category, str) else None,
-                source=str(path.relative_to(VAULT_PATH)),
+                source=str(path.relative_to(config.VAULT_PATH)),
             )
         )
     return deadlines

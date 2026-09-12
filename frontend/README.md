@@ -35,13 +35,48 @@ separate mechanism.
 
 ## What's deliberately not built here
 
-- No History/Settings sidebar (the native app already has this — see
-  `voice_companion/README.md`); this frontend is scoped to the live
-  chat + background-activity view specifically asked for.
 - MCP-UI widgets aren't rendered (an iframe/sandboxed view for the
   `mcp_ui_widget` CUSTOM event) — same standing caveat as everywhere
   else in this project: no real MCP-UI server exists to build or verify
   that against yet.
-- No markdown rendering — text segments render as plain text (matching
-  what the terminal itself shows), not parsed `**bold**`/lists. Kept
-  simple deliberately; add a renderer later if it's actually wanted.
+
+**Note on the two bullets that used to be here** ("no History/Settings
+sidebar," "no markdown rendering"): both were true when this section was
+first written, before the later home-dashboard redesign added
+`SettingsView.vue`/`HistoryView.vue` and `lib/markdown.ts`'s real
+Markdown rendering — left stale here until now. Flagged rather than
+silently correcting the historical record without saying so.
+
+## Agents (TODO.md Phase 27)
+
+`AgentTasksView.vue` (a new `agents` topbar link) — spin up a scoped,
+on-demand agent from a plain-language task, backed by
+`hi/agents_ondemand.py`. Per explicit request: before it commits to
+running, it asks clarifying questions if the task is genuinely
+ambiguous (skipped for the preset one-click buttons, which are already
+well-specified). Runs live-poll for status; a finished run renders its
+real Markdown result. Deliberately distinct from `AgentsColumn.vue`,
+which shows the four fixed personas' live status and pending
+approvals — a different concept from a user-spawned, one-off agent.
+
+**MCP servers now live here too, per explicit follow-up request**: a
+collapsible panel lists the known catalog (playwright/github/obsidian/n8n)
+with live status and inline configure forms — a single credential field
+for the single-value servers, a URL+token pair for n8n's own two-value
+config — backed by new `POST /mcp/configure`/`POST /mcp/configure/n8n`
+endpoints (direct writes, not routed through the agent-tool
+`confirm_destructive()` gate — filling in a form and clicking Save
+already *is* the confirmation). A dropdown lets you assign one connected
+server's tools to the next spawned agent (`GET /agents/mcp-servers` —
+only servers actually reachable right now, not just credentialed), and
+an assigned run shows its server as a small badge on its card.
+
+**Background tasks, replacing the old tmux-pane redirect entirely**
+(TODO.md Phase 28, per explicit request — reported live as a real bug,
+then phased out rather than just patched): a dev server or watcher
+`term` starts via `run_shell_command` used to redirect into a brand-new
+tmux pane, which only worked inside a specific two-pane launch layout —
+this view now has its own "Background tasks" section instead (`GET
+/background`, live-polled the same way agent runs are), each a card with
+live-tailed output and a stop button (`POST /background/{id}/stop`), no
+terminal pane involved anywhere in the chain.

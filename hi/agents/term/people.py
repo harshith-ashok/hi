@@ -9,9 +9,10 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from hi.action_tiers import confirm_destructive
-from hi.vault import KNOWLEDGE_DIR, with_frontmatter
+from hi.vault import knowledge_dir, with_frontmatter
 
-PEOPLE_DIR = KNOWLEDGE_DIR / "people"
+def _people_dir():
+    return knowledge_dir() / "people"
 
 
 def _normalize(name: str) -> str:
@@ -27,10 +28,10 @@ def _find_person_path(name: str) -> Path | None:
     """Match an existing note by name, tolerant of case/spacing/underscore
     differences (e.g. "dean haidt" matches Dean_Haidt.md). Falls back to an
     unambiguous partial match (exactly one candidate contains the name)."""
-    if not PEOPLE_DIR.exists():
+    if not _people_dir().exists():
         return None
     target = _normalize(name)
-    candidates = list(PEOPLE_DIR.glob("*.md"))
+    candidates = list(_people_dir().glob("*.md"))
     for path in candidates:
         if _normalize(path.stem) == target:
             return path
@@ -56,7 +57,7 @@ def add_person_info(name: str, info: str) -> str:
     path = _find_person_path(name)
     is_new = path is None
     if is_new:
-        path = PEOPLE_DIR / _person_filename(name)
+        path = _people_dir() / _person_filename(name)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(with_frontmatter(f"# {name}\n\n- {info}\n", ["hi", "person"]))
         return f"Added a new note for {name}."
@@ -101,9 +102,9 @@ def delete_person(name: str) -> str:
 @tool
 def list_people() -> str:
     """List everyone with a note — use this to answer "who do I know"."""
-    if not PEOPLE_DIR.exists():
+    if not _people_dir().exists():
         return "No people notes yet."
-    names = sorted(_display_name(p) for p in PEOPLE_DIR.glob("*.md"))
+    names = sorted(_display_name(p) for p in _people_dir().glob("*.md"))
     if not names:
         return "No people notes yet."
     return "\n".join(names)

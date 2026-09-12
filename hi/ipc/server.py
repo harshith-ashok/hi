@@ -24,7 +24,9 @@ Run with: hi --voice-daemon
 from __future__ import annotations
 
 import json
+import shutil
 import threading
+import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -33,13 +35,27 @@ from ag_ui.core import events as ag
 from ag_ui.encoder import EventEncoder
 
 import hi.config as config
+from hi.agents.term.background_tasks import get_process, list_processes, stop_process
+from hi.agents_ondemand import answer_questions, create_run, get_run, list_presets, list_runs
 from hi.agui_adapter import stream_agent_as_agui, stream_orchestrated_as_agui_sync
 from hi.briefing import build_briefing
+from hi.capture.inbox import write_inbox_item
 from hi.cors import send_cors_headers, send_cors_preflight
+from hi.dashboard import (
+    get_last_project,
+    get_today_stats,
+    get_vault_stats,
+    get_vitals,
+    record_query_latency,
+)
 from hi.env_file import ENV_PATH, write_env_var
 from hi.ipc.spoken_summary import make_spoken_summary
+from hi.mcp_install import _CATALOG as MCP_CATALOG
+from hi.mcp_install import _bust_mcp_tools_cache
+from hi.mcp_tools import get_mcp_tools_by_server
 from hi.models import get_tier_model
 from hi.orchestrator.complexity import classify_with_plan
+from hi.orchestrator.graph import latest_run_trace
 from hi.orchestrator.pending_http import try_handle_pending_get, try_handle_pending_post
 from hi.personas import PERSONAS, get_agent_builder
 from hi.vault import list_conversations, log_conversation, read_conversation
@@ -68,18 +84,26 @@ _FORCED_PERSONA_TIER = "sonnet"
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
-# Cached per (persona, tier), same as hi/repl.py's run_router_repl() —
-# so cross-turn memory (term's own statefulness) and warm/keep_alive
-# model state survive across voice queries in this process too.
-_agent_cache: dict[tuple[str, str], object] = {}
+# Cached per (persona, tier, model_name), same as hi/repl.py's
+# run_router_repl() — so cross-turn memory (term's own statefulness) and
+# warm/keep_alive model state survive across voice queries in this
+# process too. model_name is part of the key, not just (persona, tier),
+# specifically so a `POST /config` change to e.g. SONNET_MODEL (Settings
+# screen) builds a fresh agent on the very next call instead of quietly
+# returning one already built against the tier's *old* model — found
+# live while wiring up config hot-reload (hi/models.py's tier_models()
+# already re-resolves per call; this cache would have silently
+# undermined that one level up if left keyed on tier alone).
+_agent_cache: dict[tuple[str, str, str], object] = {}
 _cache_lock = threading.Lock()
 
 
 def _get_agent(persona_name: str, tier: str):
-    key = (persona_name, tier)
+    model = get_tier_model(tier)
+    key = (persona_name, tier, model.model)
     with _cache_lock:
         if key not in _agent_cache:
-            _agent_cache[key] = get_agent_builder(persona_name)(get_tier_model(tier))
+            _agent_cache[key] = get_agent_builder(persona_name)(model)
         return _agent_cache[key]
 
 
@@ -167,6 +191,36 @@ class _Handler(BaseHTTPRequestHandler):
             self._handle_post_config()
             return
 
+        if self.path == "/capture":
+            self._handle_post_capture()
+            return
+
+        if self.path == "/tts":
+            self._handle_post_tts()
+            return
+
+        if self.path == "/agents":
+            self._handle_post_agents_create()
+            return
+
+        if self.path.startswith("/agents/") and self.path.endswith("/answer"):
+            self._handle_post_agents_answer()
+            return
+
+        if self.path == "/mcp/configure":
+            self._handle_post_mcp_configure()
+            return
+
+        if self.path == "/mcp/configure/n8n":
+            self._handle_post_mcp_configure_n8n()
+            return
+
+        if self.path.startswith("/background/") and self.path.endswith("/stop"):
+            task_id = self.path.removeprefix("/background/").removesuffix("/stop")
+            ok = stop_process(task_id)
+            self._send_json({"stopped": ok})
+            return
+
         if self.path != "/query":
             self.send_error(404, "Not found")
             return
@@ -188,12 +242,21 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", encoder.get_content_type())
         self.end_headers()
+        # Real wall-clock time for the dashboard's "last latency" stat
+        # (hi/dashboard.py) — timed around the whole streamed response,
+        # not just time-to-first-token, since that's what a user
+        # actually waits out for a non-streaming-aware glance at the
+        # number. Recorded even on a client-disconnect/empty-text ping,
+        # since both are still real completed requests.
+        start = time.monotonic()
         try:
             for event in stream_query_as_agui(text, forced_persona=forced_persona):
                 self.wfile.write(encoder.encode(event).encode("utf-8"))
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             pass  # client disconnected mid-stream — nothing to clean up
+        finally:
+            record_query_latency(time.monotonic() - start)
 
     def _send_json(self, payload) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -212,15 +275,40 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _handle_post_config(self) -> None:
         """Writes Settings-screen changes to ~/.hi/.env — plain model-
-        name/path fields only (see _CONFIG_FIELDS). **Honest limitation,
-        not silently glossed over**: hi/models.py's TIER_MODELS and
-        hi/vault.py's KNOWLEDGE_DIR/CONVERSATIONS_DIR are both built once
-        at import time from these same values — updating hi.config's
-        in-memory attribute here (so a GET /config right after reflects
-        the change) does NOT retroactively change an already-cached
-        model/agent or already-computed vault path this process is using.
-        Same restart-required caveat hi/mcp_install.py's credential
-        writes already carry, for the same underlying reason.
+        name/path fields only (see _CONFIG_FIELDS).
+
+        **Now actually hot-reloadable for the fields the voice daemon's
+        own request path reads** (BLOCKERS.md's "hi.models.TIER_MODELS
+        and hi.vault.KNOWLEDGE_DIR/CONVERSATIONS_DIR are both built once
+        at import time" caveat, closed this session): VAULT_PATH,
+        HAIKU_MODEL/SONNET_MODEL/OPUS_MODEL, and VISION_MODEL all take
+        effect on the very next query, no restart. Mechanically: every
+        consumer that used to do `from hi.config import X` (snapshotting
+        the value once, at that module's own import time) now does
+        `import hi.config as config` and reads `config.X` live at call
+        time instead — hi/mcp_tools.py already used this pattern for MCP
+        credentials; VAULT_PATH-derived directories (hi/vault.py and
+        everything built on it — widgets, people, projects, weekdays,
+        retros, orchestrator run logs, ...) and the haiku/sonnet/opus
+        tier models (hi/models.py's `tier_models()`) were the two
+        genuinely widespread cases. `hi/models.py`'s model cache and this
+        module's own `_agent_cache` (below) are keyed by the *resolved
+        model name*, not just the tier label, specifically so a changed
+        SONNET_MODEL doesn't silently keep returning an agent built
+        against the old one — a real bug caught while wiring this up,
+        not a hypothetical one.
+
+        **Still genuinely restart-required, and worth knowing why**:
+        BUTLER_MODEL/DOCS_MODEL/WEB_MODEL/TERM_MODEL. Not an oversight —
+        the voice daemon's forced-persona path (`_get_agent`, below)
+        always uses `_FORCED_PERSONA_TIER` ("sonnet"), never these
+        fields at all; they're only read by `hi/personas.py`'s
+        `get_persona()`, which the *terminal* REPL uses for `hi --term`/
+        `--butler`/etc. — a separate process per invocation, so "restart
+        to pick up a new BUTLER_MODEL" just means "start your next `hi
+        --butler` session," the same already-accepted per-process
+        restart story `hi/orchestrator/pending_server.py` documents for
+        its own two-servers-by-design split.
         """
         length = int(self.headers.get("Content-Length", 0))
         try:
@@ -250,14 +338,185 @@ class _Handler(BaseHTTPRequestHandler):
             setattr(config, field, Path(value) if field == "VAULT_PATH" else value)
             updated.append(field)
 
-        self._send_json({
-            "updated": updated,
-            "note": (
-                "Written to ~/.hi/.env. Restart hi (and the voice daemon) "
-                "for model/vault-path changes to actually take effect — "
-                "they're read once at process startup, not live-reloaded."
-            ),
-        })
+        # VAULT_PATH/HAIKU_MODEL/SONNET_MODEL/OPUS_MODEL/VISION_MODEL are
+        # now live for this process (see this method's own docstring) —
+        # only BUTLER_MODEL/DOCS_MODEL/WEB_MODEL/TERM_MODEL still need a
+        # fresh `hi --butler`/`--docs`/`--web`/`--term` terminal session,
+        # since the voice daemon never reads them at all.
+        restart_needed = sorted(set(updated) & {"BUTLER_MODEL", "DOCS_MODEL", "WEB_MODEL", "TERM_MODEL"})
+        note = "Written to ~/.hi/.env and applied immediately — no restart needed."
+        if restart_needed:
+            note = (
+                f"Written to ~/.hi/.env. {', '.join(restart_needed)} only affects a "
+                "terminal session forcing that persona (`hi --butler` etc.) — start a "
+                "new one to pick it up. Everything else here (vault path, "
+                "haiku/sonnet/opus, vision) is already live for the voice daemon."
+            )
+        self._send_json({"updated": updated, "note": note})
+
+    def _handle_post_capture(self) -> None:
+        """The dashboard's quick-capture tile: writes straight into the
+        SAME untriaged inbox hi/capture/hotkey.py's global macOS hotkey
+        already writes to (hi/capture/inbox.py's write_inbox_item()) —
+        no LLM call, no new storage mechanism. hi/capture/triage.py
+        turns it into a real task/event at the next session, exactly as
+        it already does for a hotkey-captured item.
+        """
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+        text = (body.get("text") or "").strip()
+        if not text:
+            self.send_error(400, "Missing 'text'")
+            return
+        path = write_inbox_item(text)
+        self._send_json({"saved": True, "path": str(path)})
+
+    def _handle_post_tts(self) -> None:
+        """Synthesizes `text` via Kokoro (hi/tts_kokoro.py) and returns
+        real WAV bytes — per explicit request, replaces the voice
+        companion's own on-device AVSpeechSynthesizer (a system voice
+        the request itself flagged as not sounding human enough) with
+        actual local neural TTS. The client already has the text it
+        wants spoken (the `spoken_summary` CUSTOM event on /query's own
+        stream) — this endpoint's only job is turning that text into
+        audio, synchronously; a couple of seconds for a short sentence
+        is normal (see hi/tts_kokoro.py) and not worth SSE/streaming
+        machinery for.
+        """
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+        text = (body.get("text") or "").strip()
+        if not text:
+            self.send_error(400, "Missing 'text'")
+            return
+        try:
+            from hi.tts_kokoro import synthesize_wav
+
+            wav_bytes = synthesize_wav(text)
+        except Exception as e:
+            self.send_error(500, f"TTS synthesis failed: {e}")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Content-Length", str(len(wav_bytes)))
+        self.end_headers()
+        self.wfile.write(wav_bytes)
+
+    def _handle_post_agents_create(self) -> None:
+        """POST /agents {prompt, preset?} — starts a new on-demand agent
+        (hi/agents_ondemand.py). Returns the run immediately: either
+        `status: "clarifying"` with real questions to show the user, or
+        `status: "running"` if none were needed (or a preset skipped
+        straight past clarification) — execution itself happens in a
+        background thread, the client polls GET /agents/{id} for
+        progress, same pattern PendingActionsMonitor.swift already uses.
+        """
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+        preset = body.get("preset") or None
+        prompt = (body.get("prompt") or "").strip()
+        mcp_server = body.get("mcp_server") or None
+        if not preset and not prompt:
+            self.send_error(400, "Missing 'prompt' (or a recognized 'preset')")
+            return
+        run = create_run(prompt, preset=preset, mcp_server=mcp_server)
+        self._send_json(run.to_dict())
+
+    def _handle_post_agents_answer(self) -> None:
+        """POST /agents/{id}/answer {answers: [str, ...]} — answers to
+        the run's current `questions`, in the same order. May surface
+        another (bounded) round of questions, or move the run straight
+        to `running`."""
+        run_id = self.path.removeprefix("/agents/").removesuffix("/answer")
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+        answers = body.get("answers")
+        if not isinstance(answers, list):
+            self.send_error(400, "Expected {'answers': [str, ...]}")
+            return
+        run = answer_questions(run_id, [str(a) for a in answers])
+        if run is None:
+            self.send_error(404, "No agent run with that id.")
+            return
+        self._send_json(run.to_dict())
+
+    def _handle_post_mcp_configure(self) -> None:
+        """POST /mcp/configure {name, credential} — the single-credential
+        servers (github/obsidian). A direct write, not routed through
+        hi/mcp_install.py's confirm_destructive()-gated agent tool: that
+        gate exists for an AI-initiated write during a conversation
+        (hi/action_tiers.py's whole reason to exist); a human filling in
+        a form on the Agents screen and clicking Save *is* the
+        confirmation, the same reasoning already applied to `/config`
+        (hi/config.py's own fields) — this just extends that same
+        direct-write pattern to the two write-only MCP credentials
+        `/config` deliberately excludes (see `_CONFIG_FIELDS`'s own
+        comment: never echo a secret back via a GET).
+        """
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+        name = (body.get("name") or "").strip()
+        credential = (body.get("credential") or "").strip()
+        if name not in MCP_CATALOG:
+            self.send_error(400, f"Unknown server '{name}'. Known servers: {', '.join(MCP_CATALOG)}")
+            return
+        env_var, _desc = MCP_CATALOG[name]
+        if env_var is None:
+            self.send_error(400, f"'{name}' needs no credential.")
+            return
+        if isinstance(env_var, tuple):
+            self.send_error(400, f"'{name}' needs multiple values — use POST /mcp/configure/n8n instead.")
+            return
+        if not credential:
+            self.send_error(400, "Missing 'credential'.")
+            return
+        write_env_var(env_var, credential, path=ENV_PATH)
+        setattr(config, env_var, credential)
+        _bust_mcp_tools_cache()
+        self._send_json({"configured": name})
+
+    def _handle_post_mcp_configure_n8n(self) -> None:
+        """POST /mcp/configure/n8n {url, token} — n8n's own two-value
+        config, mirroring hi/mcp_install.py's configure_n8n_server() tool
+        as a direct write (see _handle_post_mcp_configure's own comment
+        for why no confirm_destructive() gate is needed here)."""
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+        url = (body.get("url") or "").strip()
+        token = (body.get("token") or "").strip()
+        if not url or not token:
+            self.send_error(400, "Both 'url' and 'token' are required.")
+            return
+        write_env_var("N8N_MCP_URL", url, path=ENV_PATH)
+        write_env_var("N8N_MCP_TOKEN", token, path=ENV_PATH)
+        config.N8N_MCP_URL = url
+        config.N8N_MCP_TOKEN = token
+        _bust_mcp_tools_cache()
+        self._send_json({"configured": "n8n"})
 
     def do_GET(self) -> None:
         # See the matching comment in do_POST — same queue, same caveat.
@@ -305,6 +564,99 @@ class _Handler(BaseHTTPRequestHandler):
             # object (config.py's own type), not JSON-serializable as-is;
             # every other field here is already a plain string.
             self._send_json({field: str(getattr(config, field)) for field in _CONFIG_FIELDS})
+            return
+
+        # Everything below backs the web frontend's home dashboard
+        # (ui-vue.html's own template) — see hi/dashboard.py's own
+        # docstring for what's real vs. deliberately not exposed (no
+        # calendar integration, no Focus/DND read — neither has a real
+        # data source, so neither gets a fabricated one here).
+        if self.path == "/vitals":
+            self._send_json(get_vitals(active_model=config.SONNET_MODEL))
+            return
+
+        if self.path == "/vault-stats":
+            self._send_json(get_vault_stats())
+            return
+
+        if self.path == "/today":
+            self._send_json(get_today_stats())
+            return
+
+        if self.path == "/last-project":
+            self._send_json({"name": get_last_project()})
+            return
+
+        if self.path == "/trace":
+            trace = latest_run_trace()
+            if trace is None:
+                self.send_error(404, "No orchestrated run has completed yet.")
+                return
+            self._send_json({"content": trace})
+            return
+
+        # On-demand agents (TODO.md Phase 27) — for the Vue frontend's
+        # agent-visualization view: a list to render, presets for the
+        # one-click buttons, and per-run polling while clarifying/running.
+        if self.path == "/agents":
+            self._send_json([r.to_dict() for r in list_runs()])
+            return
+
+        if self.path == "/agents/presets":
+            self._send_json(list_presets())
+            return
+
+        # MCP server management (per explicit request: house this in the
+        # Agents view) — /mcp/servers is the catalog + credential status
+        # (GET /config's own analog, for the write-only MCP fields that
+        # endpoint deliberately excludes); /agents/mcp-servers is
+        # narrower — only servers actually connected right now, with
+        # real tool counts, for the "assign an MCP server to this agent"
+        # picker. Checked before the generic /agents/{id} prefix match
+        # below so "mcp-servers" is never mistaken for a run id.
+        if self.path == "/mcp/servers":
+            servers = []
+            for name, (env_var, desc) in MCP_CATALOG.items():
+                if env_var is None:
+                    configured = shutil.which("npx") is not None
+                elif isinstance(env_var, tuple):
+                    configured = all(getattr(config, v, None) for v in env_var)
+                else:
+                    configured = bool(getattr(config, env_var, None))
+                servers.append({"name": name, "description": desc, "configured": configured})
+            self._send_json(servers)
+            return
+
+        if self.path == "/agents/mcp-servers":
+            by_server = get_mcp_tools_by_server()
+            self._send_json({name: len(tools) for name, tools in by_server.items()})
+            return
+
+        if self.path.startswith("/agents/"):
+            run = get_run(self.path.removeprefix("/agents/"))
+            if run is None:
+                self.send_error(404, "No agent run with that id.")
+                return
+            self._send_json(run.to_dict())
+            return
+
+        # Background tasks (hi/agents/term/background_tasks.py) — per
+        # explicit request to phase out the old tmux-pane redirect for a
+        # long-running command entirely ("spawn terminal instances as
+        # separate task... instead of relying on the left pane"): a
+        # dev server/watcher started via run_shell_command shows up here
+        # instead of in a physical pane, live-tailed and stoppable from
+        # the Agents view the same way an on-demand agent run is.
+        if self.path == "/background":
+            self._send_json([p.to_dict() for p in list_processes()])
+            return
+
+        if self.path.startswith("/background/"):
+            bp = get_process(self.path.removeprefix("/background/"))
+            if bp is None:
+                self.send_error(404, "No background task with that id.")
+                return
+            self._send_json(bp.to_dict())
             return
 
         self.send_error(404, "Not found")

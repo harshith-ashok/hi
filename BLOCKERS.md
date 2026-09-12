@@ -604,3 +604,51 @@ Concretely, why AG-UI over raw SSE tokens: once you have parallel subagents, "wh
 8. **MCP-UI widget recall** — when an MCP app returns a rendered widget (a PR diff view, a booking screen), save a reference to it in the vault so `docs` can say "show me that again" without re-fetching.
 
 Start with Phase 1, items 1–4 — nothing else here works without a DAG executor that actually bounds concurrency against your local model pool.
+
+---
+
+This is real progress — actual AG-UI streaming, actual orchestrator scaffolding, actual native app with history/settings — but the README's own "deliberately not built" and "not tested" sections already tell you most of the real gaps. I'll add what those sections don't say explicitly.
+
+## Drawbacks — some new, some carried over
+
+1. **Orchestration exists but is reachable from nowhere a human actually lives.** `run_orchestrated()` only runs inside the terminal REPL's process. The voice daemon's `/query` was never wired to it — which means the Swift app's entire pending-approval UI (`PendingActionsMonitor`, the amber menu-bar badge, Approve/Deny submenus) is built, compiles, and will show **zero** pending actions forever until that wiring exists. You built the cockpit before the engine was connected to it.
+
+2. **Two backend servers doing overlapping jobs.** Port 8765 (`hi/ipc/server.py`) serves the voice app, native window, and web frontend. Port 8766 (`hi/orchestrator/pending_server.py`) serves _only_ pending-action polling for terminal-triggered orchestration. That's the exact fragmentation the "one server, many clients" plan was meant to prevent, and it's crept back in as two servers for what should be one concept.
+
+3. **Most of the actually-interactive surface is unverified.** The README says it plainly: hotkey trigger, live mic capture, real transcription accuracy, typing, the full voice-or-typed round trip, and TTS output are **not tested, not testable by this session**. That's not a small gap — that's most of what makes this feel like Jarvis rather than a curl target. Everything below matters less until this is confirmed working by an actual human pressing actual keys.
+
+4. **Still single-Mac, loopback-only.** `127.0.0.1:8765`, CORS scoped to one known dev origin. Three frontends now exist, but all three are bound to the same machine. Nothing here reaches your phone.
+
+5. **No wake word, no VAD — both explicitly deferred.** Hotkey/menu-click only; utterance end is explicit-stop only. Both are named as intentional scope cuts, not oversights, but they're still the two biggest blockers to "ambient" rather than "summoned."
+
+6. **Config changes need a restart to actually take effect.** `TIER_MODELS` and the vault path are built once at import time — `POST /config` writes the file and says so honestly, but a model swap from Settings doesn't apply until you restart the daemon. Minor, but it undercuts "proper native app" a little.
+
+7. **Approvals are polled, not pushed.** `PendingActionsMonitor` hits `GET /pending` every 5 seconds. Once orchestration is actually wired in (item 1), a 5-second-stale approval indicator for something that might be about to delete a file is a real gap, not a cosmetic one.
+
+8. **A new model call landed in the voice path and nobody's checked its cost.** `spoken_summary.py` condenses longer responses with an additional small-model call before TTS can speak them. That's on top of the classify-then-persona double round trip flagged earlier — worth re-running the latency checklist now that this exists, not assuming it's free.
+
+9. **Ad-hoc signing means permission grants are fragile by construction.** Every rebuild without a real Developer ID re-prompts for Accessibility/Mic/Speech. `run.sh` vs `build_release.sh` is a good mitigation, but it's a workaround for a constraint that doesn't go away — worth knowing before you're annoyed by it in six months.
+
+## Features to add, in priority order
+
+1. **Wire `run_orchestrated()` into `hi/ipc/server.py`'s `/query`.** This single change makes the already-built pending-action UI, the dashboard's task tracking, and multi-agent runs actually usable from the native app and web frontend, not just the terminal. Highest leverage item on this list by a wide margin — everything else is refinement, this is turning on a feature that's already 90% built.
+
+2. **Collapse the two servers into one.** Once orchestration is reachable from port 8765, port 8766 has no remaining reason to exist. One backend, one `/pending` route, every client polls or subscribes to the same thing.
+
+3. **Run the actual human-verification pass.** Hotkey, real dictation, a full round trip, TTS output. Until this happens you don't actually know if the thing works end to end — everything else is confidence built on `curl` tests of the plumbing, not the experience.
+
+4. **Push instead of poll for pending actions.** Once item 1 lands, upgrade `GET /pending` polling to an SSE stream (you already have the AG-UI event infrastructure — a `pending_action` `CUSTOM` event pushed live is a small addition, not new plumbing).
+
+5. **Wake word using a no-account-needed engine.** Picovoice was blocked on an API key this session couldn't get. `openWakeWord` (fully local, no account) sidesteps that specific blocker if the real constraint was provisioning, not model quality.
+
+6. **Basic VAD for natural end-of-utterance.** Doesn't need to be perfect — even a simple energy-based silence detector removes the "press a button to stop talking" friction that makes dictation feel like a walkie-talkie instead of a conversation.
+
+7. **Cross-device reach.** Bind the server to a Tailscale interface with real auth (a token, not just CORS-origin trust) instead of loopback-only, so the web frontend becomes reachable from your phone, not just a browser on the same Mac.
+
+8. **Full tool-call transparency in the Processing state.** You're already streaming real `TOOL_CALL_*` events over AG-UI — the native app's Processing view currently shows one line per persona/tier pick. Since the data's already flowing, rendering it is a UI change, not a backend one.
+
+9. **Hot-reloadable config.** Make `TIER_MODELS` and the vault path reload from `~/.hi/.env` on `POST /config` instead of requiring a restart — removes the one honest caveat in an otherwise clean Settings implementation.
+
+10. **A gated ambient watcher**, still following this project's own "no unrequested background watching" principle: app-switch/idle-time signals only, feeding the existing `suggest_daemon`'s confidence gate — this is the piece that gets you from "summon it" to "it occasionally has something useful to say," without touching the privacy stance you've clearly been careful about elsewhere.
+
+Item 1 is the one to do next. Nothing else on this list matters much until orchestration is reachable from the surfaces people will actually use.

@@ -1,4 +1,5 @@
 import os
+import subprocess
 from pathlib import Path
 
 from langchain.agents import create_agent
@@ -6,6 +7,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import tool
 
 from hi.action_tiers import confirm_destructive
+from hi.agents.persona_voice import voiced_prompt
 from hi.agents.term.danger import looks_destructive, looks_long_running
 from hi.orchestrator.reviewer import review_shell_command
 from hi.agents.term.dev_flow_tool import add_dev_flow, open_dev_flow
@@ -16,11 +18,15 @@ from hi.agents.term.files import (
     search_files,
     write_project_file,
 )
+from hi.agents.term.background_tasks import (
+    get_process,
+    list_processes,
+    start_background_process,
+    stop_process,
+)
 from hi.agents.term.people import add_person_info, delete_person, get_person_info, list_people
 from hi.agents.term.save_project import save_project_to_vault
 from hi.agents.term.resume import resume_context
-from hi.agents.term.shell_pane import run_in_left_pane
-from hi.agents.term.tmux_control import _add_pane, add_pane
 from hi.browser import open_url_in_browser
 from hi.chat_model import make_chat_model
 from hi.config import TERM_MODEL
@@ -59,22 +65,41 @@ from hi.vault import (
     read_note,
 )
 
+LAUNCH_CWD_ENV_VAR = "HI_LAUNCH_CWD"
+SHELL_COMMAND_TIMEOUT_SECONDS = 30.0
+
+
+def _launch_cwd() -> str | None:
+    return os.environ.get(LAUNCH_CWD_ENV_VAR)
+
 
 @tool
 def run_shell_command(command: str) -> str:
-    """Run a shell command in the user's own (left-pane) shell and return
-    its output and exit code.
+    """Run a shell command and return its output and exit code — a
+    plain subprocess, not dependent on any terminal pane, so it works
+    identically whether this is the terminal REPL, the voice companion,
+    or the web frontend driving it.
 
     Args:
         command: The literal shell command to run, e.g. "ls -l".
     """
     if looks_long_running(command):
-        # A dev server or watch-mode command will never print the
-        # completion marker — waiting on it just burns the timeout (or
-        # needs a manual Ctrl-J). Redirect it to its own pane instead of
-        # relying on the model to remember to do that itself.
-        result = _add_pane(command, "horizontal")
-        return f"This looks like a long-running process, so it was started in its own pane instead of waiting on it. {result}"
+        # A dev server or watch-mode command never exits on its own —
+        # waiting on it would just burn the timeout. Per explicit
+        # request to phase out the old tmux-pane redirect entirely
+        # ("spawn terminal instances as separate task... instead of
+        # relying on the left pane"): started as a tracked background
+        # process instead (hi/agents/term/background_tasks.py) —
+        # pollable/stoppable from the Agents view or this same
+        # conversation (check_background_task/stop_background_task
+        # below), not a pane someone has to be looking at.
+        bp = start_background_process(command, cwd=_launch_cwd())
+        return (
+            f"This looks like a long-running process, so it was started as "
+            f"background task {bp.id} instead of waiting on it. Check its "
+            f"status/output with check_background_task('{bp.id}'), or from "
+            f"the Agents view."
+        )
 
     if looks_destructive(command):
         # TODO.md Phase 20: a second, cheap-tier check on the exact
@@ -91,12 +116,67 @@ def run_shell_command(command: str) -> str:
         if not confirm_destructive(description):
             return f"Command not run — user declined: {command}"
 
-    output, exit_code = run_in_left_pane(command)
-    if exit_code is None:
-        # `output` already explains why (Ctrl-J interrupt vs. genuine
-        # timeout are different situations, not both just "timed out").
-        return output
-    return f"Exit code: {exit_code}\nOutput:\n{output}"
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=_launch_cwd(),
+            capture_output=True,
+            text=True,
+            timeout=SHELL_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return (
+            f"Command timed out after {SHELL_COMMAND_TIMEOUT_SECONDS:.0f}s: {command}\n"
+            "If this is meant to keep running (a server, a watcher), say so and it'll "
+            "be started as a background task instead."
+        )
+    output = (result.stdout + result.stderr).strip()
+    return f"Exit code: {result.returncode}\nOutput:\n{output}"
+
+
+@tool
+def list_background_tasks() -> str:
+    """List every background task started this process's lifetime (via
+    run_shell_command redirecting a long-running command), most recent
+    first, with live status/exit code."""
+    processes = list_processes()
+    if not processes:
+        return "No background tasks have been started."
+    lines = []
+    for p in processes:
+        d = p.to_dict()
+        status = d["status"] if d["status"] == "running" else f"exited ({d['exit_code']})"
+        lines.append(f"- {d['id']}: {status} — {d['command']}")
+    return "\n".join(lines)
+
+
+@tool
+def check_background_task(task_id: str) -> str:
+    """Check a background task's current status and recent output.
+
+    Args:
+        task_id: The id returned when run_shell_command started it.
+    """
+    bp = get_process(task_id)
+    if bp is None:
+        return f"No background task with id '{task_id}'."
+    d = bp.to_dict()
+    status = d["status"] if d["status"] == "running" else f"exited (code {d['exit_code']})"
+    tail = d["output_tail"] or "(no output yet)"
+    return f"Task {task_id} ({d['command']}): {status}\n\nRecent output:\n{tail}"
+
+
+@tool
+def stop_background_task(task_id: str) -> str:
+    """Stop a running background task.
+
+    Args:
+        task_id: The id returned when run_shell_command started it.
+    """
+    if stop_process(task_id):
+        return f"Stopped task {task_id}."
+    return f"Couldn't stop '{task_id}' — either it doesn't exist or has already exited."
 
 
 @tool
@@ -115,27 +195,12 @@ def show_last_run_trace() -> str:
 
 
 PROMPT_PATH = Path(__file__).parent / "term_prompt.md"
-LAUNCH_CWD_ENV_VAR = "HI_LAUNCH_CWD"
-
-# run_shell_command/add_pane both ultimately call shell_pane.py's
-# _own_pane_id(), which raises a raw RuntimeError if TMUX_PANE isn't set
-# — true for every tmux-launched persona (tmux exports it into the
-# pane's environment automatically, before the process even starts) but
-# NEVER true for hi --voice-daemon, which has no tmux pane at all. That
-# used to mean the model could still try calling these tools from the
-# voice companion/web frontend and get back a raw, confusing tmux error
-# as a "tool result" instead of a clean answer. Excluding them from
-# TOOLS entirely when there's no tmux context — evaluated once at import
-# time, since a process either has a tmux pane for its whole lifetime or
-# never does — means the model never sees them as an option at all in
-# that case, and (per term_prompt.md's own updated instructions) reaches
-# for read_project_file/search_files instead or says plainly it can't
-# run a real shell command right now.
-_HAS_TMUX_PANE = bool(os.environ.get("TMUX_PANE"))
-_TMUX_ONLY_TOOLS = [run_shell_command, add_pane] if _HAS_TMUX_PANE else []
 
 TOOLS = [
-    *_TMUX_ONLY_TOOLS,
+    run_shell_command,
+    list_background_tasks,
+    check_background_task,
+    stop_background_task,
     open_dev_flow,
     add_dev_flow,
     read_project_file,
@@ -232,7 +297,7 @@ def build_agent(model: BaseChatModel):
     loaded as context before the ReAct agent (with its shell/notes/people/
     dev-flow tools) runs — then the whole thing is wrapped in
     _StatefulAgent so that context persists across turns too."""
-    system_prompt = PROMPT_PATH.read_text()
+    system_prompt = voiced_prompt(PROMPT_PATH)
     launch_cwd = os.environ.get(LAUNCH_CWD_ENV_VAR)
     if launch_cwd:
         # Shell commands already run there for free (the left pane's real

@@ -1,15 +1,18 @@
 """General-purpose filesystem access for `term` — reading/listing/
 searching files on disk directly (plain `pathlib`/`os`/`subprocess`, no
-shell command, no tmux dependency), which nothing in this codebase had
-before. `hi/vault.py`'s note tools are hard-scoped to
-`<VAULT_PATH>/hi/knowledge/`; `run_shell_command` needs a live tmux pane
-(`hi/agents/term/shell_pane.py`'s `_own_pane_id()` raises outright
-without one), which makes it entirely unusable from the voice
-companion's IPC path (`hi/ipc/server.py` has no tmux context at all).
-These tools work the same way `hi/agents/term/resume.py`'s
-`resume_context` already does — direct subprocess/pathlib calls, proven
-to work fine outside tmux — not a new pattern. See `BLOCKERS.md` #1/#2
-for the full reasoning behind why this was missing.
+shell command needed), which nothing in this codebase had before.
+`hi/vault.py`'s note tools are hard-scoped to
+`<VAULT_PATH>/hi/knowledge/`; these give `term` the same kind of direct
+filesystem access, but for the currently-launched project directory
+instead, without needing a shell command for something that's really
+just a file read. (`run_shell_command` itself no longer has any
+terminal-pane dependency either — `hi/agents/term/background_tasks.py`
+replaced the old tmux-pane redirect — but a plain read/list/search is
+still cheaper and more structured than shelling out to
+`cat`/`find`/`grep` for it.) These tools work the same way
+`hi/agents/term/resume.py`'s `resume_context` already does — direct
+subprocess/pathlib calls. See `BLOCKERS.md` #1/#2 for the full reasoning
+behind why this was missing.
 
 Relative paths resolve against `HI_LAUNCH_CWD` (the directory `hi` was
 launched from) so "read the README" doesn't need a spelled-out path.

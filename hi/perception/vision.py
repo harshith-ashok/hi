@@ -25,7 +25,7 @@ from pathlib import Path
 import ollama
 from langchain_core.tools import tool
 
-from hi.config import VISION_MODEL
+import hi.config as config
 from hi.models import ensure_pulled
 from hi.perception.privacy import sensitive_context_reason
 
@@ -63,9 +63,9 @@ def ask_about_screen(question: str = DEFAULT_QUESTION) -> str:
     if image_b64 is None:
         return "Screenshot failed."
 
-    ensure_pulled(VISION_MODEL)
+    ensure_pulled(config.VISION_MODEL)
     response = ollama.chat(
-        model=VISION_MODEL,
+        model=config.VISION_MODEL,
         messages=[{"role": "user", "content": question, "images": [image_b64]}],
     )
     return response["message"]["content"]

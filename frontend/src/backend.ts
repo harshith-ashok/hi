@@ -5,7 +5,7 @@
 // not EventSource — EventSource can't send a POST body, and /query
 // needs one).
 
-import type { AguiEvent, BriefingInfo, PendingActionInfo } from './types'
+import type { AgentRunInfo, AguiEvent, BackgroundTaskInfo, BriefingInfo, McpServerInfo, PendingActionInfo, TodayStats, VaultStats, Vitals } from './types'
 
 export const BASE_URL = 'http://127.0.0.1:8765'
 
@@ -82,6 +82,160 @@ export async function updateConfig(fields: Record<string, string>): Promise<stri
     return obj.note ?? null
   } catch {
     return null
+  }
+}
+
+// --- Home dashboard (hi/dashboard.py) ---
+
+export async function fetchVitals(): Promise<Vitals | null> {
+  return getJson<Vitals>('/vitals')
+}
+
+export async function fetchVaultStats(): Promise<VaultStats | null> {
+  return getJson<VaultStats>('/vault-stats')
+}
+
+export async function fetchTodayStats(): Promise<TodayStats | null> {
+  return getJson<TodayStats>('/today')
+}
+
+export async function fetchLastProject(): Promise<string | null> {
+  const obj = await getJson<{ name: string | null }>('/last-project')
+  return obj?.name ?? null
+}
+
+export async function fetchTrace(): Promise<string | null> {
+  const obj = await getJson<{ content: string }>('/trace')
+  return obj?.content ?? null
+}
+
+// --- On-demand agents (hi/agents_ondemand.py) ---
+
+export async function fetchAgentRuns(): Promise<AgentRunInfo[]> {
+  return (await getJson<AgentRunInfo[]>('/agents')) ?? []
+}
+
+export async function fetchAgentPresets(): Promise<Record<string, string>> {
+  return (await getJson<Record<string, string>>('/agents/presets')) ?? {}
+}
+
+export async function fetchAgentRun(id: string): Promise<AgentRunInfo | null> {
+  return getJson<AgentRunInfo>(`/agents/${id}`)
+}
+
+// --- MCP server management, surfaced in the Agents view per explicit
+// request: "update the agents view to house this mcp part. I want to
+// create agents that can communicate with the mcp I assign." ---
+
+/** Full catalog + credential status (playwright/github/obsidian/n8n) —
+ * mirrors GET /config's shape for the write-only MCP fields that
+ * endpoint deliberately excludes (never echo a secret back via a GET). */
+export async function fetchMcpServers(): Promise<McpServerInfo[]> {
+  return (await getJson<McpServerInfo[]>('/mcp/servers')) ?? []
+}
+
+/** Only servers actually connected right now, with real tool counts —
+ * the real choices for "assign an MCP server to this agent" (a server
+ * that's merely credentialed but unreachable isn't a usable choice). */
+export async function fetchAgentMcpServers(): Promise<Record<string, number>> {
+  return (await getJson<Record<string, number>>('/agents/mcp-servers')) ?? {}
+}
+
+/** Single-credential servers (github/obsidian). Returns whether it saved. */
+export async function configureMcpServer(name: string, credential: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/mcp/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, credential }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/** n8n's own two-value config (its instance URL + a bearer token). */
+export async function configureN8nServer(url: string, token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/mcp/configure/n8n`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, token }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/** Starts a new on-demand agent — either a free-form `prompt` (may come
+ * back needing clarification) or a `preset` id (already well-specified,
+ * skips straight to running). `mcpServer`, if given, must be one of
+ * fetchAgentMcpServers()'s keys — grants that server's tools to the
+ * spawned agent for this task. */
+export async function createAgentRun(opts: { prompt?: string; preset?: string; mcpServer?: string }): Promise<AgentRunInfo | null> {
+  try {
+    const res = await fetch(`${BASE_URL}/agents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: opts.prompt, preset: opts.preset, mcp_server: opts.mcpServer }),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AgentRunInfo
+  } catch {
+    return null
+  }
+}
+
+export async function answerAgentQuestions(id: string, answers: string[]): Promise<AgentRunInfo | null> {
+  try {
+    const res = await fetch(`${BASE_URL}/agents/${id}/answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers }),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AgentRunInfo
+  } catch {
+    return null
+  }
+}
+
+// --- Background tasks (hi/agents/term/background_tasks.py) — replaces
+// the old tmux-pane redirect for a long-running command entirely. ---
+
+export async function fetchBackgroundTasks(): Promise<BackgroundTaskInfo[]> {
+  return (await getJson<BackgroundTaskInfo[]>('/background')) ?? []
+}
+
+export async function fetchBackgroundTask(id: string): Promise<BackgroundTaskInfo | null> {
+  return getJson<BackgroundTaskInfo>(`/background/${id}`)
+}
+
+export async function stopBackgroundTask(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/background/${id}/stop`, { method: 'POST' })
+    if (!res.ok) return false
+    const obj = (await res.json()) as { stopped: boolean }
+    return obj.stopped
+  } catch {
+    return false
+  }
+}
+
+/** Quick capture — bypasses the LLM entirely, straight into the same
+ * untriaged inbox the global macOS hotkey already writes to. */
+export async function postCapture(text: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/capture`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+    return res.ok
+  } catch {
+    return false
   }
 }
 

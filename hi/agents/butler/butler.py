@@ -7,6 +7,7 @@ from pathlib import Path
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import tool
+from hi.agents.persona_voice import voiced_prompt
 from hi.agents.butler.mac_control import (
     list_running_apps,
     mute,
@@ -23,7 +24,7 @@ from hi.agents.butler.todo import add_task, capture_note, complete_task, list_ta
 from hi.browser import open_url_in_browser
 from hi.chat_model import make_chat_model
 from hi.config import BUTLER_MODEL
-from hi.mcp_install import configure_mcp_server, list_available_mcp_servers
+from hi.mcp_install import configure_mcp_server, configure_n8n_server, list_available_mcp_servers
 
 BRIGHTNESS_KEY_CODES = {"up": "144", "down": "145"}
 
@@ -161,6 +162,7 @@ TOOLS = [
     quit_app,
     list_available_mcp_servers,
     configure_mcp_server,
+    configure_n8n_server,
 ]
 
 
@@ -168,7 +170,7 @@ def build_agent(model: BaseChatModel):
     """Build a fresh butler agent bound to `model` — used directly below
     for the default BUTLER_MODEL instance, and by hi/router.py to build one
     on a router-selected tier instead."""
-    return create_agent(model=model, tools=TOOLS, system_prompt=PROMPT_PATH.read_text())
+    return create_agent(model=model, tools=TOOLS, system_prompt=voiced_prompt(PROMPT_PATH))
 
 
 model = make_chat_model(BUTLER_MODEL, temperature=0, keep_alive="30m")

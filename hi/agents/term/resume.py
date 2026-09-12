@@ -14,7 +14,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from hi.agents.term.dev_flow_tool import _current_project_directory, _load_flows
-from hi.vault import CONVERSATIONS_DIR, KNOWLEDGE_DIR
+from hi.vault import conversations_dir, knowledge_dir
 
 
 def matching_dev_flow_name(directory: str) -> str | None:
@@ -56,9 +56,9 @@ def _recent_conversation_lines(project_name: str, max_lines: int = 8, max_logs: 
     """Cheap substring match over the most recent conversation logs — not
     semantic search, consistent with hi/briefing.py's plain-lookup
     philosophy for this kind of quick summary."""
-    if not CONVERSATIONS_DIR.is_dir():
+    if not conversations_dir().is_dir():
         return "(no conversation logs yet)"
-    logs = sorted(CONVERSATIONS_DIR.glob("*.md"), key=lambda p: p.stem, reverse=True)[:max_logs]
+    logs = sorted(conversations_dir().glob("*.md"), key=lambda p: p.stem, reverse=True)[:max_logs]
     needle = project_name.lower()
     matches = []
     for path in logs:
@@ -71,7 +71,7 @@ def _recent_conversation_lines(project_name: str, max_lines: int = 8, max_logs: 
 
 
 def _project_note_summary(project_name: str) -> str:
-    projects_dir = KNOWLEDGE_DIR / "projects"
+    projects_dir = knowledge_dir() / "projects"
     note_path = projects_dir / f"{project_name}.md"
     if not note_path.exists() and projects_dir.is_dir():
         note_path = next(
@@ -80,7 +80,7 @@ def _project_note_summary(project_name: str) -> str:
         )
     if not note_path.exists():
         return "(no project note yet)"
-    return f"{note_path.relative_to(KNOWLEDGE_DIR.parent)}:\n{note_path.read_text().strip()}"
+    return f"{note_path.relative_to(knowledge_dir().parent)}:\n{note_path.read_text().strip()}"
 
 
 def build_resume_context(directory: str) -> str:

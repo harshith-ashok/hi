@@ -3,21 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>hi</title>
+    <title>hi — home</title>
     <style>
-      @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500&display=swap");
+      @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap");
 
       :root {
-        --bg: #0e1114;
-        --bg-panel: #15181c;
-        --bg-row: #1a1e23;
+        --bg: #0b0d0f;
+        --bg-card: #15181c;
+        --bg-card-hover: #191d22;
         --hairline: #262b31;
         --text: #e4e1d6;
         --text-dim: #7c848c;
         --text-faint: #4b5157;
         --teal: #4fa69c;
         --teal-dim: #2e5f59;
+        --purple: #8b7fc7;
+        --purple-dim: #4a4570;
         --amber: #c99a3e;
+        --amber-dim: #6b5527;
         --rust: #b4563a;
       }
 
@@ -27,402 +30,550 @@
         padding: 0;
       }
 
-      html,
       body {
-        height: 100%;
         background: var(--bg);
         background-image:
           radial-gradient(
-            circle at 15% 0%,
+            circle at 10% 0%,
             rgba(79, 166, 156, 0.05),
-            transparent 40%
+            transparent 35%
           ),
           radial-gradient(
-            circle at 85% 100%,
-            rgba(180, 86, 58, 0.04),
-            transparent 45%
+            circle at 90% 100%,
+            rgba(139, 127, 199, 0.05),
+            transparent 40%
           );
         color: var(--text);
         font-family: "Inter", sans-serif;
+        min-height: 100vh;
+        padding: 0 0 40px 0;
       }
 
-      .app {
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-        max-width: 780px;
-        margin: 0 auto;
-        border-left: 1px solid var(--hairline);
-        border-right: 1px solid var(--hairline);
-      }
-
-      /* Header */
-      header {
+      .topbar {
         display: flex;
         align-items: center;
-        padding: 14px 18px;
-        border-bottom: 1px solid var(--hairline);
-        gap: 12px;
-        flex-shrink: 0;
+        padding: 16px 28px;
+        gap: 16px;
       }
-      header .glyph {
+      .topbar .glyph {
         font-family: "JetBrains Mono", monospace;
         font-weight: 600;
         font-size: 15px;
         color: var(--teal);
       }
-      header .device {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 11px;
-        color: var(--text-faint);
-        border: 1px solid var(--hairline);
-        border-radius: 5px;
-        padding: 3px 8px;
-      }
-      header .spacer {
+      .topbar .spacer {
         flex: 1;
       }
-      header .status {
-        display: flex;
-        align-items: center;
-        gap: 6px;
+      .topbar .clock {
         font-family: "JetBrains Mono", monospace;
-        font-size: 11px;
-        color: var(--text-dim);
-      }
-      header .status .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--teal);
-      }
-
-      /* Persona tabs — scrollable row on mobile */
-      .tabs {
-        display: flex;
-        gap: 4px;
-        padding: 10px 18px 0 18px;
-        border-bottom: 1px solid var(--hairline);
-        overflow-x: auto;
-        flex-shrink: 0;
-      }
-      .tabs::-webkit-scrollbar {
-        display: none;
-      }
-      .tab {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 12.5px;
+        font-size: 12px;
         color: var(--text-faint);
-        padding: 7px 12px 9px 12px;
-        cursor: pointer;
-        border-bottom: 2px solid transparent;
-        white-space: nowrap;
-        user-select: none;
-      }
-      .tab.active {
-        color: var(--teal);
-        border-bottom-color: var(--teal);
       }
 
-      /* Briefing strip */
-      .briefing {
+      /* Hero search — the actual entry point */
+      .hero {
+        max-width: 620px;
+        margin: 10px auto 28px auto;
+        padding: 0 20px;
+      }
+      .hero .prompt {
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 10px 18px;
-        background: var(--bg-row);
-        border-bottom: 1px solid var(--hairline);
+        background: var(--bg-card);
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        padding: 14px 18px;
+      }
+      .hero .prompt .prefix {
+        font-family: "JetBrains Mono", monospace;
+        color: var(--teal);
+        font-size: 15px;
+      }
+      .hero .prompt input {
+        flex: 1;
+        background: none;
+        border: none;
+        outline: none;
+        color: var(--text);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 14.5px;
+        caret-color: var(--teal);
+      }
+      .hero .prompt input::placeholder {
+        color: var(--text-faint);
+      }
+      .hero .prompt .hint {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        color: var(--text-faint);
+        border: 1px solid var(--hairline);
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
+
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .tile {
+        background: var(--bg-card);
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
+        padding: 10px 12px;
+        cursor: pointer;
         font-family: "JetBrains Mono", monospace;
         font-size: 11.5px;
         color: var(--text-dim);
-        flex-shrink: 0;
+        transition:
+          border-color 0.15s ease,
+          color 0.15s ease;
       }
-      .briefing .dot {
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: var(--amber);
-        flex-shrink: 0;
-      }
-      .briefing .action {
-        margin-left: auto;
-        color: var(--teal);
-        cursor: pointer;
-        flex-shrink: 0;
-      }
-      .briefing .text {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+      .tile:hover {
+        border-color: var(--teal-dim);
+        color: var(--text);
       }
 
-      /* Scrollable log fills remaining space — this is the key webpage-vs-panel difference */
-      .log {
-        flex: 1;
-        overflow-y: auto;
-        padding: 8px 0 16px 0;
+      /* Three column layout */
+      .layout {
+        display: grid;
+        grid-template-columns: 220px 1fr 260px;
+        gap: 18px;
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0 28px;
+        align-items: start;
       }
-      .turn {
-        display: flex;
-        padding: 10px 18px;
-        gap: 12px;
-        border-left: 2px solid transparent;
+
+      .col-title {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        letter-spacing: 0.04em;
+        color: var(--text-faint);
+        margin-bottom: 10px;
+        padding-left: 2px;
       }
-      .turn.user {
-        border-left-color: var(--text-faint);
+
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+        border-left: 2px solid var(--hairline);
       }
-      .turn.assistant {
-        border-left-color: var(--teal-dim);
-        background: rgba(79, 166, 156, 0.03);
+      .card.c-teal {
+        border-left-color: var(--teal);
       }
-      .turn .persona-tag {
+      .card.c-purple {
+        border-left-color: var(--purple);
+      }
+      .card.c-amber {
+        border-left-color: var(--amber);
+      }
+
+      .card .card-title {
         font-family: "JetBrains Mono", monospace;
         font-size: 11px;
-        color: var(--text-faint);
-        width: 58px;
-        flex-shrink: 0;
-        padding-top: 1px;
-      }
-      .turn.assistant .persona-tag {
-        color: var(--teal);
-      }
-      .turn .content {
-        font-family: "Inter", sans-serif;
-        font-size: 14px;
-        line-height: 1.55;
-        color: var(--text);
-      }
-      .turn.user .content {
         color: var(--text-dim);
-        font-family: "JetBrains Mono", monospace;
-        font-size: 13px;
-      }
-      .turn .content code {
-        font-family: "JetBrains Mono", monospace;
-        background: rgba(255, 255, 255, 0.05);
-        padding: 1px 5px;
-        border-radius: 3px;
-        font-size: 12.5px;
-        color: var(--amber);
-      }
-      .cursor {
-        display: inline-block;
-        width: 6px;
-        height: 13px;
-        background: var(--teal);
-        margin-left: 2px;
-        vertical-align: -2px;
-        animation: blink 1s steps(1) infinite;
-      }
-      @keyframes blink {
-        50% {
-          opacity: 0;
-        }
-      }
-
-      /* Composer pinned to bottom — mobile keyboard friendly */
-      .composer {
+        margin-bottom: 8px;
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px)) 18px;
-        border-top: 1px solid var(--hairline);
-        background: var(--bg-panel);
+        gap: 6px;
+      }
+      .card .card-title .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
         flex-shrink: 0;
       }
-      .composer .prefix {
-        font-family: "JetBrains Mono", monospace;
-        font-size: 13px;
-        color: var(--teal);
-        flex-shrink: 0;
+      .dot.on {
+        background: var(--teal);
       }
-      .composer input {
-        flex: 1;
-        background: transparent;
-        border: none;
-        outline: none;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 14px;
-        color: var(--text);
-        caret-color: var(--teal);
+      .dot.busy {
+        background: var(--amber);
+        animation: pulse 1.4s ease-in-out infinite;
       }
-      .composer input::placeholder {
-        color: var(--text-faint);
+      .dot.off {
+        background: var(--text-faint);
       }
-      .composer button {
-        background: none;
-        border: 1px solid var(--hairline);
-        border-radius: 6px;
+      @keyframes pulse {
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      /* Left column: stat cards */
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 6px;
+      }
+      .stat-row:last-child {
+        margin-bottom: 0;
+      }
+      .stat-label {
+        font-size: 11.5px;
         color: var(--text-dim);
+      }
+      .stat-value {
         font-family: "JetBrains Mono", monospace;
         font-size: 12px;
-        padding: 6px 10px;
-        cursor: pointer;
-        flex-shrink: 0;
+        color: var(--text);
       }
-      .composer button:active {
-        border-color: var(--teal);
+      .bar {
+        height: 4px;
+        background: var(--hairline);
+        border-radius: 2px;
+        overflow: hidden;
+        margin-top: 4px;
+      }
+      .bar-fill {
+        height: 100%;
+        background: var(--teal);
+      }
+
+      /* Center: activity feed */
+      .feed-item {
+        display: flex;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--hairline);
+        font-size: 12.5px;
+      }
+      .feed-item:last-child {
+        border-bottom: none;
+      }
+      .feed-item .time {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        color: var(--text-faint);
+        flex-shrink: 0;
+        width: 44px;
+        padding-top: 1px;
+      }
+      .feed-item .persona {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        color: var(--teal);
+        flex-shrink: 0;
+        width: 52px;
+        padding-top: 1px;
+      }
+      .feed-item .text {
+        color: var(--text-dim);
+      }
+      .feed-item .text code {
+        font-family: "JetBrains Mono", monospace;
+        color: var(--amber);
+        background: rgba(255, 255, 255, 0.05);
+        padding: 1px 4px;
+        border-radius: 3px;
+        font-size: 11.5px;
+      }
+
+      /* Right column: agent cards */
+      .agent-status {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        color: var(--text-faint);
+      }
+      .agent-snippet {
+        font-size: 12px;
+        color: var(--text-dim);
+        line-height: 1.5;
+        margin-top: 2px;
+      }
+      .agent-snippet code {
+        font-family: "JetBrains Mono", monospace;
+        color: var(--amber);
+        background: rgba(255, 255, 255, 0.05);
+        padding: 1px 4px;
+        border-radius: 3px;
+        font-size: 11px;
+      }
+
+      .subagent-row {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 3px 0;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-dim);
+      }
+
+      .approve-btns {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .approve-btns button {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        border-radius: 5px;
+        padding: 5px 10px;
+        cursor: pointer;
+        border: 1px solid var(--hairline);
+        background: none;
+        color: var(--text-dim);
+      }
+      .approve-btns .allow {
+        border-color: var(--teal-dim);
         color: var(--teal);
       }
-
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: var(--hairline);
-        border-radius: 4px;
+      .approve-btns .deny {
+        border-color: var(--rust);
+        color: var(--rust);
       }
 
-      @media (max-width: 480px) {
-        .app {
-          border-left: none;
-          border-right: none;
+      @media (max-width: 900px) {
+        .layout {
+          grid-template-columns: 1fr;
         }
-        .turn .persona-tag {
-          width: 48px;
-          font-size: 10px;
-        }
-        header .device {
-          display: none;
+        .tiles {
+          grid-template-columns: repeat(2, 1fr);
         }
       }
     </style>
   </head>
   <body>
-    <div class="app">
-      <header>
-        <span class="glyph">(hi)</span>
-        <span class="device">iPhone · tailscale</span>
-        <div class="spacer"></div>
-        <div class="status">
-          <div class="dot"></div>
-          connected
-        </div>
-      </header>
+    <div class="topbar">
+      <span class="glyph">(hi)</span>
+      <div class="spacer"></div>
+      <span class="clock">Tue 3:41 PM</span>
+    </div>
 
-      <div class="tabs">
-        <div class="tab" data-persona="term">term</div>
-        <div class="tab" data-persona="butler">butler</div>
-        <div class="tab" data-persona="docs">docs</div>
-        <div class="tab" data-persona="web">web</div>
-        <div class="tab active" data-persona="hi">hi ·auto</div>
-      </div>
-
-      <div class="briefing">
-        <div class="dot"></div>
-        <span class="text">1 task due today · kaapi idle 3 days</span>
-        <span class="action" id="briefingAction">check off →</span>
-      </div>
-
-      <div class="log" id="log">
-        <div class="turn user">
-          <div class="persona-tag">you</div>
-          <div class="content">what's on my plate today</div>
-        </div>
-        <div class="turn assistant">
-          <div class="persona-tag">(hi)</div>
-          <div class="content">
-            One task due today: <code>buy milk</code>. The
-            <code>kaapi</code> repo has open tasks and hasn't been touched in 3
-            days — want me to reopen it?
-          </div>
-        </div>
-        <div class="turn user">
-          <div class="persona-tag">you</div>
-          <div class="content">yeah open kaapi</div>
-        </div>
-        <div class="turn assistant" id="streamingTurn">
-          <div class="persona-tag">(term)</div>
-          <div class="content" id="streamingContent">
-            Reopening <code>kaapi</code> on your Mac — restoring tmux layout,
-            launching zed<span class="cursor"></span>
-          </div>
-        </div>
-      </div>
-
-      <div class="composer">
+    <div class="hero">
+      <div class="prompt">
         <span class="prefix">></span>
         <input
           type="text"
           placeholder="ask anything, or name a persona to force it"
           id="promptInput"
         />
-        <button id="sendBtn">send</button>
+        <span class="hint">↵</span>
+      </div>
+      <div class="tiles">
+        <div class="tile">↳ open last project</div>
+        <div class="tile">↳ run briefing</div>
+        <div class="tile">↳ quick capture</div>
+        <div class="tile">↳ start voice mode</div>
+        <div class="tile">↳ trace last run</div>
+        <div class="tile">↳ new note</div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <!-- LEFT: passive context -->
+      <div>
+        <div class="col-title">SYSTEM</div>
+
+        <div class="card">
+          <div class="card-title">vitals</div>
+          <div class="stat-row">
+            <span class="stat-label">CPU</span
+            ><span class="stat-value">34%</span>
+          </div>
+          <div class="bar"><div class="bar-fill" style="width: 34%"></div></div>
+          <div class="stat-row" style="margin-top: 8px">
+            <span class="stat-label">Memory</span
+            ><span class="stat-value">61%</span>
+          </div>
+          <div class="bar">
+            <div
+              class="bar-fill"
+              style="width: 61%; background: var(--amber)"
+            ></div>
+          </div>
+          <div class="stat-row" style="margin-top: 8px">
+            <span class="stat-label">Battery</span
+            ><span class="stat-value">82%</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">focus</div>
+          <div class="stat-row">
+            <span class="stat-label">Do Not Disturb</span
+            ><span class="stat-value" style="color: var(--teal)">on · 6pm</span>
+          </div>
+          <div class="stat-row" style="margin-top: 6px">
+            <span class="stat-label">Wi-Fi</span
+            ><span class="stat-value">home-5g</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">today</div>
+          <div class="stat-row">
+            <span class="stat-label">Next event</span
+            ><span class="stat-value">4:30 standup</span>
+          </div>
+          <div class="stat-row" style="margin-top: 6px">
+            <span class="stat-label">Tasks due</span
+            ><span class="stat-value">1</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">vault</div>
+          <div class="stat-row">
+            <span class="stat-label">Touched today</span
+            ><span class="stat-value">6 notes</span>
+          </div>
+          <div class="stat-row" style="margin-top: 6px">
+            <span class="stat-label">Last sync</span
+            ><span class="stat-value">2m ago</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <div class="dot on"></div>
+            model
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Resident</span
+            ><span class="stat-value">gpt-oss:20b</span>
+          </div>
+          <div class="stat-row" style="margin-top: 6px">
+            <span class="stat-label">Last latency</span
+            ><span class="stat-value">340ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER: activity feed -->
+      <div>
+        <div class="col-title">ACTIVITY</div>
+        <div class="card" style="border-left-color: var(--hairline)">
+          <div class="feed-item">
+            <span class="time">3:41</span>
+            <span class="persona">term</span>
+            <span class="text">ran <code>git status</code> in kaapi</span>
+          </div>
+          <div class="feed-item">
+            <span class="time">3:38</span>
+            <span class="persona">hi</span>
+            <span class="text">morning briefing generated</span>
+          </div>
+          <div class="feed-item">
+            <span class="time">3:22</span>
+            <span class="persona">docs</span>
+            <span class="text"
+              >read <code>Docker.md</code> for volume question</span
+            >
+          </div>
+          <div class="feed-item">
+            <span class="time">2:57</span>
+            <span class="persona">suggest</span>
+            <span class="text">flagged <code>kaapi</code> idle 3 days</span>
+          </div>
+          <div class="feed-item">
+            <span class="time">2:10</span>
+            <span class="persona">butler</span>
+            <span class="text">toggled Do Not Disturb on</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: live agents -->
+      <div>
+        <div class="col-title">AGENTS</div>
+
+        <div class="card c-amber">
+          <div class="card-title">
+            <div class="dot busy"></div>
+            pending approval
+          </div>
+          <div class="agent-snippet">
+            Delete <code>/tmp/build-cache</code> (2.1GB) requested by
+            <code>term</code> subagent.
+          </div>
+          <div class="approve-btns">
+            <button class="allow">allow</button>
+            <button class="deny">deny</button>
+          </div>
+        </div>
+
+        <div class="card c-purple">
+          <div class="card-title">
+            <div class="dot busy"></div>
+            orchestrator
+          </div>
+          <div class="agent-status">comparing note-taking apps</div>
+          <div style="margin-top: 6px">
+            <div class="subagent-row">
+              <div class="dot on"></div>
+              research: obsidian ✓
+            </div>
+            <div class="subagent-row">
+              <div class="dot busy"></div>
+              research: notion…
+            </div>
+            <div class="subagent-row">
+              <div class="dot off"></div>
+              synthesize — waiting
+            </div>
+          </div>
+        </div>
+
+        <div class="card c-teal">
+          <div class="card-title">
+            <div class="dot on"></div>
+            term
+          </div>
+          <div class="agent-snippet">
+            3 modified files in <code>kaapi</code>, nothing staged.
+          </div>
+        </div>
+
+        <div class="card c-teal">
+          <div class="card-title">
+            <div class="dot off"></div>
+            butler
+          </div>
+          <div class="agent-snippet">idle · last check 4m ago</div>
+        </div>
+
+        <div class="card c-teal">
+          <div class="card-title">
+            <div class="dot off"></div>
+            docs
+          </div>
+          <div class="agent-snippet">
+            surfaced <code>Docker.md</code> most recently.
+          </div>
+        </div>
       </div>
     </div>
 
     <script>
-      const tabs = document.querySelectorAll(".tab");
-      tabs.forEach((tab) => {
-        tab.addEventListener("click", () => {
-          tabs.forEach((t) => t.classList.remove("active"));
-          tab.classList.add("active");
+      document.querySelectorAll(".approve-btns button").forEach((btn) => {
+        btn.addEventListener("click", function () {
+          const card = this.closest(".card");
+          card.querySelector(".agent-snippet").textContent =
+            this.classList.contains("allow")
+              ? "Approved — cache cleared."
+              : "Denied — cache left in place.";
+          this.closest(".approve-btns").remove();
+          card.classList.remove("c-amber");
+          card.classList.add("c-teal");
+          card.querySelector(".dot").className = "dot on";
         });
       });
 
-      const responses = {
-        term: "Ran <code>git status</code> in the active project — 3 modified files, nothing staged.",
-        butler:
-          "Bluetooth is off. Wi-Fi connected to <code>home-5g</code>. Do Not Disturb is on until 6pm.",
-        docs: "Your <code>Docker.md</code> note says named volumes persist across container recreation, bind mounts don't.",
-        web: "Virtual memory is an abstraction that gives each process its own address space, backed by RAM and disk.",
-        hi: "Working on it — that's ambiguous enough I'd route it through the classifier first.",
-      };
-
-      const input = document.getElementById("promptInput");
-      const log = document.getElementById("log");
-
-      function submitTurn() {
-        if (!input.value.trim()) return;
-        const activeTab = document.querySelector(".tab.active");
-        const persona =
-          activeTab.dataset.persona === "hi"
-            ? "term"
-            : activeTab.dataset.persona;
-        const text = input.value;
-        input.value = "";
-
-        const userTurn = document.createElement("div");
-        userTurn.className = "turn user";
-        userTurn.innerHTML = `<div class="persona-tag">you</div><div class="content"></div>`;
-        userTurn.querySelector(".content").textContent = text;
-        log.appendChild(userTurn);
-
-        const aiTurn = document.createElement("div");
-        aiTurn.className = "turn assistant";
-        aiTurn.innerHTML = `<div class="persona-tag">(${persona})</div><div class="content"><span class="cursor"></span></div>`;
-        log.appendChild(aiTurn);
-        log.scrollTop = log.scrollHeight;
-
-        const full = responses[persona] || "Working on it…";
-        const contentEl = aiTurn.querySelector(".content");
-        const tokens = full.split(/(<[^>]+>)/g).filter(Boolean);
-        let i = 0,
-          acc = "";
-        const interval = setInterval(() => {
-          if (i >= tokens.length) {
-            contentEl.innerHTML = full;
-            clearInterval(interval);
-            return;
-          }
-          acc += tokens[i];
-          contentEl.innerHTML = acc + '<span class="cursor"></span>';
-          i++;
-          log.scrollTop = log.scrollHeight;
-        }, 40);
-      }
-
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") submitTurn();
-      });
-      document.getElementById("sendBtn").addEventListener("click", submitTurn);
-
       document
-        .getElementById("briefingAction")
-        .addEventListener("click", function () {
-          this.textContent = "done ✓";
-          this.style.color = "var(--text-faint)";
-          this.style.cursor = "default";
+        .getElementById("promptInput")
+        .addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && this.value.trim()) {
+            this.placeholder = 'routing "' + this.value + '"…';
+            this.value = "";
+          }
         });
     </script>
   </body>

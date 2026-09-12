@@ -21,7 +21,7 @@ No GUI. No browser tab. Nothing to Alt-Tab to — just a prompt, right where you
 
 ![demo](demo.png)
 
-*One real session, no cuts: `butler` explaining what's running, `web` reading a live dev-server URL back, `term` creating a file, confirming a destructive-looking command, and splitting a new pane — all in the same right-hand tmux pane, left pane never touched.*
+*One real session, no cuts: `butler` explaining what's running, `web` reading a live dev-server URL back, `term` creating a file, confirming a destructive-looking command, and splitting a new pane — all in the same right-hand tmux pane, left pane never touched. (The pane-splitting shown here has since been replaced with trackable background tasks — see "Background tasks," below — the screenshot is real, just from before that change.)*
 
 ## Why `hi`
 
@@ -100,7 +100,7 @@ opens a new tmux window (or session, if you weren't already in one) split 25/75:
 
 | Flag       | Name     | What it's for                                                       | Model                |
 | ---------- | -------- | ------------------------------------------------------------------- | -------------------- |
-| `--term`   | `term`   | Shell (NLP-to-command in your left pane) + general assistant — persistent memory, people notes, dev-flow launcher | `gpt-oss:120b-cloud` |
+| `--term`   | `term`   | Shell (NLP-to-command, runs directly — no terminal pane needed) + general assistant — persistent memory, people notes, dev-flow launcher | `gpt-oss:120b-cloud` |
 | `--butler` | `butler` | macOS control, TODO list — Bluetooth, volume, Wi-Fi, DND, screenshots, clipboard, apps, windows | `gpt-oss:120b-cloud` |
 | `--docs`   | `docs`   | Obsidian vault search — cites and summarizes only your own notes    | `gpt-oss:120b-cloud` |
 | `--web`    | `web`    | Search-and-summarize over Wikipedia, on a faster model              | `gpt-oss:20b-cloud`  |
@@ -122,6 +122,8 @@ opens a new tmux window (or session, if you weren't already in one) split 25/75:
 ```
 
 `term` is the general-purpose default — there used to be a separate `code` persona for memory, notes, and dev flows, which was removed and folded into `term`, so there's one persona for that instead of two with overlapping jobs. It's the only persona with real cross-turn memory (recalls a previous command's output or a loaded note without re-running/re-searching) and the only one grounded in `hi/knowledge/`/`hi/conversations/`.
+
+**Voice, per explicit request**: all four personas speak with a shared Jarvis-like tone — `hi/agents/shared_persona.md`, prepended to each persona's own prompt via `hi/agents/persona_voice.py`'s `voiced_prompt()` (one file, not four drifting copies). Dry, understated humor; no cheerleading or performed enthusiasm; a light tease is fine, dropped entirely when the moment doesn't call for it. Delivery only — every persona's own grounding/citation/tool-use rules are unchanged and still take precedence (`docs` still never answers from outside the vault, `term`/`butler` still never simulate a tool call instead of making one). Live-verified the tone actually shows up (`term`: *"I'm functioning within expected parameters—no existential crises on the horizon."*) while staying out of the way when it should (`butler` reciting a real todo list stayed a plain list, no forced joke — "wit is a garnish, not a replacement" in the prompt's own words).
 
 ## Auto-Routing Mode
 
@@ -211,6 +213,8 @@ All actual memory — knowledge notes and conversation logs, from every persona 
 
 Every note, conversation log, task, and event carries Obsidian-compatible YAML frontmatter (`tags: [hi, ...]`), so the vault's own tag search finds them like any other note. Any note can also carry a `due:` field to declare a deadline (`hi/frontmatter.py`) — tasks use it as their canonical example, but it isn't limited to them. `docs` can additionally *read* any note anywhere in the vault (not just `hi/knowledge/`) to answer questions, but only ever *writes* inside `hi/knowledge/` — your own notes are never edited or overwritten.
 
+Changing `VAULT_PATH` or the haiku/sonnet/opus/vision models via the voice companion's Settings screen (`POST /config`, `hi/ipc/server.py`) takes effect immediately — no restart of the voice daemon needed. `BUTLER_MODEL`/`DOCS_MODEL`/`WEB_MODEL`/`TERM_MODEL` are the one exception: they're only read by a terminal session forcing that persona (`hi --butler`, etc.), so a change there takes effect the next time you start one, not retroactively for one already running.
+
 ### Dev Flows
 
 `term` can open a saved project workspace by name:
@@ -237,13 +241,19 @@ configured in `~/.hi/dev_flows.json`:
 (term) > save this directory as a dev flow called kaapi
 ```
 
-`dev_flows.json` stays a plain file you can hand-edit anytime either way — this just gives `term` a way to add to it too. `term` can also split a new pane in the current workspace for something meant to keep running (a log tail, a second shell), rather than tying up the pane it runs ordinary commands in:
+`dev_flows.json` stays a plain file you can hand-edit anytime either way — this just gives `term` a way to add to it too.
+
+**Shell commands run directly, no terminal pane involved at all** — reported live as a real bug (`"No sibling pane found to run commands in..."`), then phased out entirely per explicit follow-up request rather than just patched: `run_shell_command` used to require the specific two-pane tmux layout `hi --term` launches into, sending commands to a sibling pane and screen-scraping its output back. It's a plain `subprocess.run()` now — works identically from the terminal, the voice companion, the web frontend, or an on-demand agent, with no launch-layout requirement at all. Dev servers and watch-mode commands (`npm run dev`, `vite`, `bench start`, and similar) are still detected automatically, but redirect to a trackable **background task** instead of a new pane:
 
 ```text
-(term) > split a pane and run tail -f server.log
+(term) > run tail -f server.log
 ```
 
-Dev servers and watch-mode commands (`npm run dev`, `vite`, `bench start`, and similar) are detected automatically and redirected to their own pane the moment you ask for them through `run_shell_command` — you don't need to explicitly ask for `add_pane` for those specifically, it happens either way.
+— started, tracked, and stoppable via `list_background_tasks`/`check_background_task`/`stop_background_task`, or directly from the web frontend's Agents view (a live-tailed card with a stop button) — not a pane you have to keep open and looking at. See "Background tasks," below.
+
+### Background tasks
+
+`hi/agents/term/background_tasks.py` — a long-running command (a dev server, a watcher) started via `run_shell_command` runs as a plain tracked background process: an in-memory registry (same shape `hi/orchestrator/pending_actions.py` already established) with a reader thread live-tailing its combined stdout/stderr. `GET /background`, `GET /background/{id}`, `POST /background/{id}/stop` (`hi/ipc/server.py`) expose it to any frontend; the web frontend's Agents view renders each as a card (status, live output, a stop button) alongside on-demand agent runs. Replaces the old tmux-pane redirect (`add_pane`, now removed) entirely — a dev server used to need its own physical pane you'd keep open; now it's a task object like anything else here.
 
 ### MCP Servers
 
@@ -254,8 +264,11 @@ Dev servers and watch-mode commands (`npm run dev`, `vite`, `bench start`, and s
 | Playwright (real web browsing) | Node.js + `npx` | Enabled by default, no setup — verified live: real navigation, real page titles back |
 | GitHub (repos, issues, PRs, Actions) | `GITHUB_PERSONAL_ACCESS_TOKEN` in `~/.hi/.env`, Docker actually running | Off until you add a token; needs Docker (e.g. Rancher Desktop) started separately |
 | Obsidian | The community ["Local REST API"](https://github.com/coddingtonbear/obsidian-local-rest-api) plugin installed in Obsidian itself, then `OBSIDIAN_REST_API_KEY` in `~/.hi/.env` from its settings | Verified live: real vault listing, both directly and through `term` via natural language |
+| n8n (trigger/inspect workflows) | Your own n8n instance's MCP URL + a bearer token — `N8N_MCP_URL`/`N8N_MCP_TOKEN` in `~/.hi/.env`, or `configure_n8n_server()` conversationally | Verified live against a real self-hosted instance: 35 real tools (`search_workflows`, `execute_workflow`, `create_workflow_from_code`, ...) connected and callable |
 
-A server that isn't configured is simply absent — no crash, `term` works the same either way. A server that fails to connect (Docker not running, a bad token) is skipped with a logged warning, not a hard failure for the whole persona. The Obsidian plugin's self-signed local certificate needs certificate verification disabled specifically for that connection (`hi/mcp_tools.py`) — reasonable since it's loopback-only (127.0.0.1), never leaves the machine.
+A server that isn't configured is simply absent — no crash, `term` works the same either way. A server that fails to connect (Docker not running, a bad token) is skipped with a logged warning, not a hard failure for the whole persona. The Obsidian plugin's self-signed local certificate needs certificate verification disabled specifically for that connection (`hi/mcp_tools.py`) — reasonable since it's loopback-only (127.0.0.1), never leaves the machine. n8n needs two values instead of one credential (its own instance URL, since it's self-hosted and varies per user, plus a bearer token) — `configure_mcp_server()`'s single-credential shape doesn't fit, so it gets its own tool, `configure_n8n_server(url, token)`, and its own `_CATALOG` entry keyed by a tuple of env vars instead of one.
+
+**On-demand agents can be assigned one MCP server's tools directly** (`hi/agents_ondemand.py`, TODO.md Phase 27) — `hi/mcp_tools.py`'s `get_mcp_tools_by_server()` groups the same live-fetched tools by which server they came from (not just one flat list), so spawning an agent with `mcp_server="n8n"` hands it exactly that server's ~35 tools on top of its normal persona toolset, via `build_subagent()`'s new `extra_tools`/`extra_prompt` parameters. The clarification step (Phase 27's own "ask before it finalizes" requirement) is told an MCP server is already assigned, so it doesn't waste a round asking which instance/credentials to use for it. Live-verified end to end against the real n8n instance above: "list my n8n workflows and tell me how many there are" → correctly called the real `search_workflows` tool and reported the actual result (1 workflow, "MLSA") — not a guess.
 
 ## Perception
 
@@ -296,7 +309,13 @@ hi/fast_commands.py            latency fix: zero-network-call exact/narrow-regex
 hi/router.py                  classifies each router-mode turn into (persona, tier)
 hi/models.py                   haiku/sonnet/opus tier -> ChatOllama, pulls on demand;
                                  get_tier_model_fast() is a separate reasoning-off cache for
-                                 latency-sensitive judgment calls (classification, safety checks)
+                                 latency-sensitive judgment calls (classification, safety checks).
+                                 tier_models() reads hi.config live per call (mcp_tools.py's
+                                 pattern, above) and the ChatOllama cache is keyed by the
+                                 resolved model name, not just the tier label — so a `POST
+                                 /config` change to SONNET_MODEL etc. takes effect on the very
+                                 next call, no restart (BLOCKERS.md's "built once at import
+                                 time" caveat, closed this session)
 hi/chat_model.py                per-model reasoning=True probe/cache, shared by
                                  models.py and every persona's own default model
 hi/briefing.py                  pre-session tasks/notes/projects -> one suggested action
@@ -306,7 +325,29 @@ hi/cancellation.py               shared Ctrl-J interrupt primitive — one
                                  mechanism for shell-wait and generation-streaming alike
 hi/tmux_util.py              shared tmux new-session/new-window helper
 hi/config.py                 reads ~/.hi/.env: VAULT_PATH + per-persona + tier models
-hi/vault.py                   shared Markdown memory tools, backed by the vault
+hi/vault.py                   shared Markdown memory tools, backed by the vault.
+                                 knowledge_dir()/conversations_dir() read hi.config.VAULT_PATH
+                                 live (functions, not module-level constants) — every module
+                                 built on them (widget_store.py, term/people.py,
+                                 term/save_project.py, context/weekday.py,
+                                 orchestrator/graph.py, synthesis/*, capture/store.py's
+                                 tasks_dir(), tracking/*) follows the same pattern, so a vault-
+                                 path change via `POST /config` applies without a restart too.
+                                 **Regression caught and fixed later the same session**: the
+                                 automated script that did this conversion across 6 of those
+                                 files (widget_store.py, term/people.py, term/save_project.py,
+                                 context/weekday.py, orchestrator/graph.py, synthesis/retro.py)
+                                 renamed each import correctly but left the OLD uppercase name
+                                 inside the new function body (e.g. `_people_dir()` returning
+                                 `KNOWLEDGE_DIR / "people"` — undefined once the import became
+                                 lowercase `knowledge_dir`) — a real `NameError` waiting on the
+                                 first actual call, invisible to an import-only smoke test since
+                                 Python doesn't evaluate a function body until it's called. Found
+                                 by actually reading one of the files, not by a test catching it;
+                                 fixed in all 6 (plus two more direct `KNOWLEDGE_DIR.parent`
+                                 references in retro.py the same script never touched at all) and
+                                 re-verified by calling every one of them for real, not just
+                                 re-importing the modules.
 hi/frontmatter.py              shared YAML-subset frontmatter parse/dump, used by
                                  vault.py and capture/schema.py alike
 hi/capture/schema.py            Task/Event dataclasses <-> frontmatter mapping
@@ -324,7 +365,15 @@ hi/memory_graph.py            shared grounding graph: select notes -> load -> ag
                                  the latter got an empty done_reason='load' response from the
                                  cloud model every single time, silently making relevant_notes/
                                  relevant_logs always empty; hi/agents/docs/vault_rag.py had the
-                                 identical bug, fixed the same way — both live-verified after)
+                                 identical bug, fixed the same way — both live-verified after).
+                                 **Reported live as "always searches the vault and returns NONE
+                                 before doing anything else"**: this note-selection call ran with
+                                 reasoning on for every single term/docs turn, adding several
+                                 seconds before the real agent even started — the same latency
+                                 class Phase 6/11 already fixed elsewhere (router.py's classify(),
+                                 the scope guard) but this call had never gotten it. Both this file
+                                 and vault_rag.py now use hi/models.py's new fast_variant(model)
+                                 (reasoning off, cached by resolved model name) for this call only
 hi/tree_cache.py               `tree -L 4` snapshot of the vault, for grounding
 hi/model_warmup.py             background warm-up + retry around Ollama Cloud's
                                  occasional empty done_reason='load' response;
@@ -332,7 +381,29 @@ hi/model_warmup.py             background warm-up + retry around Ollama Cloud's
                                  haiku model so it doesn't go cold between user turns
 hi/voice.py                     Ctrl-V mic capture + faster-whisper transcription
 hi/tts.py                       local TTS via macOS `say`, sentence-chunked as a
-                                 streamed response arrives, with barge-in support
+                                 streamed response arrives, with barge-in support —
+                                 used by the terminal REPL's voice mode and
+                                 hi/wake.py; NOT what the voice companion app speaks
+                                 with (see hi/tts_kokoro.py, below)
+hi/tts_kokoro.py                real neural TTS (Kokoro-82M, local, one-time HF
+                                 download) for the voice companion app — per explicit
+                                 request ("sounds actually like a human, maybe even
+                                 use kokoro"), replacing AVSpeechSynthesizer. One
+                                 cached KPipeline; synthesize_wav() returns real WAV
+                                 bytes. Exposed via `POST /tts` (hi/ipc/server.py);
+                                 SpeechOutput.swift fetches + plays via AVAudioPlayer
+                                 instead of asking the OS to speak the text. ~0.5s
+                                 warm for a short sentence, live-measured
+hi/ipc/spoken_summary.py         rewrites the full answer into one short spoken
+                                 sentence before TTS, via get_tier_model_fast(). Used
+                                 to skip the rewrite entirely under 220 chars — the
+                                 exact case that let a mechanical answer like "I opened
+                                 www.youtube.com in Safari" reach TTS completely
+                                 literally, URL read dot by dot (reported live). Now
+                                 always rewrites, and the prompt explicitly asks for
+                                 what happened in plain words, never a literal reading
+                                 of a URL/path/raw string ("YouTube is now open," not
+                                 the sentence above)
 hi/wake.py                      standalone wake-word daemon (`hi --wake-daemon`):
                                  openWakeWord "Hey Jarvis" -> voice.py transcription ->
                                  router.py classify() -> streaming.py + tts.py
@@ -427,7 +498,27 @@ hi/agui_adapter.py                 Phase 18: translates a persona turn or an
                                  Phase 20: also emits CUSTOM pending_action/
                                  pending_action_resolved events for the voice
                                  companion's inline approve/deny cards, and saves
-                                 every detected MCP-UI widget via widget_store.py
+                                 every detected MCP-UI widget via widget_store.py.
+                                 **Real crash fixed**: an orchestrated run's SSE
+                                 stream abandoned mid-flight (a client disconnect,
+                                 or any exception) used to strand
+                                 run_orchestrated()'s asyncio Task and its open
+                                 AsyncSqliteSaver connection — garbage-collected
+                                 later with no event loop backing them at all
+                                 ("Exception ignored while closing generator ...
+                                 no current event loop in thread"), and the client
+                                 got nothing back: no RUN_ERROR, no RUN_FINISHED,
+                                 just a dead connection — indistinguishable from
+                                 "chat is completely broken" from the outside.
+                                 stream_orchestrated_as_agui() now cancels+awaits
+                                 its task in a finally block on every exit path;
+                                 stream_orchestrated_as_agui_sync() now
+                                 set_event_loop()s the loop it creates and
+                                 properly aclose()s the async generator before
+                                 tearing it down. Reproduced live (a curl timeout
+                                 abandoning an orchestrated query mid-stream) both
+                                 before (crash logged) and after (clean, no
+                                 traceback, daemon stayed responsive) the fix.
 hi/suggest/engine.py              continuous background suggestion loop with
                                  confidence gating + per-day dedup (`hi --suggest-daemon`);
                                  optional SMART_SUGGESTIONS_ENABLED model-judgment pass
@@ -452,10 +543,11 @@ hi/browser.py                     open_url_in_browser — a real tab in the user
 hi/agents/butler/  (butler.py + todo.py + mac_control.py)          the `butler` persona
 hi/agents/docs/    (docs.py + vault_rag.py)                         the `docs` persona
 hi/agents/web/     (web.py)                                          the `web` persona
-hi/agents/term/    (term.py + shell_pane.py + danger.py +             the `term` persona:
-                    dev_flow_tool.py + people.py + resume.py +        shell + memory + people +
-                    files.py + save_project.py +                     dev flows + pane splitting +
-                    tmux_control.py)                                  resume-context + real
+hi/agents/term/    (term.py + background_tasks.py + danger.py +       the `term` persona:
+                    dev_flow_tool.py + people.py + resume.py +        shell (no pane needed) +
+                    files.py + save_project.py)                       background tasks + memory +
+                                                                       people + dev flows +
+                                                                       resume-context + real
                                                                        project file access/edits +
                                                                        real coding-agent loop + MCP
 ```
@@ -471,7 +563,7 @@ Every persona module exposes both a `model`/`agent` pair built at import time (u
 | Personas | 4 dedicated + 1 auto-router |
 | Built-in tools across all personas | 74 |
 | + Playwright MCP tools (`term`, on by default) | 24 more |
-| Python source | 8,168 lines across 89 files |
+| Python source | 10,783 lines across 100 files |
 | Model tiers | 3 (haiku / sonnet / opus) |
 | Direct dependencies | 12 |
 | Built | July – August 2026 |

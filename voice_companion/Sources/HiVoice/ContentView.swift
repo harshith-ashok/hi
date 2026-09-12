@@ -193,6 +193,7 @@ private struct TurnLogView: View {
 
 struct TurnRow: View {
     let turn: Turn
+    @State private var thinkingExpanded = false
 
     private var borderColor: Color {
         switch turn.role {
@@ -224,17 +225,25 @@ struct TurnRow: View {
                 .foregroundStyle(tagColor)
                 .frame(width: 58, alignment: .leading)
 
-            HStack(spacing: 0) {
-                Text(turn.content)
-                    .font(turn.role == .user ? HiTheme.mono(12.5) : HiTheme.sans(13.5))
-                    .foregroundStyle(turn.role == .user ? HiTheme.textDim : HiTheme.text)
-                    .lineSpacing(4)
-                    .textSelection(.enabled)
-                if turn.isStreaming {
-                    StreamingCursor()
+            VStack(alignment: .leading, spacing: 6) {
+                if !turn.thinkingText.isEmpty {
+                    ThinkingDisclosure(text: turn.thinkingText, isActive: turn.isThinkingActive, expanded: $thinkingExpanded)
                 }
+                if !turn.toolCalls.isEmpty {
+                    ToolCallList(calls: turn.toolCalls)
+                }
+                HStack(spacing: 0) {
+                    Text(turn.content)
+                        .font(turn.role == .user ? HiTheme.mono(12.5) : HiTheme.sans(13.5))
+                        .foregroundStyle(turn.role == .user ? HiTheme.textDim : HiTheme.text)
+                        .lineSpacing(4)
+                        .textSelection(.enabled)
+                    if turn.isStreaming {
+                        StreamingCursor()
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 16)
@@ -260,6 +269,88 @@ struct StreamingCursor: View {
                     visible = false
                 }
             }
+    }
+}
+
+/// Shows a turn's live/completed thinking content — auto-expanded while
+/// `isActive` (THINKING_START..THINKING_END is in flight), auto-collapsed
+/// to a small tappable label once it ends, same "show the work while
+/// it's happening, tuck it away once there's a real answer, one tap
+/// away" behavior as the web frontend's own collapsible thinking block.
+struct ThinkingDisclosure: View {
+    let text: String
+    let isActive: Bool
+    @Binding var expanded: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button(action: { expanded.toggle() }) {
+                HStack(spacing: 6) {
+                    if isActive {
+                        Circle().fill(HiTheme.amber).frame(width: 5, height: 5)
+                    }
+                    Text(isActive ? "thinking…" : "thought")
+                        .font(HiTheme.mono(10.5))
+                        .foregroundStyle(HiTheme.textFaint)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if expanded || isActive {
+                Text(text)
+                    .font(HiTheme.sans(12))
+                    .italic()
+                    .foregroundStyle(HiTheme.textFaint)
+                    .lineSpacing(3)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+}
+
+/// Shows each tool call made during a turn as a one-line "→ tool_name"
+/// entry — pending (no result yet) shows an amber dot, matching
+/// PendingActionCard's own use of amber for "in flight, not yet
+/// resolved". Tapping a completed call expands its raw result inline,
+/// same tap-to-expand pattern as ThinkingDisclosure above. Closes the
+/// same web-frontend-vs-native-app parity gap the THINKING_* events did
+/// (BLOCKERS.md "Features to add" #8) — the AG-UI events were already
+/// streaming here, just discarded with a `break` until now.
+struct ToolCallList: View {
+    let calls: [ToolCallInfo]
+    @State private var expandedID: ToolCallInfo.ID?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(calls) { call in
+                VStack(alignment: .leading, spacing: 3) {
+                    Button(action: {
+                        guard call.result != nil else { return }
+                        expandedID = (expandedID == call.id) ? nil : call.id
+                    }) {
+                        HStack(spacing: 6) {
+                            if call.result == nil {
+                                Circle().fill(HiTheme.amber).frame(width: 5, height: 5)
+                            }
+                            Text("→ \(call.name)")
+                                .font(HiTheme.mono(10.5))
+                                .foregroundStyle(HiTheme.textFaint)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(call.result == nil)
+
+                    if expandedID == call.id, let result = call.result {
+                        Text(result)
+                            .font(HiTheme.mono(11))
+                            .foregroundStyle(HiTheme.textFaint)
+                            .lineSpacing(3)
+                            .textSelection(.enabled)
+                            .padding(.leading, 11)
+                    }
+                }
+            }
+        }
     }
 }
 

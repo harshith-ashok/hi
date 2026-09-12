@@ -24,10 +24,11 @@ from hi.model_warmup import invoke_with_retry
 from hi.models import get_tier_model
 from hi.tracking.deadlines import get_deadlines
 from hi.tracking.leetcode import streak_days, topic_stats
-from hi.vault import KNOWLEDGE_DIR
+from hi.vault import knowledge_dir
 from hi.watchdogs.idle_repos import _known_project_dirs
 
-RETROS_DIR = KNOWLEDGE_DIR / "retros"
+def _retros_dir():
+    return knowledge_dir() / "retros"
 
 
 def _iso_week_id(day: date) -> str:
@@ -89,14 +90,14 @@ def _leetcode_summary() -> str:
 
 def this_weeks_retro_exists(day: date | None = None) -> bool:
     day = day or date.today()
-    return (RETROS_DIR / f"{_iso_week_id(day)}.md").exists()
+    return (_retros_dir() / f"{_iso_week_id(day)}.md").exists()
 
 
 def generate_weekly_retro(day: date | None = None) -> Path:
     day = day or date.today()
     week_id = _iso_week_id(day)
-    RETROS_DIR.mkdir(parents=True, exist_ok=True)
-    path = RETROS_DIR / f"{week_id}.md"
+    _retros_dir().mkdir(parents=True, exist_ok=True)
+    path = _retros_dir() / f"{week_id}.md"
     content = (
         f"---\ntags: [hi, retro]\nweek: {week_id}\n---\n\n"
         f"# Weekly Retro — {week_id}\n\n"
@@ -115,7 +116,7 @@ def generate_retro() -> str:
     project, git activity, deadlines, LeetCode streak) instead of waiting
     for the automatic Sunday generation."""
     path = generate_weekly_retro()
-    return f"Wrote weekly retro to {path.relative_to(KNOWLEDGE_DIR.parent)}."
+    return f"Wrote weekly retro to {path.relative_to(knowledge_dir().parent)}."
 
 
 def _smart_reflection(existing_content: str) -> str:
@@ -142,7 +143,7 @@ def generate_smart_weekly_retro(day: date | None = None) -> Path:
     of just presenting it."""
     day = day or date.today()
     week_id = _iso_week_id(day)
-    path = RETROS_DIR / f"{week_id}.md"
+    path = _retros_dir() / f"{week_id}.md"
     if not path.exists():
         generate_weekly_retro(day)
     reflection = _smart_reflection(path.read_text())
@@ -162,4 +163,4 @@ def generate_retro_smart() -> str:
     explicitly wants a deeper/narrative retro, not just the raw numbers.
     """
     path = generate_smart_weekly_retro()
-    return f"Added a smart reflection to this week's retro: {path.relative_to(KNOWLEDGE_DIR.parent)}."
+    return f"Added a smart reflection to this week's retro: {path.relative_to(knowledge_dir().parent)}."

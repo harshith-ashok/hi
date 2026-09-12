@@ -1450,6 +1450,336 @@ sequential phase._
 
 ---
 
+## Phases 21–27 — Ambient Jarvis: proactive, always-has-context, focus-aware (per explicit request)
+
+A single large ask, broken into buildable pieces rather than attempted at
+once: continuous ambient watching (dev folder/vault/browser) with live
+on-screen suggestions, preset + custom automations (flagship example: an
+uploaded exam timetable → a study plan → proactively found/downloaded
+study content from WhatsApp groups), distraction management during an
+explicit focus session, on-demand agent spawning, a context/caching
+layer so `hi` always knows what you were doing and need to be doing, and
+focus tooling (Pomodoro) the AI itself can toggle. Scoped via three
+explicit decisions before any of it was built: WhatsApp access goes
+through Playwright-driven WhatsApp Web automation (accepted risk: no
+official API, fragile against UI changes, likely against WhatsApp's ToS
+for automated access — flagged, not silently built); "close anything
+distracting" only acts without per-action confirmation inside an
+explicitly-started focus session, never ambiently; the live on-screen
+surface is a floating HUD overlay, a genuinely new UI surface, not a
+notification or a menu-bar dropdown.
+
+### Phase 21 — Context & caching layer (build first — 22–27 all read/write through this)
+
+- [ ] A single rolling context store (`~/.hi/context_state.json`, same
+      shape as `context_shift_state.json`/`suggest_state.json`'s own
+      precedent): recent significant events (file edits, vault notes
+      touched, browser pages visited, focus-session state, conversation
+      topic) with timestamps, capped/pruned so it stays small
+- [ ] `record_event(kind, detail)` — a cheap, synchronous append, called
+      by Phase 22's watchdogs and any tool that already knows something
+      context-worthy just happened (e.g. `create_note`, `open_url_in_browser`)
+- [ ] `get_current_context() -> dict` (raw recent-events read) and
+      `summarize_context() -> str` (a fast-tier — reasoning off, same
+      `fast_variant()`/`get_tier_model_fast()` pattern this session
+      already used for memory_graph.py/vault_rag.py/spoken_summary.py —
+      one-line "what you're probably doing right now" synthesis)
+- [ ] A new persona tool (`get_current_context`, available to all four)
+      so "what was I doing" / "what do I need to do" gets answered from
+      real tracked state, not guessed from the current conversation alone
+- [ ] `GET /context` on the voice daemon, for Phase 23's HUD to poll
+- [ ] File/preference caching: avoid redundant vault reads for content
+      that hasn't changed since last read (mtime-keyed, in-process —
+      not a new database, matching this project's "filesystem is the
+      source of truth" stance)
+
+### Phase 22 — Ambient watchdogs: dev folder, vault, browser (build after 21)
+
+- [ ] Dev-folder watcher: extend `hi/watchdogs/` with a filesystem-event
+      watcher (polling mtime, same zero-new-dependency approach
+      `context_shift.py`/`idle_repos.py` already use — not `watchdog`/
+      `fswatch` unless polling proves too coarse) over the active dev
+      project (same directory `dev_servers.py`/`idle_repos.py` already
+      know how to find), feeding `record_event("dev_file_changed", ...)`
+- [ ] Vault watcher: same shape, over `VAULT_PATH` — feeds
+      `record_event("vault_note_changed", ...)`
+- [ ] Playwright browser watcher: reuse whatever Playwright MCP/session
+      this project already drives for `web`/browser tools — watch active
+      page/tab changes, feed `record_event("browser_page_changed", ...)`
+      (title + URL only, not page content, matching this project's
+      existing "state-change only, never content" privacy posture from
+      `context_shift.py`)
+- [ ] Wire all three into `hi --suggest-daemon`'s existing gated
+      suggestion pipeline (`hi/suggest/engine.py`) rather than a
+      parallel notification path — same confidence-gate/per-day-dedup
+      discipline already established there
+
+### Phase 23 — Floating HUD overlay (build after 21, benefits from 22)
+
+- [ ] A new always-on-top, borderless SwiftUI window (distinct from the
+      Spotlight quick-panel and the main chat window) showing live
+      context (`GET /context`) and any pending suggestion, polling or
+      SSE-subscribed to the voice daemon
+- [ ] Dismiss/snooze/pin controls — this is ambient, not a modal; must
+      never block interaction with whatever's underneath it
+- [ ] A settings toggle to turn the HUD off entirely — this is a much
+      more visible, opinionated UI surface than anything shipped so far,
+      and needs an easy off switch from day one
+
+### Phase 24 — Focus sessions: Pomodoro + gated distraction control (build after 21; 22/23 optional)
+
+- [ ] `start_focus_session(goal, duration_minutes)` / `end_focus_session()`
+      tools — persisted focus-session state (context layer, Phase 21),
+      not just an in-memory timer, so it survives a daemon restart
+- [ ] A real Pomodoro timer tool the AI can start/stop/query on request
+      ("start a pomodoro"), notifying (macOS notification, reusing
+      whatever `mac_control.py` already has) at each interval boundary
+- [ ] Auto-close-distracting-apps **only while a focus session is
+      active** (the explicit scope decision above) — a configurable
+      distraction list, `quit_app`/window-management tools already in
+      `mac_control.py` reused, not rebuilt; never fires ambiently
+      outside an active session
+- [ ] "Continue?" nudge at session end instead of silently stopping —
+      re-offers the same session rather than assuming the user is done
+
+### Phase 25 — Custom automation framework (build after 21; the exam-timetable flagship lives here)
+
+- [ ] A trigger → pipeline model: preset automations (ship a few, e.g.
+      "uploaded file matching a timetable/schedule shape → generate a
+      study plan") plus user-defined ones (a plain description of
+      trigger + steps, stored as a vault-backed automation definition —
+      "filesystem is the source of truth" again, not a hidden config)
+- [ ] Flagship example, built and live-tested end to end: upload an exam
+      timetable → parse it → produce a real study plan (dated, per
+      subject) → proactively surface study content for the nearest
+      exam (Phase 26 for WhatsApp-sourced content specifically)
+- [ ] Automations run through the existing orchestrator (Phase 16-20
+      infrastructure), not a new execution engine — a multi-step
+      pipeline is exactly what `run_orchestrated()` already does
+
+### Phase 26 — WhatsApp Web automation (build after 25, or standalone)
+
+- [ ] Playwright-driven WhatsApp Web session: search groups by name/
+      content, identify and download shared files/links matching a
+      query (e.g. "study material for [subject]")
+- [ ] **Explicit, standing caveat, not hidden**: no official API, so
+      this is inherently fragile against WhatsApp Web UI changes and is
+      likely outside WhatsApp's ToS for automated bulk access — accepted
+      per explicit direction, but any failure mode here should fail
+      loudly (tell the user it broke) rather than silently return
+      nothing
+- [ ] Session/auth handling: WhatsApp Web needs an authenticated,
+      already-logged-in browser session — reuse a persistent Playwright
+      profile rather than re-scanning a QR code every run
+
+### Phase 27 — On-demand dynamic agent spawning (build after 16-20; independent of 21-26)
+
+- [x] A user-facing "create an agent for X" capability — confirmed the
+      hunch: mostly already possible via the existing orchestrator/
+      subagent infrastructure. New `hi/agents_ondemand.py` builds one
+      scoped agent per request via `hi/orchestrator/subagent.py`'s
+      already-existing `build_subagent()`, routed to a persona via
+      `hi/router.py`'s `classify()` — no new execution mechanism, only
+      a new entry point plus a lifecycle wrapper around it
+      (`clarifying -> ready -> running -> done|error`), in-memory
+      runtime state (same `threading.Lock` + dict pattern
+      `pending_actions.py` already established) with a durable
+      Markdown record written to `hi/knowledge/agents/<id>.md` once a
+      run finishes — "filesystem is the source of truth" for the
+      history, not the live coordination state
+- [x] **Clarification before execution, per explicit request**: "before
+      it finalizes and starts implementing it should ask me questions
+      to clarify the instructions." `_generate_clarifying_questions()`
+      (reasoning off, `get_tier_model_fast()` — the same latency class
+      this session already fixed for memory_graph.py/vault_rag.py's own
+      judgment calls) decides whether a task is genuinely ambiguous and
+      asks up to 3 short questions if so, or proceeds straight to
+      execution if not. Bounded at `MAX_CLARIFICATION_ROUNDS = 2` so it
+      can't ask forever. Live-verified both paths: a genuinely ambiguous
+      prompt ("help me prepare for my exam") correctly generated 3 real
+      questions (subject/timeline/format) in 2.6s; after answering, it
+      correctly judged no further clarification was needed and produced
+      a real, coherent, clarification-aware study plan (classified to
+      `web`, correctly incorporating "trees and graphs" from the
+      answers) — result and vault-persisted record both inspected
+      directly, not just checked for absence of an error
+- [x] Presets for the frontend's "one-click" agents — `PRESETS` (daily
+      summary / uncommitted git changes / upcoming deadlines), already
+      well-specified by definition so they skip clarification entirely
+      and go straight to running. Live-verified: a preset run correctly
+      skipped to `status: "running"` immediately and finished with a
+      real, correct answer via `butler` (checked the user's actual
+      TODO list, found nothing overdue, said so plainly)
+- [x] `POST /agents` (prompt or preset), `POST /agents/{id}/answer`,
+      `GET /agents` / `GET /agents/{id}` / `GET /agents/presets`
+      (`hi/ipc/server.py`) — polled, not streamed; a background thread
+      per run, same "check back on this later" shape
+      `PendingActionsMonitor.swift` already established for other
+      long-running backend work, not a second SSE surface
+- [x] **Visualize + one-click spawn in the Vue frontend, per explicit
+      request**: new `AgentTasksView.vue` (a new `agents` nav entry in
+      `App.vue`, deliberately separate from the pre-existing
+      `AgentsColumn.vue`, which shows the four fixed personas' live
+      status and pending approvals — a different concept from spawned
+      on-demand agents) — one-click preset buttons, a free-form task
+      composer, and a live-polled (3s) list of every run showing
+      status, with an expandable clarification Q&A form when a run is
+      waiting on the user and the rendered Markdown result once done.
+      `vue-tsc -b` and `npm run build` both clean; dev server serves
+      the new route (curl-verified, no browser tool in this
+      environment — same standing limitation as every other UI change
+      this project has made)
+- [ ] Decide persistence beyond one-shot: a *standing* agent (keeps
+      running, e.g. as a new watchdog) is real future scope this
+      session's own request didn't ask for ("I can give them tasks and
+      it will do that" reads as one-shot: given a task, do it, report
+      back) — left undone rather than guessed at; every run built here
+      is one-shot (runs, reports, persists, exits)
+- [x] **n8n added as a new MCP server, following the existing Obsidian
+      pattern exactly** (per explicit request): `hi/config.py` gained
+      `N8N_MCP_URL`/`N8N_MCP_TOKEN`; `hi/mcp_tools.py`'s
+      `_server_configs()` adds an "n8n" entry (`streamable_http`,
+      bearer-token header) once both are set — the same transport shape
+      Obsidian already uses, n8n's own config just calls it `"type":
+      "http"`. Needs two values, not Obsidian's one credential (its own
+      instance URL, since it's self-hosted and varies per user, plus a
+      token) — `hi/mcp_install.py`'s `_CATALOG` widened to accept a
+      tuple of env vars for exactly this case, and a dedicated
+      `configure_n8n_server(url, token)` tool (not forced through the
+      single-credential `configure_mcp_server()`) added alongside it,
+      confirm-gated the same way. Wired into `butler`'s `TOOLS`. **Live-
+      verified against the user's real, already-configured self-hosted
+      instance** (not just import-checked): `get_mcp_tools()` connected
+      and returned 35 real n8n tools (`search_workflows`,
+      `execute_workflow`, `create_workflow_from_code`, `validate_workflow`, ...)
+      alongside the existing playwright/github/obsidian tools.
+- [x] **MCP servers surfaced in the Agents view, and on-demand agents
+      can be assigned one server's tools directly, per explicit
+      follow-up request** ("update the agents view to house this mcp
+      part. I want to create agents that can communicate with the mcp I
+      assign"). Backend: `hi/mcp_tools.py`'s `get_mcp_tools()` refactored
+      (no new connections, same single fetch) to also expose
+      `get_mcp_tools_by_server()` — the same live-fetched tools grouped
+      by which server they came from. `hi/orchestrator/subagent.py`'s
+      `build_subagent()` gained `extra_tools`/`extra_prompt` (additive,
+      not a replacement for the persona's own tools/prompt) so an
+      on-demand agent can be hard-assigned exactly one server's tools.
+      `hi/agents_ondemand.py`'s `create_run()`/`AgentRun` gained
+      `mcp_server` — checked eagerly against `get_mcp_tools_by_server()`
+      (an unreachable/misconfigured assignment fails the run immediately,
+      not silently), and the clarification step is told an MCP server is
+      already assigned so it doesn't waste a round asking which
+      instance/credentials to use for it (a real UX bug caught and fixed
+      live: it initially asked "which n8n instance" and "do you have a
+      token" despite the connection already being live). New endpoints:
+      `GET /mcp/servers` (catalog + credential status — the write-only
+      analog of `/config`, which deliberately excludes MCP credentials
+      from ever being echoed back), `POST /mcp/configure` /
+      `POST /mcp/configure/n8n` (direct writes, no `confirm_destructive()`
+      gate — a human filling in a form and clicking Save *is* the
+      confirmation, same reasoning `/config` itself already established),
+      `GET /agents/mcp-servers` (only servers actually connected right
+      now, with real tool counts — the real, pickable choices for
+      assignment). Frontend: `AgentTasksView.vue` gained a collapsible
+      MCP-servers panel (status, inline configure forms — a single
+      credential field for github/obsidian, url+token for n8n) and an
+      "assign an MCP server to the next agent" dropdown feeding
+      `createAgentRun()`'s new `mcpServer` option; a run card shows its
+      assigned server as a small badge. `vue-tsc -b` and `npm run build`
+      both clean. **Live-verified end to end against the real n8n
+      instance, not a mock**: assigning "n8n" and asking "list my n8n
+      workflows and tell me how many there are" correctly called the
+      real `search_workflows` tool and reported the actual answer (1
+      workflow, "MLSA") through the full HTTP path — create → poll →
+      done, not just the underlying function in isolation.
+
+### Phase 28 — Remove the tmux-pane dependency from `term`'s shell tools entirely (per explicit request)
+
+Reported live: `"No sibling pane found to run commands in — term needs
+the standard two-pane hi layout (left pane = your shell)."` Root cause
+found by reading `shell_pane.py`'s own `_own_pane_id()`/`left_pane_id()`:
+`term.py`'s `_HAS_TMUX_PANE` gate only checked `TMUX_PANE` being *set*
+(true for any process running inside *some* tmux pane, including the
+voice daemon's own if it happened to be launched from one) — not
+whether a genuine *sibling* `hi --term` pane actually existed next to
+it. Explicit follow-up direction, not just a bug fix: "Completely phase
+out any functions handled by the terminal based aspect and have
+everything handled only by the frontend... spawn terminal instances as
+separate task and assign agents instead of relying on the left pane...
+I want to see the terminal function similar to the code agent
+functionality like in the parent project sage."
+
+- [x] `run_shell_command` rewritten to a plain `subprocess.run()` —
+      no tmux pane, no marker-polling, no dependency on a specific
+      launch layout. Works identically from the terminal REPL, the
+      voice companion, the web frontend, or an on-demand agent. Kept:
+      the destructive-command confirm gate (`looks_destructive` +
+      `review_shell_command` + `confirm_destructive`), unchanged.
+      Dropped: Ctrl-J mid-wait interruption (no longer meaningful —
+      short commands run under a bounded timeout, long ones are
+      redirected before any wait begins) and the pager-disabling env
+      prefix (`subprocess.run` doesn't inherit an interactive TTY a
+      pager would try to page against, so `git diff` etc. don't hang
+      the way they could in a real pty).
+- [x] Long-running commands (dev servers, watchers — the same
+      `looks_long_running` heuristic as before) no longer redirect into
+      a brand-new tmux pane (`tmux_control.py`'s `add_pane`, now
+      deleted). New `hi/agents/term/background_tasks.py`: a plain
+      `subprocess.Popen` tracked in an in-memory registry (same
+      `threading.Lock` + dict shape `pending_actions.py` already
+      established), with a reader thread live-tailing combined
+      stdout/stderr into a bounded buffer. Three new tools
+      (`list_background_tasks`/`check_background_task`/
+      `stop_background_task`) let the model check on/stop one
+      conversationally; `GET /background`, `GET /background/{id}`,
+      `POST /background/{id}/stop` (`hi/ipc/server.py`) let the
+      frontend do the same directly. This *is* "spawn terminal
+      instances as separate task... instead of relying on the left
+      pane" — a dev server is now a trackable task object, not a pane
+      you have to keep open and looking at.
+- [x] `_HAS_TMUX_PANE`/`_TMUX_ONLY_TOOLS` gating removed from
+      `term.py` entirely — `run_shell_command` and the background-task
+      tools are unconditionally in `TOOLS` now, since none of them
+      need tmux for anything anymore. `hi/agents/term/shell_pane.py`
+      and `hi/agents/term/tmux_control.py` deleted outright (confirmed
+      unreferenced anywhere else first) rather than left as dead code.
+      `hi/agents/term/dev_flow_tool.py`'s *own*, separate, explicitly
+      opt-in tmux-workspace launcher (`open_dev_flow`/`add_dev_flow` —
+      "open my saved project workspace, apps + a two-pane layout") is
+      untouched — a deliberate, different feature from "run one shell
+      command and get its output back," not part of what was reported
+      broken or asked to be phased out.
+- [x] `term_prompt.md` rewritten to match: no more "only available
+      inside a real tmux pane" caveat, `add_pane`'s docs replaced with
+      the three background-task tools' own.
+- [x] **"See the terminal function similar to the code agent
+      functionality like in sage"**: the web frontend's existing live
+      tool-call trace (`TraceSegmentView.vue` — name/args/result, one
+      card per call, already built for every tool `term` has) already
+      gives a regular `run_shell_command` call this exact experience;
+      what was missing was specifically for work that outlives one
+      streamed turn — a background task's own card in the Agents view
+      (live-polled output, a stop button) is the equivalent for that
+      case, the same "watch it work, not just get a final answer"
+      principle applied to the piece that doesn't fit inside a single
+      request/response.
+- [x] **Live-verified against the exact reported failure, not just
+      reasoned about**: reproduced the original trigger (a real shell
+      with `TMUX_PANE` set, driving the voice daemon) — before the fix
+      this exact setup is what raised the reported error; after,
+      `run_shell_command('echo hello from subprocess && pwd')` through
+      the real running daemon returned correct real output. A
+      long-running command (`tail -f ...`) correctly started as a
+      background task, showed up in `GET /background` with a real PID
+      and live-tailed output, and `POST /background/{id}/stop`
+      correctly transitioned it to `exited`. A genuinely failing
+      long-running command (`npm run dev` from a directory with no
+      `package.json`) correctly captured and reported the real npm
+      error text, not a swallowed failure.
+- [x] Full-package import smoke test (80 modules) and `py_compile`
+      clean after the rewrite; `vue-tsc -b`/`npm run build` clean for
+      the new frontend section.
+
 ## Suggested order
 
 **6 → 7 → 8 → 9** is the backbone: 6 is a cheap config change worth doing
@@ -1479,3 +1809,16 @@ stream exist). **20's eight items are each independent extras**, pick
 up in any order once 16 exists — several of them (approvals-as-UI,
 reviewer-verifies-coder) additionally reference 17/18's own output but
 aren't blocked on 19.
+
+**Phases 21–27 are a third, separate initiative** (ambient/proactive
+Jarvis), independent of 6–20 except that 27 wants 16–20's orchestrator
+already landed (it is). **21 first, always** — every other phase in this
+group reads or writes the context/caching layer it builds. After 21:
+**22 and 23 are independent of each other** (watchdogs vs. the HUD
+surface), pick either first — 23 is more useful with 22 already feeding
+it real events, but doesn't strictly require it. **24 only needs 21.**
+**25 only needs 21**; **26 is genuinely standalone** (WhatsApp
+automation doesn't need the automation framework to exist first, though
+25's flagship example is the reason to build it) — pick 25 or 26 first
+based on which is more useful sooner. **27 is fully independent of
+21–26**, blocked only on 16–20 (already done).

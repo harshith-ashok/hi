@@ -33,6 +33,22 @@ enum PersonaChoice: String, CaseIterable, Identifiable {
     var tabLabel: String { self == .auto ? "hi ·auto" : rawValue }
 }
 
+/// One tool call within a turn (AG-UI's `TOOL_CALL_START`/`TOOL_CALL_RESULT`,
+/// hi/agui_adapter.py) — the web frontend already renders these via
+/// TraceSegmentView.vue; this app used to just `break` on them
+/// (BLOCKERS.md "Features to add" #8: "full tool-call transparency in
+/// the Processing state... rendering it is a UI change, not a backend
+/// one" — the events were already flowing, only ignored here). `result`
+/// stays nil until the matching TOOL_CALL_RESULT arrives; the backend
+/// only ever has one tool call in flight at a time per turn (ReAct
+/// loop, not parallel calls), so matching "the last call still missing
+/// a result" is unambiguous.
+struct ToolCallInfo: Identifiable, Equatable {
+    let id = UUID()
+    let name: String
+    var result: String?
+}
+
 struct Turn: Identifiable, Equatable {
     enum Role: Equatable {
         case user
@@ -43,6 +59,22 @@ struct Turn: Identifiable, Equatable {
     let id = UUID()
     let role: Role
     var content: String
+    /// The model's own real reasoning content (AG-UI's `THINKING_*`
+    /// events, hi/agui_adapter.py) — added alongside the web frontend's
+    /// own equivalent, which had this and this app didn't; closing that
+    /// gap, not a new backend capability. Empty for a turn whose model
+    /// didn't think out loud (not every tier/model does), or before any
+    /// has arrived yet.
+    var thinkingText: String = ""
+    /// True from THINKING_START until THINKING_END — lets TurnRow show
+    /// a live "thinking…" affordance while it's actually happening and
+    /// collapse it once the real answer starts, same as the terminal's
+    /// own dimmed-prefix behavior and the web frontend's collapsible
+    /// block.
+    var isThinkingActive: Bool = false
+    /// Tool calls made so far during this turn, in order — see
+    /// ToolCallInfo above.
+    var toolCalls: [ToolCallInfo] = []
     var isStreaming: Bool = false
 
     var tag: String {
@@ -135,6 +167,35 @@ final class AppState: ObservableObject {
     func appendToken(_ text: String) {
         guard let last = turns.last, last.isStreaming else { return }
         turns[turns.count - 1].content += text
+    }
+
+    func beginThinking() {
+        guard let last = turns.last, last.isStreaming else { return }
+        turns[turns.count - 1].isThinkingActive = true
+    }
+
+    func appendThinking(_ text: String) {
+        guard let last = turns.last, last.isStreaming else { return }
+        turns[turns.count - 1].thinkingText += text
+    }
+
+    func endThinking() {
+        guard let last = turns.last, last.isStreaming else { return }
+        turns[turns.count - 1].isThinkingActive = false
+    }
+
+    func beginToolCall(name: String) {
+        guard let last = turns.last, last.isStreaming else { return }
+        turns[turns.count - 1].toolCalls.append(ToolCallInfo(name: name, result: nil))
+    }
+
+    /// Attaches a result to the most recent still-pending tool call in
+    /// the live turn — see ToolCallInfo's own note on why this matching
+    /// is safe (no parallel tool calls in this backend's ReAct loop).
+    func appendToolResult(_ content: String) {
+        guard let last = turns.last, last.isStreaming else { return }
+        guard let idx = turns[turns.count - 1].toolCalls.lastIndex(where: { $0.result == nil }) else { return }
+        turns[turns.count - 1].toolCalls[idx].result = content
     }
 
     /// Replaces the streaming turn's content with the backend's own

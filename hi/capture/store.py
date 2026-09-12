@@ -17,14 +17,16 @@ import re
 from pathlib import Path
 
 from hi.capture.schema import Event, Task, load_item
-from hi.config import VAULT_PATH
+import hi.config as config
 
-TASKS_DIR = VAULT_PATH / "hi" / "tasks"
+def tasks_dir():
+    return config.VAULT_PATH / "hi" / "tasks"
 
 # The old flat TODO list this replaces — migrated in automatically the
 # first time anything reads the tasks dir, then renamed so it can't be
 # migrated twice.
-_LEGACY_TODO_PATH = VAULT_PATH / "hi" / "todo.md"
+def _legacy_todo_path():
+    return config.VAULT_PATH / "hi" / "todo.md"
 _LEGACY_TASK_RE = re.compile(r"^- \[( |x)\] (.*)$")
 
 _migrated = False
@@ -35,9 +37,9 @@ def _migrate_legacy_todo() -> None:
     if _migrated:
         return
     _migrated = True
-    if not _LEGACY_TODO_PATH.exists():
+    if not _legacy_todo_path().exists():
         return
-    for line in _LEGACY_TODO_PATH.read_text().splitlines():
+    for line in _legacy_todo_path().read_text().splitlines():
         match = _LEGACY_TASK_RE.match(line)
         if not match:
             continue
@@ -46,7 +48,7 @@ def _migrate_legacy_todo() -> None:
             continue
         done = match.group(1) == "x"
         save(Task(text=text, status="done" if done else "pending", source_persona="butler"))
-    _LEGACY_TODO_PATH.rename(_LEGACY_TODO_PATH.with_name("todo.md.bak"))
+    _legacy_todo_path().rename(_legacy_todo_path().with_name("todo.md.bak"))
 
 
 def _load(path: Path) -> Task | Event | None:
@@ -54,13 +56,13 @@ def _load(path: Path) -> Task | Event | None:
 
 
 def save(item: Task | Event) -> Task | Event:
-    TASKS_DIR.mkdir(parents=True, exist_ok=True)
-    (TASKS_DIR / item.filename).write_text(item.to_markdown())
+    tasks_dir().mkdir(parents=True, exist_ok=True)
+    (tasks_dir() / item.filename).write_text(item.to_markdown())
     return item
 
 
 def delete(item_id: str) -> bool:
-    path = TASKS_DIR / f"{item_id}.md"
+    path = tasks_dir() / f"{item_id}.md"
     if not path.exists():
         return False
     path.unlink()
@@ -68,7 +70,7 @@ def delete(item_id: str) -> bool:
 
 
 def get(item_id: str) -> Task | Event | None:
-    path = TASKS_DIR / f"{item_id}.md"
+    path = tasks_dir() / f"{item_id}.md"
     if not path.exists():
         return None
     return _load(path)
@@ -79,10 +81,10 @@ def list_items(kind: str | None = None) -> list[Task | Event]:
     chronologically — see hi/capture/schema.py's id format). Runs the
     legacy-TODO migration first so a fresh vault still sees old tasks."""
     _migrate_legacy_todo()
-    if not TASKS_DIR.exists():
+    if not tasks_dir().exists():
         return []
     items = []
-    for path in sorted(TASKS_DIR.glob("*.md")):
+    for path in sorted(tasks_dir().glob("*.md")):
         item = _load(path)
         if item and (kind is None or item.kind == kind):
             items.append(item)

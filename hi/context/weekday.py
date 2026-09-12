@@ -13,14 +13,15 @@ from __future__ import annotations
 
 from datetime import date
 
-from hi.vault import KNOWLEDGE_DIR
+from hi.vault import knowledge_dir
 
-WEEKDAYS_DIR = KNOWLEDGE_DIR / "weekdays"
+def _weekdays_dir():
+    return knowledge_dir() / "weekdays"
 
 
 def todays_context_note() -> str | None:
     day_name = date.today().strftime("%A").lower()
-    path = WEEKDAYS_DIR / f"{day_name}.md"
+    path = _weekdays_dir() / f"{day_name}.md"
     if not path.exists():
         return None
     return path.read_text()

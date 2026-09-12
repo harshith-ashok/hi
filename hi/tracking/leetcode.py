@@ -27,10 +27,11 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from hi.browser import open_url
-from hi.config import VAULT_PATH
+import hi.config as config
 from hi.frontmatter import dump_frontmatter, parse_frontmatter
 
-LEETCODE_DIR = VAULT_PATH / "hi" / "tasks" / "leetcode"
+def _leetcode_dir():
+    return config.VAULT_PATH / "hi" / "tasks" / "leetcode"
 
 
 @dataclass(frozen=True)
@@ -85,14 +86,14 @@ _BY_SLUG = {p.slug: p for p in PROBLEM_BANK}
 
 
 def _log_path(day: date) -> Path:
-    return LEETCODE_DIR / f"{day.isoformat()}.md"
+    return _leetcode_dir() / f"{day.isoformat()}.md"
 
 
 def _all_logs() -> list[dict]:
-    if not LEETCODE_DIR.is_dir():
+    if not _leetcode_dir().is_dir():
         return []
     logs = []
-    for path in sorted(LEETCODE_DIR.glob("*.md")):
+    for path in sorted(_leetcode_dir().glob("*.md")):
         fields, _body = parse_frontmatter(path.read_text())
         fields["date"] = path.stem
         logs.append(fields)
@@ -178,7 +179,7 @@ def log_attempt(slug: str, solved: bool, time_spent_minutes: int | None = None, 
     if time_spent_minutes is not None:
         fields["time_spent_minutes"] = str(time_spent_minutes)
 
-    LEETCODE_DIR.mkdir(parents=True, exist_ok=True)
+    _leetcode_dir().mkdir(parents=True, exist_ok=True)
     path = _log_path(day)
     path.write_text(f"{dump_frontmatter(fields)}\n# {fields['title']}\n")
     return path

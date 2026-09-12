@@ -56,9 +56,10 @@ from hi.orchestrator.blackboard import checkpointer
 from hi.orchestrator.pending_actions import mark_orchestrated_active, mark_orchestrated_done
 from hi.orchestrator.planner import TaskSpec, plan_tasks
 from hi.orchestrator.subagent import build_subagent
-from hi.vault import CONVERSATIONS_DIR, with_frontmatter
+from hi.vault import conversations_dir, with_frontmatter
 
-RUNS_DIR = CONVERSATIONS_DIR / "runs"
+def _runs_dir():
+    return conversations_dir() / "runs"
 SCRATCH_ROOT = Path.home() / ".hi" / "scratch"
 MAX_CONCURRENT_MODEL_CALLS = 3  # more than this and the Ollama Cloud account chokes
 
@@ -206,7 +207,7 @@ def _write_run_log(
     did what, real tool calls made — so "the filesystem is the single
     source of truth" stays true for multi-agent runs too, not just
     single-turn ones."""
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    _runs_dir().mkdir(parents=True, exist_ok=True)
     lines = [f"# Orchestrated run — {run_id}", "", f"**Request:** {prompt}", "", "## Tasks"]
     for t in tasks:
         deps = ", ".join(t.depends_on) if t.depends_on else "(none — ran independently)"
@@ -221,7 +222,7 @@ def _write_run_log(
     lines.append(answer)
     content = "\n".join(lines)
 
-    path = RUNS_DIR / f"{run_id}.md"
+    path = _runs_dir() / f"{run_id}.md"
     path.write_text(with_frontmatter(content, ["hi", "orchestrated-run"]))
 
 
@@ -230,9 +231,9 @@ def latest_run_trace() -> str | None:
     run's own log note (run ids are timestamp-prefixed, so sorting by
     filename is already sorting by recency — no need to stat() every
     file). None if no orchestrated run has ever completed."""
-    if not RUNS_DIR.is_dir():
+    if not _runs_dir().is_dir():
         return None
-    runs = sorted(RUNS_DIR.glob("*.md"))
+    runs = sorted(_runs_dir().glob("*.md"))
     if not runs:
         return None
     return runs[-1].read_text()

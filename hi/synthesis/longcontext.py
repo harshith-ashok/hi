@@ -25,8 +25,8 @@ from langchain_core.tools import tool
 from hi.model_warmup import invoke_with_retry
 from hi.models import get_tier_model
 from hi.vault import (
-    CONVERSATIONS_DIR,
-    KNOWLEDGE_DIR,
+    conversations_dir,
+    knowledge_dir,
     list_conversations,
     list_notes,
     read_conversation,
@@ -68,7 +68,7 @@ def synthesize_across_vault(question: str, include_conversations: bool = False) 
     everything" / "find patterns across all my notes" style questions
     that a relevance-selecting retrieval step would wrongly narrow down.
     """
-    if not KNOWLEDGE_DIR.exists() and not CONVERSATIONS_DIR.exists():
+    if not knowledge_dir().exists() and not conversations_dir().exists():
         return "The vault has no notes or conversation logs yet — nothing to synthesize."
 
     sections = [_gather_notes()]

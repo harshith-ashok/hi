@@ -7,7 +7,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from hi.config import VAULT_PATH
+import hi.config as config
 
 TREE_CACHE_PATH = Path.home() / ".hi" / "tree_cache.md"
 
@@ -15,11 +15,11 @@ TREE_CACHE_PATH = Path.home() / ".hi" / "tree_cache.md"
 def refresh_tree_cache() -> None:
     """Regenerate ~/.hi/tree_cache.md from the vault. No-ops if `tree` isn't
     installed or the vault doesn't exist yet."""
-    if shutil.which("tree") is None or not VAULT_PATH.is_dir():
+    if shutil.which("tree") is None or not config.VAULT_PATH.is_dir():
         return
     result = subprocess.run(
         ["tree", "-L", "4"],
-        cwd=VAULT_PATH,
+        cwd=config.VAULT_PATH,
         capture_output=True,
         text=True,
     )

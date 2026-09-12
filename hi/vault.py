@@ -15,11 +15,21 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from hi.config import VAULT_PATH
+import hi.config as config
 from hi.frontmatter import with_frontmatter as _build_frontmatter
 
-KNOWLEDGE_DIR = VAULT_PATH / "hi" / "knowledge"
-CONVERSATIONS_DIR = VAULT_PATH / "hi" / "conversations"
+
+# Functions, not module-level constants, so a `POST /config` VAULT_PATH
+# change (hi/ipc/server.py) is picked up on the very next call instead
+# of needing a restart — reading `config.VAULT_PATH` live each time,
+# same `import hi.config as config` pattern hi/mcp_tools.py already uses
+# for the same reason.
+def knowledge_dir() -> Path:
+    return config.VAULT_PATH / "hi" / "knowledge"
+
+
+def conversations_dir() -> Path:
+    return config.VAULT_PATH / "hi" / "conversations"
 
 
 def _resolve_path(base_dir: Path, path: str) -> Path:
@@ -48,7 +58,7 @@ def create_note(path: str, content: str, due: str | None = None) -> str:
             represents something with a deadline — any vault note can
             declare one this way via frontmatter, no separate entry system.
     """
-    note_path = _resolve_path(KNOWLEDGE_DIR, path)
+    note_path = _resolve_path(knowledge_dir(), path)
     note_path.parent.mkdir(parents=True, exist_ok=True)
     note_path.write_text(with_frontmatter(content, ["hi"], due=due))
     return f"Created note '{path}'."
@@ -63,7 +73,7 @@ def append_note(path: str, content: str) -> str:
         path: Relative path for the note, e.g. "preferences.md".
         content: Markdown content to append.
     """
-    note_path = _resolve_path(KNOWLEDGE_DIR, path)
+    note_path = _resolve_path(knowledge_dir(), path)
     note_path.parent.mkdir(parents=True, exist_ok=True)
     if not note_path.exists():
         note_path.write_text(with_frontmatter("", ["hi"]))
@@ -81,7 +91,7 @@ def read_note(path: str) -> str:
     Args:
         path: Relative path for the note, e.g. "ideas.md".
     """
-    note_path = _resolve_path(KNOWLEDGE_DIR, path)
+    note_path = _resolve_path(knowledge_dir(), path)
     if not note_path.exists():
         return f"Note '{path}' does not exist."
     return note_path.read_text()
@@ -90,23 +100,23 @@ def read_note(path: str) -> str:
 @tool
 def list_notes() -> str:
     """List all existing notes inside the vault's hi/knowledge/ folder."""
-    KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
-    notes = sorted(str(p.relative_to(KNOWLEDGE_DIR)) for p in KNOWLEDGE_DIR.rglob("*.md"))
+    knowledge_dir().mkdir(parents=True, exist_ok=True)
+    notes = sorted(str(p.relative_to(knowledge_dir())) for p in knowledge_dir().rglob("*.md"))
     if not notes:
         return "No notes exist yet."
     return "\n".join(notes)
 
 
 def _resolve_conversation_path(conversation_date: str) -> Path:
-    return _resolve_path(CONVERSATIONS_DIR, f"{conversation_date}.md")
+    return _resolve_path(conversations_dir(), f"{conversation_date}.md")
 
 
 @tool
 def list_conversations() -> str:
     """List the dates of all logged conversations inside the vault's
     hi/conversations/ folder."""
-    CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
-    dates = sorted(p.stem for p in CONVERSATIONS_DIR.glob("*.md"))
+    conversations_dir().mkdir(parents=True, exist_ok=True)
+    dates = sorted(p.stem for p in conversations_dir().glob("*.md"))
     if not dates:
         return "No conversation logs exist yet."
     return "\n".join(dates)
@@ -128,8 +138,8 @@ def read_conversation(date: str) -> str:
 def log_conversation(persona: str, user_message: str, assistant_message: str) -> None:
     """Append a user/assistant exchange to today's conversation log,
     tagging it with the persona that produced it."""
-    CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
-    log_path = CONVERSATIONS_DIR / f"{date.today().isoformat()}.md"
+    conversations_dir().mkdir(parents=True, exist_ok=True)
+    log_path = conversations_dir() / f"{date.today().isoformat()}.md"
     if not log_path.exists():
         log_path.write_text(with_frontmatter("", ["hi", "conversation"]))
     with log_path.open("a") as f:

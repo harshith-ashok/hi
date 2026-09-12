@@ -55,6 +55,12 @@ log = logging.getLogger(__name__)
 _PER_SERVER_TIMEOUT = 30.0
 
 _cached_tools: list[BaseTool] | None = None
+# Per-server grouping of the same cached tools (TODO.md Phase 27's "agent
+# assigned to an MCP server"): lets a caller scope an agent to just one
+# server's tools instead of every configured server's at once. Built
+# alongside _cached_tools from the same single fetch, never a second set
+# of live connections.
+_cached_tools_by_server: dict[str, list[BaseTool]] | None = None
 
 
 def _sync_wrap(async_tool: BaseTool) -> BaseTool:
@@ -129,6 +135,16 @@ def _server_configs() -> dict:
             "httpx_client_factory": _insecure_local_client,
         }
 
+    if config.N8N_MCP_URL and config.N8N_MCP_TOKEN:
+        # n8n's own config shape uses "type": "http" — the same
+        # streamable-HTTP transport Obsidian's entry above already uses,
+        # just a different server-side plugin naming it differently.
+        servers["n8n"] = {
+            "url": config.N8N_MCP_URL,
+            "headers": {"Authorization": f"Bearer {config.N8N_MCP_TOKEN}"},
+            "transport": "streamable_http",
+        }
+
     return servers
 
 
@@ -149,27 +165,44 @@ def _run_sync(coro):
         return pool.submit(asyncio.run, coro).result()
 
 
-async def _fetch_tools() -> list[BaseTool]:
+async def _fetch_tools_by_server() -> dict[str, list[BaseTool]]:
     configs = _server_configs()
-    tools: list[BaseTool] = []
+    by_server: dict[str, list[BaseTool]] = {}
     for name, server_config in configs.items():
         try:
             client = MultiServerMCPClient({name: server_config})
             server_tools = await asyncio.wait_for(
                 client.get_tools(), timeout=_PER_SERVER_TIMEOUT
             )
-            tools.extend(server_tools)
+            by_server[name] = server_tools
         except Exception as e:
             log.warning(f"Skipping MCP server '{name}': {e}")
-    return tools
+    return by_server
+
+
+def _ensure_cached() -> None:
+    global _cached_tools, _cached_tools_by_server
+    if _cached_tools_by_server is None:
+        raw_by_server = _run_sync(_fetch_tools_by_server())
+        _cached_tools_by_server = {
+            name: [_sync_wrap(t) for t in tools] for name, tools in raw_by_server.items()
+        }
+        _cached_tools = [t for tools in _cached_tools_by_server.values() for t in tools]
 
 
 def get_mcp_tools() -> list[BaseTool]:
     """Return every available MCP tool, from every configured and
     reachable server, sync-wrapped and cached — fetched once per process,
     not once per turn."""
-    global _cached_tools
-    if _cached_tools is None:
-        raw_tools = _run_sync(_fetch_tools())
-        _cached_tools = [_sync_wrap(t) for t in raw_tools]
+    _ensure_cached()
     return _cached_tools
+
+
+def get_mcp_tools_by_server() -> dict[str, list[BaseTool]]:
+    """Same live-fetched, cached tools as get_mcp_tools(), grouped by
+    which MCP server each came from — lets hi/agents_ondemand.py scope
+    an on-demand agent to just the one MCP server the user assigned it,
+    instead of every configured server's tools at once. Only servers
+    that actually connected successfully appear as keys."""
+    _ensure_cached()
+    return _cached_tools_by_server

@@ -23,9 +23,10 @@ from langchain_core.tools import tool
 from hi.agents.term.files import _SKIP_DIRS, _base_dir, _resolve
 from hi.model_warmup import invoke_with_retry
 from hi.models import get_tier_model
-from hi.vault import KNOWLEDGE_DIR, with_frontmatter
+from hi.vault import knowledge_dir, with_frontmatter
 
-PROJECTS_DIR = KNOWLEDGE_DIR / "projects"
+def _projects_dir():
+    return knowledge_dir() / "projects"
 
 _README_NAMES = ("README.md", "README", "readme.md", "Readme.md")
 _MANIFEST_NAMES = (
@@ -111,7 +112,7 @@ def save_project_to_vault(directory: str | None = None, name: str | None = None)
     if not summary:
         return "Failed to generate a project summary — model returned an empty reply."
 
-    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
-    note_path = PROJECTS_DIR / f"{_slugify(project_name)}.md"
+    _projects_dir().mkdir(parents=True, exist_ok=True)
+    note_path = _projects_dir() / f"{_slugify(project_name)}.md"
     note_path.write_text(with_frontmatter(summary, ["hi", "project"]))
     return f"Saved project note: hi/knowledge/projects/{note_path.name}"

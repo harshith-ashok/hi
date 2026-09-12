@@ -21,10 +21,11 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from hi.config import VAULT_PATH
+import hi.config as config
 from hi.frontmatter import dump_frontmatter, parse_frontmatter
 
-PIPELINES_DIR = VAULT_PATH / "hi" / "tasks" / "pipelines"
+def _pipelines_dir():
+    return config.VAULT_PATH / "hi" / "tasks" / "pipelines"
 _META_STEM = "_meta"
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -35,7 +36,7 @@ def _slugify(text: str) -> str:
 
 
 def _pipeline_dir(name: str) -> Path:
-    return PIPELINES_DIR / _slugify(name)
+    return _pipelines_dir() / _slugify(name)
 
 
 def _meta_path(name: str) -> Path:

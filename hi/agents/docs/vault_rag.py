@@ -18,22 +18,23 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 
-from hi.config import VAULT_PATH
+import hi.config as config
 from hi.model_warmup import invoke_with_retry
+from hi.models import fast_variant
 from hi.note_preview import note_preview
 from hi.tree_cache import read_tree_cache, refresh_tree_cache
-from hi.vault import CONVERSATIONS_DIR
+from hi.vault import conversations_dir
 
 NO_NOTES_MESSAGE = "No notes exist in the vault yet."
 
 
 def _is_citable(path: Path) -> bool:
-    return not path.is_relative_to(CONVERSATIONS_DIR)
+    return not path.is_relative_to(conversations_dir())
 
 
 def _resolve_vault_path(path: str) -> Path:
-    resolved = (VAULT_PATH / path).resolve()
-    if not resolved.is_relative_to(VAULT_PATH.resolve()) or not _is_citable(resolved):
+    resolved = (config.VAULT_PATH / path).resolve()
+    if not resolved.is_relative_to(config.VAULT_PATH.resolve()) or not _is_citable(resolved):
         raise ValueError(f"Invalid path: {path}")
     return resolved
 
@@ -43,7 +44,7 @@ def list_vault_notes() -> str:
     """List every Markdown note in the user's Obsidian vault (excluding
     this assistant's own conversation logs)."""
     notes = sorted(
-        str(p.relative_to(VAULT_PATH)) for p in VAULT_PATH.rglob("*.md") if _is_citable(p)
+        str(p.relative_to(config.VAULT_PATH)) for p in config.VAULT_PATH.rglob("*.md") if _is_citable(p)
     )
     if not notes:
         return NO_NOTES_MESSAGE
@@ -122,7 +123,12 @@ def build_vault_rag_graph(note_agent, model: BaseChatModel) -> CompiledStateGrap
         # citation-only RAG assistant" per this file's own docstring —
         # would have always reported "no relevant notes found" regardless
         # of what actually exists in the vault.
-        reply = invoke_with_retry(model, [HumanMessage(selection_prompt)])
+        # fast_variant(model): same plain path-selection judgment call
+        # as hi/memory_graph.py's identical step — reasoning on adds
+        # several seconds to a call that doesn't need visible chain-of-
+        # thought, and does it before docs even starts answering. See
+        # hi/memory_graph.py's own comment for the measured motive.
+        reply = invoke_with_retry(fast_variant(model), [HumanMessage(selection_prompt)])
         relevant_notes = [path for path in known_notes if path in reply]
         return {"relevant_notes": relevant_notes}
 

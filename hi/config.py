@@ -66,6 +66,11 @@ OPUS_MODEL = _env.get("OPUS_MODEL", "nemotron-3-ultra:cloud")
 # failing, so `hi` works the same with or without them configured.
 GITHUB_PERSONAL_ACCESS_TOKEN = _env.get("GITHUB_PERSONAL_ACCESS_TOKEN") or None
 OBSIDIAN_REST_API_KEY = _env.get("OBSIDIAN_REST_API_KEY") or None
+# n8n's own MCP server needs two values, not one credential — the
+# instance's own URL (self-hosted, varies per user, unlike Obsidian's
+# fixed loopback address) alongside its bearer token.
+N8N_MCP_URL = _env.get("N8N_MCP_URL") or None
+N8N_MCP_TOKEN = _env.get("N8N_MCP_TOKEN") or None
 
 # hi/perception/diff_watch.py — an interval-based screenshot-diff watcher,
 # a genuinely different privacy posture than every other perception tool

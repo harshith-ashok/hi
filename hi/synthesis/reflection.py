@@ -29,9 +29,13 @@ from langchain_core.tools import tool
 
 from hi.model_warmup import invoke_with_retry
 from hi.models import get_tier_model
-from hi.vault import CONVERSATIONS_DIR, KNOWLEDGE_DIR, with_frontmatter
+from hi.vault import conversations_dir, knowledge_dir, with_frontmatter
 
-PREFERENCES_PATH = KNOWLEDGE_DIR / "preferences.md"
+
+def _preferences_path():
+    return knowledge_dir() / "preferences.md"
+
+
 _LOOKBACK_DAYS = 7
 _MAX_LOG_CHARS = 40_000  # a real ceiling on what goes into the prompt, not a guess
 
@@ -41,7 +45,7 @@ _NOTHING_MARKER = "NOTHING"
 def _recent_conversation_text(day: date, lookback_days: int = _LOOKBACK_DAYS) -> str:
     parts = []
     for i in range(lookback_days):
-        log_path = CONVERSATIONS_DIR / f"{(day - timedelta(days=i)).isoformat()}.md"
+        log_path = conversations_dir() / f"{(day - timedelta(days=i)).isoformat()}.md"
         if log_path.exists():
             parts.append(log_path.read_text())
     text = "\n\n".join(parts)
@@ -66,7 +70,7 @@ def propose_preferences(day: date | None = None) -> str | None:
     if not conversation_text.strip():
         return None
 
-    existing = PREFERENCES_PATH.read_text() if PREFERENCES_PATH.exists() else "(empty)"
+    existing = _preferences_path().read_text() if _preferences_path().exists() else "(empty)"
 
     prompt = (
         "Below are this week's real conversation logs across all "
@@ -104,11 +108,11 @@ def run_weekly_reflection(day: date | None = None) -> bool:
     if not proposal:
         return False
 
-    KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
-    if not PREFERENCES_PATH.exists():
-        PREFERENCES_PATH.write_text(with_frontmatter("", ["hi"]))
-    with PREFERENCES_PATH.open("a") as f:
-        if PREFERENCES_PATH.stat().st_size > 0:
+    knowledge_dir().mkdir(parents=True, exist_ok=True)
+    if not _preferences_path().exists():
+        _preferences_path().write_text(with_frontmatter("", ["hi"]))
+    with _preferences_path().open("a") as f:
+        if _preferences_path().stat().st_size > 0:
             f.write("\n")
         f.write(f"## Proposed from the week of {day.isoformat()} (auto-reflection)\n\n{proposal}\n")
     return True

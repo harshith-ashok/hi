@@ -51,6 +51,15 @@ enum BackendEvent {
     /// producing it right now).
     case pendingAction(id: String, description: String)
     case pendingActionResolved(id: String, approved: Bool)
+    /// The model's own real reasoning content, streamed live
+    /// (`THINKING_START`/`THINKING_TEXT_MESSAGE_CONTENT`/`THINKING_END`
+    /// — added to `hi/agui_adapter.py` alongside the web frontend's own
+    /// support for this; this app just hadn't been updated to match
+    /// yet). `thinkingStart`/`thinkingEnd` bracket a block; `.delta`
+    /// carries each chunk of the actual text in between.
+    case thinkingStart
+    case thinkingDelta(String)
+    case thinkingEnd
     case decodeError(String)
 }
 
@@ -225,6 +234,26 @@ struct BackendClient {
         return obj["note"] as? String
     }
 
+    /// POST /tts — synthesizes `text` via Kokoro (hi/tts_kokoro.py) and
+    /// returns real WAV audio bytes, or nil on failure (SpeechOutput
+    /// falls back to silence rather than crashing on a synthesis
+    /// hiccup). Replaces the on-device AVSpeechSynthesizer voice, per
+    /// explicit request for TTS that "sounds actually like a human."
+    func synthesizeSpeech(text: String) async -> Data? {
+        var request = URLRequest(url: baseURL.appendingPathComponent("tts"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["text": text])
+        request.timeoutInterval = 30
+        guard
+            let (data, response) = try? await URLSession.shared.data(for: request),
+            let http = response as? HTTPURLResponse, http.statusCode == 200
+        else {
+            return nil
+        }
+        return data
+    }
+
     /// POST /pending/{id}/approve|deny. Returns whether the server
     /// accepted it (a 204) — false for an already-resolved/unknown id,
     /// or any connection failure.
@@ -304,6 +333,12 @@ struct BackendClient {
             return Self.parseCustomEvent(obj)
         case "RUN_STARTED":
             return .runStarted
+        case "THINKING_START":
+            return .thinkingStart
+        case "THINKING_TEXT_MESSAGE_CONTENT":
+            return .thinkingDelta(obj["delta"] as? String ?? "")
+        case "THINKING_END":
+            return .thinkingEnd
         case "TEXT_MESSAGE_CONTENT":
             return .textDelta(obj["delta"] as? String ?? "", subagentID: obj["subagentRunId"] as? String)
         case "TOOL_CALL_START":

@@ -26,9 +26,10 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from hi.vault import KNOWLEDGE_DIR, with_frontmatter
+from hi.vault import knowledge_dir, with_frontmatter
 
-WIDGETS_DIR = KNOWLEDGE_DIR / "widgets"
+def _widgets_dir():
+    return knowledge_dir() / "widgets"
 
 # A vague "show me that again"-style query has no real keyword to search
 # on — these all mean "the most recent one", not "search for this word".
@@ -45,10 +46,10 @@ def _slugify(uri: str) -> str:
 
 
 def save_widget(uri: str, mime_type: str, html: str) -> Path:
-    """Persists a detected widget to `WIDGETS_DIR`, overwriting any
+    """Persists a detected widget to `_widgets_dir()`, overwriting any
     earlier save for the same `uri`. Returns the note's path."""
-    WIDGETS_DIR.mkdir(parents=True, exist_ok=True)
-    path = WIDGETS_DIR / f"{_slugify(uri)}.md"
+    _widgets_dir().mkdir(parents=True, exist_ok=True)
+    path = _widgets_dir() / f"{_slugify(uri)}.md"
     content = (
         f"# MCP-UI widget: {uri}\n\n"
         f"- uri: {uri}\n"
@@ -87,9 +88,9 @@ def recall_widget(query: str) -> dict | str:
             saved widget; a specific one is matched against saved
             widgets' own URIs.
     """
-    if not WIDGETS_DIR.is_dir():
+    if not _widgets_dir().is_dir():
         return "No widgets have been saved yet."
-    saved = sorted(WIDGETS_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    saved = sorted(_widgets_dir().glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not saved:
         return "No widgets have been saved yet."
 

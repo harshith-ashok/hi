@@ -10,6 +10,7 @@
 import { computed, ref, watch } from 'vue'
 import type { TraceSegment } from '../types'
 import { resolvePendingAction } from '../backend'
+import { renderMarkdown } from '../lib/markdown'
 
 const props = defineProps<{ segment: TraceSegment }>()
 
@@ -77,7 +78,7 @@ async function resolve(id: string, approve: boolean) {
       <span v-if="segment.status === 'started' || segment.status === 'retrying'" class="pulse"></span>
       <span v-if="segment.status === 'retrying'" class="retry-note">retrying at a higher tier…</span>
     </div>
-    <div v-if="segment.text" class="block-body subagent-text">{{ segment.text }}</div>
+    <div v-if="segment.text" class="block-body subagent-text markdown" v-html="renderMarkdown(segment.text)"></div>
   </div>
 
   <div v-else-if="segment.kind === 'pending'" class="block pending">
@@ -92,7 +93,7 @@ async function resolve(id: string, approve: boolean) {
     </div>
   </div>
 
-  <div v-else class="text-segment">{{ segment.text }}</div>
+  <div v-else class="text-segment markdown" v-html="renderMarkdown(segment.text)"></div>
 </template>
 
 <style scoped>
@@ -199,11 +200,8 @@ async function resolve(id: string, approve: boolean) {
 }
 
 .subagent-text {
-  font-family: var(--sans);
   font-size: 13px;
   color: var(--text-dim);
-  line-height: 1.5;
-  white-space: pre-wrap;
 }
 
 .pending {
@@ -260,11 +258,7 @@ async function resolve(id: string, approve: boolean) {
   flex-shrink: 0;
 }
 
-.text-segment {
-  font-family: var(--sans);
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--text);
-  white-space: pre-wrap;
-}
+/* .text-segment's own typography now comes from the global .markdown
+   class (lib/markdown.ts's rendered output) — no scoped override left
+   to duplicate/conflict with it. */
 </style>

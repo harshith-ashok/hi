@@ -9,6 +9,19 @@ code fences and pipe-table rows are stripped from what could be spoken at
 all. If nothing speakable is left, no spoken summary is produced — the
 app should show text silently rather than force something misleading to
 be read aloud.
+
+**Always rewritten, not just condensed when long** (reported live: a
+mechanical action confirmation like "I opened www.youtube.com in Safari"
+was read completely literally — including the URL, dot by dot — because
+it was short enough to skip the old length-gated model call entirely).
+`SHORT_ANSWER_MAX_CHARS` used to mean "skip rewriting under this length";
+it's now only a fallback truncation if the rewrite call itself fails, and
+the rewrite always runs through get_tier_model_fast() (no reasoning) —
+this is a plain rewrite, not a judgment call that benefits from visible
+chain-of-thought, and reasoning-on here would add several seconds of
+dead air before TTS starts speaking, same latency cost this project has
+already found and fixed for other single-purpose classification/rewrite
+calls (hi/memory_graph.py, hi/router.py's classify()).
 """
 
 from __future__ import annotations
@@ -18,14 +31,14 @@ import re
 from langchain_core.messages import HumanMessage
 
 from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model
+from hi.models import get_tier_model_fast
 
 _CODE_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
 _WHITESPACE_RE = re.compile(r"\s+")
 
-# Below this length, the cleaned text is just spoken as-is — no model
-# call needed for an answer that's already a sentence or two.
+# Fallback truncation length if the rewrite call fails outright — not a
+# "skip rewriting" threshold anymore (see module docstring).
 SHORT_ANSWER_MAX_CHARS = 220
 
 
@@ -41,14 +54,18 @@ def make_spoken_summary(full_text: str) -> str | None:
     cleaned = _strip_unspeakable(full_text)
     if not cleaned:
         return None
-    if len(cleaned) <= SHORT_ANSWER_MAX_CHARS:
-        return cleaned
 
-    model = get_tier_model("haiku")
+    model = get_tier_model_fast("haiku")
     prompt = (
-        "Condense the following into ONE short, natural spoken sentence a "
-        "voice assistant could say aloud — no markdown, no code, no lists, "
-        "just plain spoken English summarizing the key point:\n\n"
+        "Rewrite the following into ONE short, natural sentence a voice "
+        "assistant would actually say out loud — describe what happened "
+        "or answer the question in plain spoken English, in your own "
+        "words, not a literal reading of the text. No markdown, no code, "
+        "no lists. Never read a URL, file path, or raw technical string "
+        "literally — say what it means instead (e.g. \"YouTube is now "
+        "open\", not \"I opened www dot youtube dot com\"; \"Wi-Fi is "
+        "off\", not \"toggle_wifi returned false\"). Reply with only the "
+        "sentence, nothing else:\n\n"
         f"{cleaned[:2000]}"
     )
     summary = invoke_with_retry(model, [HumanMessage(prompt)]).strip()

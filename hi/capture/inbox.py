@@ -10,19 +10,20 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from hi.config import VAULT_PATH
+import hi.config as config
 
-INBOX_DIR = VAULT_PATH / "hi" / "tasks" / "inbox"
+def _inbox_dir():
+    return config.VAULT_PATH / "hi" / "tasks" / "inbox"
 
 
 def write_inbox_item(raw_text: str) -> Path:
-    INBOX_DIR.mkdir(parents=True, exist_ok=True)
-    path = INBOX_DIR / f"{datetime.now().strftime('%Y-%m-%dT%H-%M-%S')}-{uuid.uuid4().hex[:6]}.md"
+    _inbox_dir().mkdir(parents=True, exist_ok=True)
+    path = _inbox_dir() / f"{datetime.now().strftime('%Y-%m-%dT%H-%M-%S')}-{uuid.uuid4().hex[:6]}.md"
     path.write_text(raw_text)
     return path
 
 
 def list_inbox_items() -> list[Path]:
-    if not INBOX_DIR.is_dir():
+    if not _inbox_dir().is_dir():
         return []
-    return sorted(INBOX_DIR.glob("*.md"))
+    return sorted(_inbox_dir().glob("*.md"))

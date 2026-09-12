@@ -12,6 +12,62 @@ sliver (the original TODO.md Phase 5 spec) into a centered, Spotlight-like
 panel you summon with a hotkey and can type *or* dictate into — see
 "The Spotlight redesign" below for what changed and why.
 
+## Architecture, as it stands today
+
+This section exists because the file below is a chronological build log
+(each section is what changed *at that point*, including corrections to
+earlier sections) — useful history, but not a quick way to answer "how
+does this actually work right now." This is that quick answer.
+
+**Three different front ends, one shared backend** — none of them
+duplicate `hi`'s actual agent/tool/memory/vault logic, they each just
+render it differently:
+
+- **Terminal** (`hi`, `hi --term`/`--butler`/`--docs`/`--web`) —
+  `hi/repl.py`'s own REPL, talking to the in-process agent directly.
+- **This native app** (`hi Voice.app`) — talks to `hi/ipc/server.py`
+  (`hi --voice-daemon`) over loopback HTTP (`127.0.0.1:8765`), via
+  `URLSession`.
+- **A web frontend** (`../frontend/`, added after this app existed — see
+  its own README) — a Vue app that talks to the exact same
+  `hi --voice-daemon` process, from a browser instead of `URLSession`.
+  `hi/cors.py` exists specifically because of this: a browser enforces
+  CORS and `URLSession` doesn't, so this app never needed it. Scoped to
+  the frontend's one known dev origin, not a wildcard — this server
+  being loopback-only and otherwise unreachable is a real property
+  worth not quietly giving up just to let a browser talk to it.
+
+**Streaming is AG-UI's own typed event schema**
+(`hi/agui_adapter.py`, the `ag-ui-protocol` SDK) over that same HTTP
+server for both GUI clients — real `RUN_STARTED`/`TEXT_MESSAGE_*`/
+`TOOL_CALL_*`/`THINKING_*`/`SUBAGENT_*`/`RUN_ERROR`/`RUN_FINISHED`
+events, plus a small set of this project's own `CUSTOM` events
+(`persona_selected`, `spoken_summary`, `mcp_ui_widget`, `pending_action`/
+`pending_action_resolved`) layered on top — not a bespoke wire format
+either client invented independently. Concretely, that means this app
+and the web frontend render the *same real events* — the model's own
+live reasoning content, real tool calls with their actual arguments and
+results, parallel subagents spinning up during an orchestrated run — each
+in its own native rendering (SwiftUI here, Vue there), from one shared
+stream. **This app's own `THINKING_*` handling was added in the same
+session as the web frontend's** — the backend supported it first and
+this app hadn't caught up yet; closed that gap rather than leaving it
+undocumented (`BackendClient.swift`'s `.thinkingStart`/`.thinkingDelta`/
+`.thinkingEnd`, `AppState.swift`'s `Turn.thinkingText`/
+`isThinkingActive`, rendered via `ContentView.swift`'s
+`ThinkingDisclosure` — auto-expanded while live, collapses to a small
+tappable "thought" label once the real answer starts, same behavior the
+terminal's own dimmed-prefix thinking output and the web frontend's
+collapsible block both already have).
+
+**Also shared, but backend-only** (no UI here — see `../frontend/`'s own
+README for what these back): `hi/dashboard.py`'s real system-vitals/
+vault-stats/task-tracking endpoints, `POST /capture` (writes into the
+same untriaged inbox the global hotkey uses), and `GET /trace`. Nothing
+in this app currently surfaces them; they exist because the web
+frontend's own home-dashboard redesign needed real data behind it, not
+fabricated placeholders.
+
 ## What's built
 
 - **Backend IPC layer** (`hi/ipc/`, Python side): `hi --voice-daemon`
@@ -333,6 +389,98 @@ diverging chat implementation.
   the same backend, not a replacement for the Python side, matching the
   explicit "don't remove the agent" instruction.
 
+## Closing the thinking-event gap with the web frontend
+
+Found while writing the "Architecture" section above, not before: building
+real Markdown rendering and a home dashboard for `../frontend/` (its own
+README has the details) added `THINKING_*` event support to
+`hi/agui_adapter.py` — surfacing a reasoning model's actual live thinking
+content, not just its final answer — but only the web frontend's own
+parser was updated to use it. This app's `BackendClient.swift` silently
+dropped those events into its existing `default: return nil` case (a
+real, known-but-unhandled AG-UI event type, its own documented, correct
+behavior for *that* — but wrong here, since this wasn't a deliberate "not
+rendered yet," it was a parity gap nobody had come back to close).
+
+Closed it the same session, not left as a documented-but-unfixed
+asymmetry: `BackendEvent` gained `.thinkingStart`/`.thinkingDelta`/
+`.thinkingEnd`; `AppState.swift`'s `Turn` gained `thinkingText`/
+`isThinkingActive`; `ContentView.swift`'s new `ThinkingDisclosure`
+renders it — auto-expanded while live (an amber dot + "thinking…"),
+collapsing to a small tappable "thought" label once the real answer
+starts, matching both the terminal's own dimmed-prefix thinking output
+and the web frontend's own collapsible block. `swift build` clean on the
+first attempt; packaged app relaunched and confirmed stable (no crash
+reports) against the real running `hi --voice-daemon`.
+
+## Tool-call transparency in the Processing state
+
+`BLOCKERS.md` flagged this app's `AppDelegate.swift` as discarding every
+`TOOL_CALL_START`/`TOOL_CALL_RESULT` AG-UI event with a bare `break` —
+correct at the time it was written, but the data was already streaming
+over the same connection the web frontend uses to render its own trace
+panel; this app just never rendered it. Same shape as the thinking-event
+gap above: not a backend change, a UI change reusing data that already
+flowed.
+
+`AppState.swift` gained `ToolCallInfo` (name + an optional result — nil
+while a call is still in flight) and `Turn.toolCalls`; `AppDelegate.swift`
+now calls `state.beginToolCall(name:)`/`state.appendToolResult(content:)`
+instead of discarding the events; `ContentView.swift`'s new
+`ToolCallList` renders each call as a "→ tool_name" line (an amber dot
+while pending, same visual language as `PendingActionCard`), tappable
+once it resolves to expand its raw result inline — same disclosure
+pattern as `ThinkingDisclosure`. `MainChatPane.swift` (the full-window
+chat surface) reuses the same `TurnRow`, so it renders correctly there
+too with no separate change needed. `swift build` clean on the first
+attempt.
+
+## Real neural TTS, replacing AVSpeechSynthesizer
+
+Per explicit request ("fix the TTS... I want something that sounds
+actually like a human, maybe even use kokoro"). Confirmed the app's own
+voice actually came from `SpeechOutput.swift`'s `AVSpeechSynthesizer`
+(Apple's on-device system voice), not `hi/tts.py`'s `SpeechQueue` — that
+file's `say`-based queue is used by the terminal REPL's own voice mode
+and `hi/wake.py`, not this app, so fixing it wouldn't have changed
+anything the app actually speaks with.
+
+Real architecture change, not a parameter tweak: the backend now does the
+synthesis. New `hi/tts_kokoro.py` (Kokoro-82M, `hexgrad/Kokoro-82M`, a
+real local neural TTS model — one-time HuggingFace download, fully local
+inference after) + `POST /tts` (`hi/ipc/server.py`) returning real WAV
+bytes. `SpeechOutput.swift` rewritten: fetches audio via
+`BackendClient.synthesizeSpeech(text:)` and plays it with
+`AVAudioPlayer` instead of asking the OS to speak the text itself — same
+public API (`speak(_:)`/`stopSpeaking()`/`isSpeaking`) so `AppDelegate`
+barely changed (`SpeechOutput` now needs a `BackendClient` reference,
+constructed as `lazy var` since a class's plain stored-property
+defaults can't reference an earlier one). Barge-in still works: a
+`generation` counter invalidates any in-flight fetch from a superseded
+`speak()` call, so a stale network response can't start playing audio
+after the user already asked for silence.
+
+Live-verified at every layer: `synthesize_wav()` standalone (real WAV,
+played via `afplay`), `POST /tts` against the running daemon (0.47s warm
+for a short sentence after the first, ~5s, call — model loading is the
+one-time cost, not per-request), `swift build` clean, and the packaged
+release app (`scripts/build_release.sh`) launches and stays stable with
+no crash. Left at `voice_companion/dist/hi Voice.app` rather than
+silently overwritten into `/Applications/hi.app` — that's a deliberate
+manual step `build_release.sh`'s own output already asks for (dragging a
+fresh build in retriggers macOS's Accessibility/Mic/Speech permission
+prompts, per this file's own "Why two scripts" section below — worth
+doing when you're ready for that, not silently on your behalf).
+
+Companion fix, same complaint, different cause: `hi/ipc/spoken_summary.py`
+used to skip its own rewrite step entirely for anything under 220
+characters — exactly why a mechanical answer like "I opened
+www.youtube.com in Safari" reached TTS completely unrephrased, URL read
+literally. It now always rewrites (via `get_tier_model_fast()`, so this
+doesn't cost reasoning-latency either), and the prompt explicitly asks
+for what happened in plain spoken words, never a literal URL/path
+reading — "YouTube is now open," not the sentence above.
+
 ## What's deliberately not built
 
 - **Wake-word activation.** TODO.md names Porcupine as an example engine
@@ -347,9 +495,8 @@ diverging chat implementation.
   — TODO.md allows either "silence detection or explicit stop." Automatic
   end-of-utterance detection remains separate, non-trivial scope
   intentionally left for later.
-- **Full agent-step transparency in the Processing state.** TODO.md's own
-  "Open decisions" flags this as unresolved. Still the simplified side:
-  one line per persona/tier pick, not a live tool-call log.
+- Full agent-step transparency in the Processing state was flagged here
+  as unresolved — **built since**, see "Tool-call transparency" below.
 
 ## What actually got tested, and what didn't
 
