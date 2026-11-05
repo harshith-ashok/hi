@@ -24,6 +24,8 @@ Run with: hi --voice-daemon
 from __future__ import annotations
 
 import json
+import os
+from urllib.parse import parse_qs
 import shutil
 import threading
 import time
@@ -35,6 +37,7 @@ from ag_ui.core import events as ag
 from ag_ui.encoder import EventEncoder
 
 import hi.config as config
+from hi import llm
 from hi.agents.term.background_tasks import get_process, list_processes, stop_process
 from hi.agents_ondemand import answer_questions, create_run, get_run, list_presets, list_runs
 from hi.agui_adapter import stream_agent_as_agui, stream_orchestrated_as_agui_sync
@@ -69,7 +72,11 @@ from hi.vault import list_conversations, log_conversation, read_conversation
 _CONFIG_FIELDS = (
     "VAULT_PATH", "BUTLER_MODEL", "DOCS_MODEL", "WEB_MODEL", "TERM_MODEL",
     "HAIKU_MODEL", "SONNET_MODEL", "OPUS_MODEL", "VISION_MODEL",
+    "AI_MODE", "OLLAMA_HOST", "TAILSCALE_OLLAMA_URL",
 )
+# Accepted on POST /config but never echoed back by GET (reported only as
+# `<NAME>_SET: bool`) — same rule as the MCP credentials.
+_WRITE_ONLY_FIELDS = ("OPENROUTER_API_KEY",)
 
 # Tier used when the client forces a specific persona (the panel's tab
 # row) instead of letting classify_with_plan() pick one — "typical,
@@ -81,7 +88,7 @@ _CONFIG_FIELDS = (
 # asking NOT to have the request decomposed across several.
 _FORCED_PERSONA_TIER = "sonnet"
 
-HOST = "127.0.0.1"
+HOST = os.environ.get("HI_HOST", "127.0.0.1")  # 0.0.0.0 inside the container; the compose file publishes it loopback-only
 DEFAULT_PORT = 8765
 
 # Cached per (persona, tier, model_name), same as hi/repl.py's
@@ -94,13 +101,13 @@ DEFAULT_PORT = 8765
 # live while wiring up config hot-reload (hi/models.py's tier_models()
 # already re-resolves per call; this cache would have silently
 # undermined that one level up if left keyed on tier alone).
-_agent_cache: dict[tuple[str, str, str], object] = {}
+_agent_cache: dict[tuple[str, str, str, str], object] = {}
 _cache_lock = threading.Lock()
 
 
 def _get_agent(persona_name: str, tier: str):
     model = get_tier_model(tier)
-    key = (persona_name, tier, model.model)
+    key = (persona_name, tier, llm.model_name(model), llm.signature())
     with _cache_lock:
         if key not in _agent_cache:
             _agent_cache[key] = get_agent_builder(persona_name)(model)
@@ -108,6 +115,16 @@ def _get_agent(persona_name: str, tier: str):
 
 
 def stream_query_as_agui(text: str, forced_persona: str | None = None):
+    """Wraps `_stream_query_as_agui` so a failure while setting up the turn
+    (no OpenRouter key, unreachable Ollama, missing model) reaches the client
+    as a RUN_ERROR event instead of a silently dropped connection."""
+    try:
+        yield from _stream_query_as_agui(text, forced_persona)
+    except Exception as e:
+        yield ag.RunErrorEvent(message=llm.friendly_error(e))
+
+
+def _stream_query_as_agui(text: str, forced_persona: str | None = None):
     """Yields AG-UI events for one query — a `persona_selected` CUSTOM
     event first (this project's own extension; AG-UI has no built-in
     field for "which persona/tier answered"), then either
@@ -320,22 +337,24 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_error(400, "Expected a JSON object of {field: value}")
             return
 
-        unknown = [k for k in body if k not in _CONFIG_FIELDS]
+        unknown = [k for k in body if k not in _CONFIG_FIELDS and k not in _WRITE_ONLY_FIELDS]
         if unknown:
             self.send_error(400, f"Unknown field(s): {', '.join(unknown)}")
             return
+        if body.get("AI_MODE", config.AI_MODE) not in config.MODES:
+            self.send_error(400, f"AI_MODE must be one of: {', '.join(config.MODES)}")
+            return
 
+        # AI_MODE goes first: model names are stored per mode, so the rest of
+        # the body must land in the mode being switched *to*.
+        ordered = sorted(body.items(), key=lambda item: item[0] != "AI_MODE")
+        clearable = {"TAILSCALE_OLLAMA_URL", "OPENROUTER_API_KEY"}
         updated = []
-        for field, value in body.items():
+        for field, value in ordered:
             value = str(value).strip()
-            if not value:
+            if not value and field not in clearable:
                 continue
-            write_env_var(field, value, path=ENV_PATH)
-            # VAULT_PATH is a real Path object on hi.config, not a plain
-            # string (every other field here is a string) — setattr'ing
-            # a bare str would silently break any code expecting Path
-            # operations (hi/vault.py's VAULT_PATH / "hi" / "knowledge").
-            setattr(config, field, Path(value) if field == "VAULT_PATH" else value)
+            config.set_value(field, value)
             updated.append(field)
 
         # VAULT_PATH/HAIKU_MODEL/SONNET_MODEL/OPUS_MODEL/VISION_MODEL are
@@ -559,11 +578,35 @@ class _Handler(BaseHTTPRequestHandler):
         # same ~/.hi/.env hi/config.py already reads — plain model-
         # name/path fields only; MCP credentials stay write-only (see
         # _CONFIG_FIELDS' own comment above).
-        if self.path == "/config":
-            # str(), not the raw attribute — VAULT_PATH is a real Path
-            # object (config.py's own type), not JSON-serializable as-is;
-            # every other field here is already a plain string.
-            self._send_json({field: str(getattr(config, field)) for field in _CONFIG_FIELDS})
+        # Models the Ollama server at ?host=… (default: configured host)
+        # reports — the Settings screen's host-aware model picker. Always
+        # 200 with an `error` string rather than a 5xx, since "host
+        # unreachable" is a normal, expected answer while editing the URL.
+        path, _, query = self.path.partition("?")
+        params = parse_qs(query)
+
+        if path == "/models":
+            mode = params.get("mode", [None])[0]
+            host = params.get("host", [None])[0]
+            try:
+                self._send_json({"models": llm.list_models(mode=mode, host=host), "error": ""})
+            except (OSError, ValueError) as e:
+                where = host or llm.ollama_host(mode) or (mode or config.AI_MODE)
+                self._send_json({"models": [], "error": f"can't reach {where}: {e}"})
+            return
+
+        # ?mode=… previews another mode's model names (the settings screen
+        # edits a mode before activating it); everything else is live state.
+        if path == "/config":
+            mode = params.get("mode", [config.AI_MODE])[0]
+            if mode not in config.MODES:
+                self.send_error(400, f"Unknown mode '{mode}'")
+                return
+            payload = {field: str(getattr(config, field)) for field in _CONFIG_FIELDS}
+            payload.update({role: config.model_for(role, mode) for role in config.MODEL_ROLES})
+            payload.update({f"{name}_SET": bool(getattr(config, name)) for name in _WRITE_ONLY_FIELDS})
+            payload["MODES"] = list(config.MODES)
+            self._send_json(payload)
             return
 
         # Everything below backs the web frontend's home dashboard
@@ -663,6 +706,12 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def run_ipc_daemon(port: int = DEFAULT_PORT) -> None:
+    # No terminal to input() on here — every destructive-action confirm
+    # goes through the pending queue, answered via POST /pending/{id}/….
+    from hi.action_tiers import set_confirm_handler
+    from hi.orchestrator.pending_actions import wait_for_approval
+
+    set_confirm_handler(wait_for_approval)
     server = ThreadingHTTPServer((HOST, port), _Handler)
     print(f"Voice companion backend listening on http://{HOST}:{port} (loopback only). Ctrl-C to stop.")
     try:

@@ -32,6 +32,18 @@ that point — the actual reason this split exists).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
+# A UI (e.g. the TUI) that owns the terminal can't let a tool call input()
+# on it — it registers a handler here and every confirmation goes through
+# it instead, interactive or orchestrated alike.
+_confirm_handler: Callable[[str], bool] | None = None
+
+
+def set_confirm_handler(handler: Callable[[str], bool] | None) -> None:
+    global _confirm_handler
+    _confirm_handler = handler
+
 
 def confirm_destructive(description: str) -> bool:
     """Pause for a y/N confirmation before a destructive action —
@@ -41,6 +53,9 @@ def confirm_destructive(description: str) -> bool:
     Args:
         description: What's about to happen, e.g. "delete the note for Dean Haidt".
     """
+    if _confirm_handler is not None:
+        return _confirm_handler(description)
+
     from hi.orchestrator.pending_actions import is_orchestrated_context, wait_for_approval
 
     if is_orchestrated_context():

@@ -3,7 +3,9 @@ import subprocess
 from pathlib import Path
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import ModelRequest, dynamic_prompt
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 
 from hi.action_tiers import confirm_destructive
@@ -31,7 +33,6 @@ from hi.browser import open_url_in_browser
 from hi.chat_model import make_chat_model
 from hi.config import TERM_MODEL
 from hi.mcp_tools import get_mcp_tools
-from hi.memory_graph import build_memory_graph
 from hi.orchestrator.graph import latest_run_trace
 from hi.perception.browser import observe_current_tab
 from hi.perception.screen import read_screen
@@ -58,6 +59,7 @@ from hi.tracking.team_ops import (
 from hi.watchdogs.dev_servers import check_dev_servers
 from hi.vault import (
     append_note,
+    knowledge_dir,
     create_note,
     list_conversations,
     list_notes,
@@ -250,14 +252,30 @@ TOOLS = [
 ]
 
 
+PREFERENCES_PATH = "preferences.md"
+
+
+def _trim_history(messages: list, max_history: int) -> list:
+    """Keep roughly the last `max_history` messages, but always start at a
+    HumanMessage — a bare slice can begin on a ToolMessage whose AI
+    tool-call was cut off, which providers reject as malformed history."""
+    if len(messages) <= max_history:
+        return messages
+    tail = messages[-max_history:]
+    for i, message in enumerate(tail):
+        if isinstance(message, HumanMessage):
+            return tail[i:]
+    return tail
+
+
 class _StatefulAgent:
-    """Wraps a create_agent() ReAct agent (or, here, the grounding graph
-    wrapped around it) to remember the conversation across turns, so term
-    can answer follow-up questions from a previous command's output — or
-    from a note loaded earlier in the session — without re-running or
-    re-searching anything. Every other persona's agent is stateless per
-    turn (hi/repl.py sends only the latest message each time) — this stays
-    local to term rather than changing that shared behavior."""
+    """Wraps a create_agent() ReAct agent to remember the conversation
+    across turns, so term can answer follow-up questions from a previous
+    command's output — or from a note read earlier in the session —
+    without re-running or re-searching anything. Every other persona's
+    agent is stateless per turn (hi/repl.py sends only the latest message
+    each time) — this stays local to term rather than changing that
+    shared behavior."""
 
     def __init__(self, agent, max_history: int = 20):
         self._agent = agent
@@ -267,7 +285,7 @@ class _StatefulAgent:
     def invoke(self, input: dict, *args, **kwargs) -> dict:
         self._messages.extend(input["messages"])
         result = self._agent.invoke({"messages": self._messages}, *args, **kwargs)
-        self._messages = result["messages"][-self._max_history :]
+        self._messages = _trim_history(result["messages"], self._max_history)
         return result
 
     def stream(self, input: dict, *args, **kwargs):
@@ -281,23 +299,23 @@ class _StatefulAgent:
         for item in self._agent.stream({"messages": self._messages}, *args, **kwargs):
             _ns, mode, payload = item
             if mode == "values":
-                self._messages = payload["messages"][-self._max_history :]
+                self._messages = _trim_history(payload["messages"], self._max_history)
             yield item
 
 
 def build_agent(model: BaseChatModel):
     """Build a fresh, independently-stateful term agent bound to `model` —
-    used directly below for the default TERM_MODEL instance, and by
-    hi/router.py to build one on a router-selected tier instead (each gets
-    its own session memory, since they're different underlying agents).
+    used directly below for the default TERM_MODEL instance, and by the
+    router/IPC server to build one on a router-selected tier instead (each
+    gets its own session memory, since they're different underlying
+    agents).
 
-    Wrapped in build_memory_graph the same way `code` used to be (before
-    its functionality was merged into term): every turn, relevant
-    hi/knowledge/ notes and hi/conversations/ logs are auto-selected and
-    loaded as context before the ReAct agent (with its shell/notes/people/
-    dev-flow tools) runs — then the whole thing is wrapped in
-    _StatefulAgent so that context persists across turns too."""
-    system_prompt = voiced_prompt(PROMPT_PATH)
+    Memory is tool-driven: the model calls list_notes/read_note itself when
+    a question needs stored context, instead of a separate model call
+    pre-selecting notes before every turn. The one thing always in context
+    is preferences.md, re-read from disk on each model call so an edit
+    made mid-session applies immediately."""
+    base_prompt = voiced_prompt(PROMPT_PATH)
     launch_cwd = os.environ.get(LAUNCH_CWD_ENV_VAR)
     if launch_cwd:
         # Shell commands already run there for free (the left pane's real
@@ -305,15 +323,21 @@ def build_agent(model: BaseChatModel):
         # model's own reasoning/dev-flow awareness, so "commit and push"
         # or "what does this project do" don't require the user to name
         # the directory explicitly.
-        system_prompt += f"\n\nYou were launched from: {launch_cwd}\nTreat this as the active project's directory unless told otherwise."
+        base_prompt += f"\n\nYou were launched from: {launch_cwd}\nTreat this as the active project's directory unless told otherwise."
+
+    @dynamic_prompt
+    def system_prompt(_request: ModelRequest) -> str:
+        preferences = knowledge_dir() / PREFERENCES_PATH
+        if not preferences.exists():
+            return base_prompt
+        return f"{base_prompt}\n\n## User preferences (knowledge/{PREFERENCES_PATH})\n\n{preferences.read_text()}"
+
     # get_mcp_tools() is cached (hi/mcp_tools.py) — only the first call in
     # the process actually connects to any MCP servers; a slow/misbehaving
     # server is bounded by its own per-server timeout rather than hanging
     # agent construction indefinitely.
     all_tools = TOOLS + get_mcp_tools()
-    note_agent = create_agent(model=model, tools=all_tools, system_prompt=system_prompt)
-    grounded_agent = build_memory_graph(note_agent, model)
-    return _StatefulAgent(grounded_agent)
+    return _StatefulAgent(create_agent(model=model, tools=all_tools, middleware=[system_prompt]))
 
 
 model = make_chat_model(TERM_MODEL, temperature=0, keep_alive="30m")

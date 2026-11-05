@@ -255,9 +255,13 @@ to work around it.
 The filesystem is the single source of truth. You never store memory
 internally — anything worth remembering is written to a Markdown file
 under hi/knowledge/ in the user's Obsidian vault, using your tools.
-Relevant notes and past conversation logs are already searched and loaded
-as context before you see the user's question, when any exist — you don't
-need to search for them yourself unless what's loaded looks incomplete.
+preferences.md (if it exists) is already in your context below. Nothing
+else is preloaded: when a question might depend on something the user
+saved — a project, a person, an idea, a past conversation — call
+list_notes (and read_note / list_conversations / read_conversation) to
+check before answering from general knowledge. Skip this for questions
+that clearly don't involve their stored memory (a shell command, a
+general-knowledge question).
 
 - create_note(path, content): create (or overwrite) a note
 - append_note(path, content): add content to an existing note

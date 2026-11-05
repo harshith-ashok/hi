@@ -22,10 +22,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import ollama
+from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 
 import hi.config as config
+from hi import llm
 from hi.models import ensure_pulled
 from hi.perception.privacy import sensitive_context_reason
 
@@ -64,8 +65,11 @@ def ask_about_screen(question: str = DEFAULT_QUESTION) -> str:
         return "Screenshot failed."
 
     ensure_pulled(config.VISION_MODEL)
-    response = ollama.chat(
-        model=config.VISION_MODEL,
-        messages=[{"role": "user", "content": question, "images": [image_b64]}],
+    model = llm.build_chat_model(config.VISION_MODEL)
+    message = HumanMessage(
+        content=[
+            {"type": "text", "text": question},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+        ]
     )
-    return response["message"]["content"]
+    return model.invoke([message]).content

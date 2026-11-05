@@ -53,6 +53,7 @@ from typing import Any
 from ag_ui.core import events as ag
 from langchain_core.messages import AIMessageChunk, ToolMessage
 
+from hi import llm
 from hi.orchestrator.graph import DAGEvent, run_orchestrated
 
 
@@ -167,7 +168,7 @@ def stream_agent_as_agui(agent, text: str, thread_id: str) -> Iterator[ag.BaseEv
                     role="tool",
                 )
     except Exception as e:
-        yield ag.RunErrorEvent(message=str(e))
+        yield ag.RunErrorEvent(message=llm.friendly_error(e))
         return
 
     # Defensive close, mirroring stream_and_print()'s own end-of-stream

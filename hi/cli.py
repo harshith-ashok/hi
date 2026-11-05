@@ -11,6 +11,11 @@ routed to a persona automatically (see hi/router.py).
 import argparse
 import os
 import sys
+import warnings
+
+# langchain_core still imports pydantic.v1, which warns on Python 3.14+.
+# Must run before anything imports langchain.
+warnings.filterwarnings("ignore", message="Core Pydantic V1 functionality")
 
 from hi.personas import PERSONAS
 from hi.tmux_util import run_tmux
@@ -24,6 +29,7 @@ CAPTURE_DAEMON_MARKER = "capture-daemon"
 SUGGEST_DAEMON_MARKER = "suggest-daemon"
 VOICE_DAEMON_MARKER = "voice-daemon"
 WAKE_DAEMON_MARKER = "wake-daemon"
+TUI_MARKER = "tui"
 
 
 def parse_persona(argv: list[str]) -> str | None:
@@ -55,7 +61,10 @@ def parse_persona(argv: list[str]) -> str | None:
         action="store_true",
         help='run the ambient wake-word listener ("Hey Jarvis") + voice output (standalone, no tmux)',
     )
+    group.add_argument("--tui", action="store_true", help="minimal terminal UI (standalone, no tmux)")
     args = parser.parse_args(argv)
+    if args.tui:
+        return TUI_MARKER
     if args.capture_daemon:
         return CAPTURE_DAEMON_MARKER
     if args.suggest_daemon:
@@ -87,6 +96,12 @@ def launch_tmux(persona: str | None) -> None:
 
 def main() -> None:
     persona = parse_persona(sys.argv[1:])
+
+    if persona == TUI_MARKER:
+        from hi.tui.app import run
+
+        run()
+        return
 
     if persona == CAPTURE_DAEMON_MARKER:
         from hi.capture.hotkey import run_capture_daemon

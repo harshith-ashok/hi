@@ -29,6 +29,16 @@ Everything it remembers is a Markdown file you can open, edit, or delete yoursel
 
 The memory/recall half of that design — turning a vague natural-language ask into a grounded, multi-source, narrated answer — isn't ad hoc. It follows the same five-stage pipeline described in an Indian patent application the author co-invented, *"Agentic System for Contextual Digital Memory Reconstruction Using Multi-Source Activity Correlation"* (IN Application No. 202641052767, filed 25-04-2026). See [Architecture](#architecture) for how each stage of that filing maps onto an actual module in this repo, and where `hi` deliberately narrows the patent's scope.
 
+## Run with Docker
+
+```bash
+docker compose up --build     # backend + web UI, then open http://localhost:5173
+```
+
+The AI layer has three modes, switched in the UI's settings view (or `AI_MODE` in a `.env` next to `docker-compose.yml`): **local** (Ollama on your machine — from the container via `host.docker.internal`), **tailscale** (Ollama on another machine over your tailnet, `TAILSCALE_OLLAMA_URL`), and **openrouter** (`OPENROUTER_API_KEY`). Each mode remembers its own model names. Set `HI_VAULT=/path/to/your/vault` in that `.env` to use your real notes — otherwise the container keeps its own empty vault in a Docker volume. If port 5173 is taken, set `HI_WEB_PORT`.
+
+The image is Linux: shell, notes, files, web, docs and orchestration all work, but macOS control (Bluetooth, volume, screen) and voice need `hi` run natively (`uv sync` installs those by default).
+
 ## Features
 
 <details>

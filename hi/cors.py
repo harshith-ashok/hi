@@ -18,11 +18,14 @@ in the user's browser.
 
 from __future__ import annotations
 
+import os
 from http.server import BaseHTTPRequestHandler
 
-# frontend/vite.config.ts pins the dev server to this exact port — kept
+# tinyui/vite.config.ts pins the dev server to this exact port — kept
 # in sync with that, not guessed independently.
-_ALLOWED_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"}
+_ALLOWED_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"} | {
+    o.strip() for o in os.environ.get("HI_CORS_ORIGINS", "").split(",") if o.strip()
+}
 
 
 def send_cors_headers(handler: BaseHTTPRequestHandler) -> None:

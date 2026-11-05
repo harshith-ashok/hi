@@ -1,0 +1,12 @@
+.venv
+.git
+**/node_modules
+**/dist
+**/__pycache__
+voice_companion
+archive
+data
+docs
+*.pdf
+*.png
+tinyui

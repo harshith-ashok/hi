@@ -78,7 +78,7 @@ def classify(prompt: str) -> tuple[str, str]:
     # conversation — verified this is specific to the smaller model, not
     # the transient empty-response issue invoke_with_retry otherwise
     # handles; gpt-oss:120b-cloud tolerates system-only fine elsewhere in
-    # this codebase (hi/memory_graph.py).
+    # this codebase.
     reply = invoke_with_retry(model, [HumanMessage(selection_prompt)]).lower()
 
     persona = next((p for p in PERSONAS if p in reply), "term")

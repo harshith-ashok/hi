@@ -1,0 +1,39 @@
+# `docker compose up --build` starts everything; open http://localhost:5173
+#
+# Optional settings go in a `.env` file next to this one:
+#   HI_VAULT=/path/to/your/obsidian/vault   (default: a Docker volume)
+#   AI_MODE=local|tailscale|openrouter   (also switchable in the UI's settings view)
+#   OLLAMA_HOST=http://host.docker.internal:11434
+#   TAILSCALE_OLLAMA_URL=http://my-desktop:11434
+#   OPENROUTER_API_KEY=sk-or-...
+#   HI_WEB_PORT=5173
+services:
+  backend:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765" # loopback only on the host
+    environment:
+      AI_MODE: ${AI_MODE:-local}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      TAILSCALE_OLLAMA_URL: ${TAILSCALE_OLLAMA_URL:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      VAULT_PATH: /vault
+      HI_CORS_ORIGINS: http://localhost:${HI_WEB_PORT:-5173},http://127.0.0.1:${HI_WEB_PORT:-5173}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${HI_VAULT:-hi-vault}:/vault
+      - hi-home:/root/.hi # settings saved from the UI persist here
+
+  web:
+    build: ./tinyui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${HI_WEB_PORT:-5173}:80"
+    depends_on:
+      - backend
+
+volumes:
+  hi-vault:
+  hi-home:
