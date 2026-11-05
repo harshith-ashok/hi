@@ -84,3 +84,41 @@ def classify(prompt: str) -> tuple[str, str]:
     persona = next((p for p in PERSONAS if p in reply), "term")
     tier = next((t for t in TIERS if t in reply), "sonnet")
     return persona, tier
+
+
+# --- fast path: skip the classification model call for obvious turns --------
+import re
+import time
+
+STICKY_SECONDS = 120
+STICKY_MAX_WORDS = 4  # "and the second one?", "yes", "do it"
+_RULES: tuple[tuple[re.Pattern[str], str, str], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE), persona, tier)
+    for pattern, persona, tier in (
+        (r"\b(volume|wi-?fi|bluetooth|do not disturb|dnd|clipboard|brightness)\b", "butler", "haiku"),
+        (r"\b(my notes?|my vault|in my obsidian|what did i (write|note))\b", "docs", "sonnet"),
+        (r"\bwikipedia\b", "web", "haiku"),
+        (r"\b(on my screen|this error|current tab)\b", "term", "sonnet"),
+    )
+)
+_last_route: tuple[str, str, float] | None = None
+
+
+def fast_route(prompt: str) -> tuple[str, str] | None:
+    """(persona, tier) when the turn is obvious without a model call, else
+    None. Multi-part requests ("... and then ...") always go to the model so
+    plan detection still applies."""
+    lowered = prompt.lower()
+    if " and then " in lowered or " then " in lowered or lowered.count(",") >= 2:
+        return None
+    for pattern, persona, tier in _RULES:
+        if pattern.search(prompt):
+            return persona, tier
+    if _last_route and time.monotonic() - _last_route[2] < STICKY_SECONDS and len(prompt.split()) <= STICKY_MAX_WORDS:
+        return _last_route[0], _last_route[1]
+    return None
+
+
+def remember_route(persona: str, tier: str) -> None:
+    global _last_route
+    _last_route = (persona, tier, time.monotonic())

@@ -57,15 +57,18 @@ def make_spoken_summary(full_text: str) -> str | None:
 
     model = get_tier_model_fast("haiku")
     prompt = (
-        "Rewrite the following into ONE short, natural sentence a voice "
-        "assistant would actually say out loud — describe what happened "
-        "or answer the question in plain spoken English, in your own "
-        "words, not a literal reading of the text. No markdown, no code, "
-        "no lists. Never read a URL, file path, or raw technical string "
-        "literally — say what it means instead (e.g. \"YouTube is now "
-        "open\", not \"I opened www dot youtube dot com\"; \"Wi-Fi is "
-        "off\", not \"toggle_wifi returned false\"). Reply with only the "
-        "sentence, nothing else:\n\n"
+        "Rewrite the following into what a voice assistant would say out "
+        "loud: ONE short sentence, two at most. Plain spoken English in "
+        "your own words, not a literal reading. State the outcome or "
+        "answer only — never narrate steps or tools (not \"I called "
+        "toggle_wifi\"). Round numbers and durations (\"about three "
+        "hours\", not \"2 hours 51 minutes\"); use first names or short "
+        "names. No markdown, code, lists, URLs or file paths — say what "
+        "they mean instead (\"YouTube is now open\", \"Wi-Fi is off\"). "
+        "If the text asks the user a question, say that question. If the "
+        "answer is long or detailed, say only the gist and add \"the "
+        "details are on screen\". Reply with only what is said, nothing "
+        "else:\n\n"
         f"{cleaned[:2000]}"
     )
     summary = invoke_with_retry(model, [HumanMessage(prompt)]).strip()

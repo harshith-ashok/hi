@@ -105,6 +105,11 @@ apply_mode()
 
 VAULT_PATH = Path(_env.get("VAULT_PATH", str(Path.home() / ".hi" / "vault")))
 WHISPER_MODEL = _env.get("WHISPER_MODEL", "base.en")
+# Text-to-speech: an Ollama speech model (hi/tts_ollama.py), `ollama pull phonon`.
+TTS_MODEL = _env.get("TTS_MODEL") or "phonon"
+TTS_VOICE = _env.get("TTS_VOICE") or "default"
+# whisper.cpp `whisper-server` (hi/stt.py), run natively so it can use Metal.
+WHISPER_CPP_URL = _env.get("WHISPER_CPP_URL") or "http://127.0.0.1:8080"
 
 # hi/perception/vision.py's ask_about_screen — a real vision-capable
 # model, not a tier (haiku/sonnet/opus below are all text-only), per

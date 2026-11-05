@@ -32,10 +32,16 @@ The memory/recall half of that design — turning a vague natural-language ask i
 ## Run with Docker
 
 ```bash
+hi                            # starts the stack if needed and opens the web UI
+# or, without the launcher:
 docker compose up --build     # backend + web UI, then open http://localhost:5173
 ```
 
+`hi` with no flag is the main entry point: it runs `docker compose up -d --build` when the backend isn't already answering, then opens tinyui in your browser. `hi --tui` is the terminal UI, `hi --tmux` the old auto-routing tmux pane, and `hi --code`/`--butler`/`--docs`/`--web`/`--term` the single-persona panes.
+
 The AI layer has three modes, switched in the UI's settings view (or `AI_MODE` in a `.env` next to `docker-compose.yml`): **local** (Ollama on your machine — from the container via `host.docker.internal`), **tailscale** (Ollama on another machine over your tailnet, `TAILSCALE_OLLAMA_URL`), and **openrouter** (`OPENROUTER_API_KEY`). Each mode remembers its own model names. Set `HI_VAULT=/path/to/your/vault` in that `.env` to use your real notes — otherwise the container keeps its own empty vault in a Docker volume. If port 5173 is taken, set `HI_WEB_PORT`.
+
+Speech uses Ollama's `phonon` model (`ollama pull phonon`); tinyui falls back to the browser's voice if it isn't there.
 
 The image is Linux: shell, notes, files, web, docs and orchestration all work, but macOS control (Bluetooth, volume, screen) and voice need `hi` run natively (`uv sync` installs those by default).
 

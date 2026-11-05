@@ -1,17 +1,23 @@
 """Command-line entry point for the `hi` terminal assistant.
 
-Running `hi --code` / `--butler` / `--docs` / `--web` / `--term` opens a
-dedicated tmux workspace: the user's existing shell stays in the left
-pane, and the chosen assistant runs in a new right-hand pane. The user
-never loses their shell. Running `hi` with no flag opens the same
-workspace in auto-routing mode instead — each prompt is classified and
-routed to a persona automatically (see hi/router.py).
+Running `hi` with no flag starts the Docker stack (backend + tinyui) if it
+isn't already up and opens the web UI — the main interface. `hi --tui` is
+the terminal equivalent. `hi --code` / `--butler` / `--docs` / `--web` /
+`--term` open a dedicated tmux workspace (the user's shell stays in the
+left pane, the assistant in a right-hand pane), and `hi --tmux` does the
+same in auto-routing mode (see hi/router.py).
 """
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
+import time
+import urllib.request
 import warnings
+import webbrowser
+from pathlib import Path
 
 # langchain_core still imports pydantic.v1, which warns on Python 3.14+.
 # Must run before anything imports langchain.
@@ -30,6 +36,10 @@ SUGGEST_DAEMON_MARKER = "suggest-daemon"
 VOICE_DAEMON_MARKER = "voice-daemon"
 WAKE_DAEMON_MARKER = "wake-daemon"
 TUI_MARKER = "tui"
+TMUX_MARKER = "tmux"
+
+COMPOSE_FILE = Path(__file__).resolve().parent.parent / "docker-compose.yml"
+BACKEND_URL = "http://127.0.0.1:8765/config"
 
 
 def parse_persona(argv: list[str]) -> str | None:
@@ -62,9 +72,12 @@ def parse_persona(argv: list[str]) -> str | None:
         help='run the ambient wake-word listener ("Hey Jarvis") + voice output (standalone, no tmux)',
     )
     group.add_argument("--tui", action="store_true", help="minimal terminal UI (standalone, no tmux)")
+    group.add_argument("--tmux", action="store_true", help="auto-routing REPL in a tmux pane (the old default)")
     args = parser.parse_args(argv)
     if args.tui:
         return TUI_MARKER
+    if args.tmux:
+        return TMUX_MARKER
     if args.capture_daemon:
         return CAPTURE_DAEMON_MARKER
     if args.suggest_daemon:
@@ -92,6 +105,42 @@ def launch_tmux(persona: str | None) -> None:
     error = run_tmux([";", "split-window", "-h", "-p", "25", inner_command])
     if error:
         sys.exit(f"tmux failed to launch {persona or 'hi'}: {error}")
+
+
+def backend_up() -> bool:
+    try:
+        with urllib.request.urlopen(BACKEND_URL, timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def start_stack() -> None:
+    """`docker compose up -d --build` for the backend + tinyui, unless the
+    backend is already answering."""
+    if backend_up():
+        return
+    if not shutil.which("docker"):
+        sys.exit("hi needs Docker to run the web UI (or use `hi --tui`).")
+    if not COMPOSE_FILE.exists():
+        sys.exit(f"docker-compose.yml not found at {COMPOSE_FILE}")
+    print("starting hi…")
+    result = subprocess.run(["docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d", "--build"])
+    if result.returncode != 0:
+        sys.exit("docker compose failed — is Docker/OrbStack running?")
+    for _ in range(60):
+        if backend_up():
+            return
+        time.sleep(1)
+    sys.exit("backend didn't come up; check `docker compose logs backend`.")
+
+
+def open_web_ui() -> None:
+    """The default `hi`: make sure the stack is running, open tinyui."""
+    start_stack()
+    url = f"http://localhost:{os.environ.get('HI_WEB_PORT', '5173')}"
+    print(f"hi is running at {url}")
+    webbrowser.open(url)
 
 
 def main() -> None:
@@ -125,6 +174,14 @@ def main() -> None:
         from hi.wake import run_wake_daemon
 
         run_wake_daemon()
+        return
+
+    if persona is None and os.environ.get(PANE_ENV_VAR) != ROUTER_MARKER:
+        open_web_ui()
+        return
+
+    if persona == TMUX_MARKER:
+        launch_tmux(None)
         return
 
     if os.environ.get(PANE_ENV_VAR) == (persona or ROUTER_MARKER):

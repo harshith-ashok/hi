@@ -8,6 +8,7 @@ from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import tool
 from hi.agents.persona_voice import voiced_prompt
+from hi.toolkit import ToolSelector
 from hi.agents.butler.mac_control import (
     list_running_apps,
     mute,
@@ -170,7 +171,10 @@ def build_agent(model: BaseChatModel):
     """Build a fresh butler agent bound to `model` — used directly below
     for the default BUTLER_MODEL instance, and by hi/router.py to build one
     on a router-selected tier instead."""
-    return create_agent(model=model, tools=TOOLS, system_prompt=voiced_prompt(PROMPT_PATH))
+    selector = ToolSelector(TOOLS, persona_groups={"mac", "tasks", "mcp_setup"})
+    return create_agent(
+        model=model, tools=TOOLS + [selector.more_tools], system_prompt=voiced_prompt(PROMPT_PATH), middleware=[selector]
+    )
 
 
 model = make_chat_model(BUTLER_MODEL, temperature=0, keep_alive="30m")

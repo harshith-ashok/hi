@@ -227,6 +227,27 @@ def _notify(message: str) -> None:
     subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
 
 
+MAX_NOTIFICATIONS_PER_HOUR = 3
+BUDGET_PATH = STATE_PATH.with_name("notify_times.json")
+
+
+def _budget_left() -> int:
+    """Notifications still allowed in the last hour (interruption budget)."""
+    try:
+        times = json.loads(BUDGET_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        times = []
+    recent = [t for t in times if time.time() - t < 3600]
+    BUDGET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    BUDGET_PATH.write_text(json.dumps(recent))
+    return max(0, MAX_NOTIFICATIONS_PER_HOUR - len(recent))
+
+
+def _record_notification() -> None:
+    times = json.loads(BUDGET_PATH.read_text()) if BUDGET_PATH.exists() else []
+    BUDGET_PATH.write_text(json.dumps(times + [time.time()]))
+
+
 def run_once(notify: bool = True) -> list[Suggestion]:
     """Gather suggestions, drop anything already surfaced today, notify
     the rest (unless notify=False), and record them. Returns what was
@@ -236,8 +257,11 @@ def run_once(notify: bool = True) -> list[Suggestion]:
     suggestions = gather_suggestions()
     fresh = [s for s in suggestions if s.key not in already_notified]
     if notify:
+        # Over budget: leave the rest un-recorded so they surface later.
+        fresh = fresh[: _budget_left()]
         for s in fresh:
             _notify(s.message)
+            _record_notification()
     _save_notified(already_notified | {s.key for s in fresh})
     return fresh
 

@@ -104,6 +104,9 @@ def _server_configs() -> dict:
     else:
         log.warning("npx not found on PATH — skipping the Playwright MCP server.")
 
+    if shutil.which("uvx"):  # read any URL as markdown; the `web` persona's page reader
+        servers["fetch"] = {"command": "uvx", "args": ["mcp-server-fetch"], "transport": "stdio"}
+
     if config.GITHUB_PERSONAL_ACCESS_TOKEN and shutil.which("docker"):
         servers["github"] = {
             "command": "docker",
@@ -206,3 +209,8 @@ def get_mcp_tools_by_server() -> dict[str, list[BaseTool]]:
     that actually connected successfully appear as keys."""
     _ensure_cached()
     return _cached_tools_by_server
+
+
+def tool_servers() -> dict[str, str]:
+    """tool name -> the MCP server it came from (see hi/toolkit.py)."""
+    return {t.name: server for server, tools in get_mcp_tools_by_server().items() for t in tools}

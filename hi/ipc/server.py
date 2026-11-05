@@ -58,6 +58,8 @@ from hi.mcp_install import _bust_mcp_tools_cache
 from hi.mcp_tools import get_mcp_tools_by_server
 from hi.models import get_tier_model
 from hi.orchestrator.complexity import classify_with_plan
+from hi.router import fast_route, remember_route
+from hi.speaker import Speaker
 from hi.orchestrator.graph import latest_run_trace
 from hi.orchestrator.pending_http import try_handle_pending_get, try_handle_pending_post
 from hi.personas import PERSONAS, get_agent_builder
@@ -72,7 +74,7 @@ from hi.vault import list_conversations, log_conversation, read_conversation
 _CONFIG_FIELDS = (
     "VAULT_PATH", "BUTLER_MODEL", "DOCS_MODEL", "WEB_MODEL", "TERM_MODEL",
     "HAIKU_MODEL", "SONNET_MODEL", "OPUS_MODEL", "VISION_MODEL",
-    "AI_MODE", "OLLAMA_HOST", "TAILSCALE_OLLAMA_URL",
+    "AI_MODE", "OLLAMA_HOST", "TAILSCALE_OLLAMA_URL", "TTS_MODEL", "TTS_VOICE",
 )
 # Accepted on POST /config but never echoed back by GET (reported only as
 # `<NAME>_SET: bool`) — same rule as the MCP credentials.
@@ -140,10 +142,14 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None):
     already give the terminal, reachable from the voice companion's UI
     too, and (see module docstring) never triggers an orchestrated plan.
     """
+    started = time.monotonic()
     if forced_persona in PERSONAS:
         persona_name, tier, needs_plan = forced_persona, _FORCED_PERSONA_TIER, False
     else:
-        persona_name, tier, needs_plan = classify_with_plan(text)
+        routed = fast_route(text)
+        persona_name, tier, needs_plan = (*routed, False) if routed else classify_with_plan(text)
+    remember_route(persona_name, tier)
+    route_s = time.monotonic() - started
 
     yield ag.CustomEvent(name="persona_selected", value={"name": persona_name, "tier": tier, "plan": needs_plan})
 
@@ -156,14 +162,45 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None):
         log_persona = persona_name
 
     final_answer = ""
+    speaker = Speaker()
+    first_token_s: float | None = None
+    tool_starts: dict[str, tuple[str, float]] = {}
+    tool_times: list[dict] = []
     for event in events:
+        now = time.monotonic()
+        if first_token_s is None and isinstance(event, ag.TextMessageContentEvent):
+            first_token_s = now - started
+        if isinstance(event, ag.TextMessageContentEvent) and not event.subagent_run_id:
+            speaker.feed(event.delta)
+        if isinstance(event, ag.ToolCallStartEvent):
+            speaker.block_ended_by_tool()
+            tool_starts[event.tool_call_id] = (event.tool_call_name, now)
+        elif isinstance(event, ag.ToolCallResultEvent) and event.tool_call_id in tool_starts:
+            name, began = tool_starts.pop(event.tool_call_id)
+            tool_times.append({"name": name, "s": round(now - began, 2)})
         if isinstance(event, ag.RunFinishedEvent) and isinstance(event.result, str):
             final_answer = event.result
         yield event
+        for line in speaker.ready():
+            yield ag.CustomEvent(name="spoken_chunk", value={"text": line})
+
+    for line in speaker.finish():
+        yield ag.CustomEvent(name="spoken_chunk", value={"text": line})
+
+    yield ag.CustomEvent(
+        name="timing",
+        value={
+            "route_s": round(route_s, 2),
+            "first_token_s": round(first_token_s, 2) if first_token_s is not None else None,
+            "total_s": round(time.monotonic() - started, 2),
+            "tools": tool_times,
+        },
+    )
 
     if final_answer:
         log_conversation(log_persona, text, final_answer)
-        yield ag.CustomEvent(name="spoken_summary", value={"text": make_spoken_summary(final_answer)})
+        if not speaker.has_spoken:  # nothing sayable streamed (tool-only answer, one-liner): summarize
+            yield ag.CustomEvent(name="spoken_summary", value={"text": make_spoken_summary(final_answer)})
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -214,6 +251,14 @@ class _Handler(BaseHTTPRequestHandler):
 
         if self.path == "/tts":
             self._handle_post_tts()
+            return
+
+        if self.path == "/stt":
+            self._handle_post_stt()
+            return
+
+        if self.path == "/ramble":
+            self._handle_post_ramble()
             return
 
         if self.path == "/agents":
@@ -275,9 +320,9 @@ class _Handler(BaseHTTPRequestHandler):
         finally:
             record_query_latency(time.monotonic() - start)
 
-    def _send_json(self, payload) -> None:
+    def _send_json(self, payload, status: int = 200) -> None:
         body = json.dumps(payload).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -417,17 +462,53 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_error(400, "Missing 'text'")
             return
         try:
-            from hi.tts_kokoro import synthesize_wav
+            from hi.tts_ollama import synthesize_wav
 
             wav_bytes = synthesize_wav(text)
-        except Exception as e:
-            self.send_error(500, f"TTS synthesis failed: {e}")
-            return
+        except Exception as ollama_error:
+            try:  # native installs may still have Kokoro (desktop group)
+                from hi.tts_kokoro import synthesize_wav as kokoro_wav
+
+                wav_bytes = kokoro_wav(text)
+            except Exception:
+                self.send_error(500, f"TTS synthesis failed: {ollama_error}")
+                return
         self.send_response(200)
         self.send_header("Content-Type", "audio/wav")
         self.send_header("Content-Length", str(len(wav_bytes)))
         self.end_headers()
         self.wfile.write(wav_bytes)
+
+    def _handle_post_ramble(self) -> None:
+        """POST /ramble {text} -> {text, original}: the rambler (hi/rambler.py)
+        structures a spoken transcript before it is sent as a query."""
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            original = (json.loads(self.rfile.read(length) or b"{}").get("text") or "").strip()
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+        if not original:
+            self.send_error(400, "Missing 'text'")
+            return
+        from hi.rambler import structure
+
+        self._send_json({"text": structure(original), "original": original})
+
+    def _handle_post_stt(self) -> None:
+        """POST /stt with a 16 kHz mono WAV body -> {"text": ...}, via the
+        native whisper.cpp server (hi/stt.py)."""
+        length = int(self.headers.get("Content-Length", 0))
+        wav = self.rfile.read(length)
+        if not wav:
+            self.send_error(400, "Missing audio body")
+            return
+        try:
+            from hi.stt import transcribe_wav
+
+            self._send_json({"text": transcribe_wav(wav)})
+        except Exception as e:
+            self._send_json({"error": str(e)}, status=502)
 
     def _handle_post_agents_create(self) -> None:
         """POST /agents {prompt, preset?} — starts a new on-demand agent

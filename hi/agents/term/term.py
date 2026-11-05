@@ -32,7 +32,8 @@ from hi.agents.term.resume import resume_context
 from hi.browser import open_url_in_browser
 from hi.chat_model import make_chat_model
 from hi.config import TERM_MODEL
-from hi.mcp_tools import get_mcp_tools
+from hi.mcp_tools import get_mcp_tools, tool_servers
+from hi.toolkit import ToolSelector, filter_prompt
 from hi.orchestrator.graph import latest_run_trace
 from hi.perception.browser import observe_current_tab
 from hi.perception.screen import read_screen
@@ -252,6 +253,20 @@ TOOLS = [
 ]
 
 
+# Which tool groups (hi/toolkit.py) term offers; the rest belong to butler.
+TERM_GROUPS = {
+    "core", "background", "devflow", "screen", "people", "history", "tracking", "insight",
+    "github", "github_admin", "browser", "browser_advanced", "obsidian",
+}
+
+# `## ` sections of term_prompt.md that only matter when a tool group is on offer.
+PROMPT_SECTION_GROUPS = {
+    "Dev flows": "devflow", "Resuming work": "devflow", "Dev-server health": "background",
+    "Deadlines": "tracking", "LeetCode": "tracking", "Applications": "tracking", "Team ops": "tracking",
+    "Pipelines": "tracking", "What to work on": "insight",
+    "Perception (browser tab / screen OCR / screen vision)": "screen", "People": "people",
+}
+
 PREFERENCES_PATH = "preferences.md"
 
 
@@ -325,19 +340,24 @@ def build_agent(model: BaseChatModel):
         # the directory explicitly.
         base_prompt += f"\n\nYou were launched from: {launch_cwd}\nTreat this as the active project's directory unless told otherwise."
 
+    all_tools = TOOLS + get_mcp_tools()
+    selector = ToolSelector(all_tools, persona_groups=TERM_GROUPS, server_groups=tool_servers())
+
     @dynamic_prompt
-    def system_prompt(_request: ModelRequest) -> str:
+    def system_prompt(request: ModelRequest) -> str:
+        prompt = filter_prompt(base_prompt, PROMPT_SECTION_GROUPS, selector.active_groups(request.messages))
         preferences = knowledge_dir() / PREFERENCES_PATH
         if not preferences.exists():
-            return base_prompt
-        return f"{base_prompt}\n\n## User preferences (knowledge/{PREFERENCES_PATH})\n\n{preferences.read_text()}"
+            return prompt
+        return f"{prompt}\n\n## User preferences (knowledge/{PREFERENCES_PATH})\n\n{preferences.read_text()}"
 
     # get_mcp_tools() is cached (hi/mcp_tools.py) — only the first call in
     # the process actually connects to any MCP servers; a slow/misbehaving
     # server is bounded by its own per-server timeout rather than hanging
     # agent construction indefinitely.
-    all_tools = TOOLS + get_mcp_tools()
-    return _StatefulAgent(create_agent(model=model, tools=all_tools, middleware=[system_prompt]))
+    return _StatefulAgent(
+        create_agent(model=model, tools=all_tools + [selector.more_tools], middleware=[system_prompt, selector])
+    )
 
 
 model = make_chat_model(TERM_MODEL, temperature=0, keep_alive="30m")

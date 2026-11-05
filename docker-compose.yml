@@ -19,6 +19,7 @@ services:
       TAILSCALE_OLLAMA_URL: ${TAILSCALE_OLLAMA_URL:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       VAULT_PATH: /vault
+      WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://host.docker.internal:8080}
       HI_CORS_ORIGINS: http://localhost:${HI_WEB_PORT:-5173},http://127.0.0.1:${HI_WEB_PORT:-5173}
     extra_hosts:
       - "host.docker.internal:host-gateway"

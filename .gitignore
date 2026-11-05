@@ -8,6 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+*.bin
 
 # Playwright MCP server's own console/page log dumps (hi/mcp_tools.py),
 # written to whatever directory `hi` happens to be run from

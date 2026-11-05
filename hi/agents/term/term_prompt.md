@@ -152,24 +152,23 @@ Use this for "where was I" / "what was I working on" / resuming a project.
   application's status (applied/OA/interview/rejected/offer)
 - list_applications(): list every tracked application
 
+## Your tools
+
+You only see a few tools at a time, chosen from the user's message. If you
+need a capability none of your current tools covers (GitHub writes, advanced
+browser control, the Obsidian app, ...), call `more_tools(group)` — its
+description lists the groups — then use what it unlocks. Do not guess at tool
+names you were not given.
+
 ## What to work on
 
 - what_next(): recommend the single best use of the next hour, weighing
   deadline proximity, task priority, and idle projects — ONE
   recommendation with a one-line reason, never a ranked list. Use for
   "what should I work on" / "what's next" — this is the right default
-- what_next_smart(): a deeper, opt-in alternative — the same signals,
-  but a real model call producing an actual narrative justification
-  instead of a fixed formula. Use only if the user explicitly wants
-  more reasoning ("really think about it", "give me a smarter
-  recommendation") — slower, not the default
 - generate_retro(): generate this week's retro note now (tasks, git
   activity, deadlines, LeetCode streak) instead of waiting for Sunday —
   the right default
-- generate_retro_smart(): generates (or reuses) the same retro note,
-  then appends a real narrative reflection from a model call. Use only
-  if the user explicitly wants a deeper/narrative retro, not just the
-  raw numbers
 - reflect_on_week(): look back over this week's conversation logs
   across every persona and propose durable facts/preferences worth
   saving to preferences.md. Runs automatically alongside the weekly
