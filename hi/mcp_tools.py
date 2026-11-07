@@ -53,6 +53,7 @@ import hi.config as config
 log = logging.getLogger(__name__)
 
 _PER_SERVER_TIMEOUT = 30.0
+GITHUB_TOOLSETS = "context,repos,issues,pull_requests,actions"  # `context` gives get_me (who am I)
 
 _cached_tools: list[BaseTool] | None = None
 # Per-server grouping of the same cached tools (TODO.md Phase 27's "agent
@@ -104,10 +105,20 @@ def _server_configs() -> dict:
     else:
         log.warning("npx not found on PATH — skipping the Playwright MCP server.")
 
-    if shutil.which("uvx"):  # read any URL as markdown; the `web` persona's page reader
+    # Read any URL as markdown (the `web` persona's page reader).
+    if shutil.which("mcp-server-fetch"):
+        servers["fetch"] = {"command": "mcp-server-fetch", "args": [], "transport": "stdio"}
+    elif shutil.which("uvx"):
         servers["fetch"] = {"command": "uvx", "args": ["mcp-server-fetch"], "transport": "stdio"}
 
-    if config.GITHUB_PERSONAL_ACCESS_TOKEN and shutil.which("docker"):
+    if config.GITHUB_PERSONAL_ACCESS_TOKEN and shutil.which("github-mcp-server"):  # the Docker image
+        servers["github"] = {
+            "command": "github-mcp-server",
+            "args": ["stdio", "--toolsets", GITHUB_TOOLSETS],
+            "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": config.GITHUB_PERSONAL_ACCESS_TOKEN},
+            "transport": "stdio",
+        }
+    elif config.GITHUB_PERSONAL_ACCESS_TOKEN and shutil.which("docker"):
         servers["github"] = {
             "command": "docker",
             "args": [
@@ -117,7 +128,7 @@ def _server_configs() -> dict:
                 "-e",
                 "GITHUB_PERSONAL_ACCESS_TOKEN",
                 "-e",
-                "GITHUB_TOOLSETS=repos,issues,pull_requests,actions",
+                f"GITHUB_TOOLSETS={GITHUB_TOOLSETS}",
                 "ghcr.io/github/github-mcp-server",
             ],
             "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": config.GITHUB_PERSONAL_ACCESS_TOKEN},

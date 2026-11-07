@@ -11,6 +11,7 @@ finds them like any other note.
 """
 
 from datetime import date, datetime
+import os
 from pathlib import Path
 
 from langchain_core.tools import tool
@@ -26,6 +27,29 @@ from hi.frontmatter import with_frontmatter as _build_frontmatter
 # for the same reason.
 def knowledge_dir() -> Path:
     return config.VAULT_PATH / "hi" / "knowledge"
+
+
+def workspace_dir() -> Path:
+    """Where files the agent creates go when no project directory applies (always the
+    case in Docker, whose own working directory is /app) — visible in Obsidian."""
+    return config.VAULT_PATH / "hi" / "workspace"
+
+
+def files_dir() -> Path:
+    return config.VAULT_PATH / "hi" / "files"
+
+
+def launch_cwd() -> str:
+    """The project directory `hi` was launched from, else the vault workspace."""
+    launched = os.environ.get("HI_LAUNCH_CWD")
+    if launched and Path(launched).is_dir():
+        return launched
+    workspace_dir().mkdir(parents=True, exist_ok=True)
+    return str(workspace_dir())
+
+
+def plots_dir() -> Path:
+    return config.VAULT_PATH / "hi" / "plots"
 
 
 def conversations_dir() -> Path:

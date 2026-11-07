@@ -115,9 +115,53 @@ def backend_up() -> bool:
         return False
 
 
+# Credentials the container can't read from the host's ~/.hi/.env itself.
+FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "OPENROUTER_API_KEY", "TAILSCALE_OLLAMA_URL")
+
+
+def _forwarded_settings() -> dict[str, str]:
+    from hi.config import ENV_PATH, _parse_env
+
+    saved = _parse_env(ENV_PATH)
+    forwarded = {key: saved[key] for key in FORWARDED_KEYS if saved.get(key) and key not in os.environ}
+    vault = saved.get("VAULT_PATH")  # the container reads/writes the real vault, mounted at /vault
+    if vault and Path(vault).is_dir() and "HI_VAULT" not in os.environ:
+        forwarded["HI_VAULT"] = vault
+    if forwarded.get("HI_VAULT"):
+        # Remembered next to the compose file, so a plain `docker compose up` (or Docker
+        # restarting the stack) still mounts the real vault, not an empty volume.
+        from hi.env_file import write_env_var
+
+        write_env_var("HI_VAULT", forwarded["HI_VAULT"], path=COMPOSE_FILE.parent / ".env")
+    return forwarded
+
+
+def host_bridge_up() -> bool:
+    from hi import config
+
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{config.HOST_BRIDGE_PORT}/health", timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def start_host_bridge() -> None:
+    """On a Mac, run the bridge that lets the Dockerized backend use Mac-only tools
+    (open apps, Bluetooth, screen, ...). Detached, so it outlives this command."""
+    if sys.platform != "darwin" or host_bridge_up():
+        return
+    from hi.host_bridge import ensure_token
+
+    ensure_token()  # before compose starts: the backend reads it from ~/.hi/.env
+    log = open(Path.home() / ".hi" / "bridge.log", "ab")
+    subprocess.Popen([sys.executable, "-m", "hi.host_bridge"], stdout=log, stderr=log, start_new_session=True)
+
+
 def start_stack() -> None:
     """`docker compose up -d --build` for the backend + tinyui, unless the
     backend is already answering."""
+    start_host_bridge()
     if backend_up():
         return
     if not shutil.which("docker"):
@@ -125,7 +169,9 @@ def start_stack() -> None:
     if not COMPOSE_FILE.exists():
         sys.exit(f"docker-compose.yml not found at {COMPOSE_FILE}")
     print("starting hi…")
-    result = subprocess.run(["docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d", "--build"])
+    result = subprocess.run(
+        ["docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d", "--build"], env={**os.environ, **_forwarded_settings()}
+    )
     if result.returncode != 0:
         sys.exit("docker compose failed — is Docker/OrbStack running?")
     for _ in range(60):

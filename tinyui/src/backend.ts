@@ -49,6 +49,7 @@ export const fetchConfig = (mode?: string) => getJson<Config>(`/config${mode ? `
 export const saveConfig = (fields: Record<string, string>) => postJson<{ updated: string[]; note: string }>('/config', fields)
 export const fetchModels = (mode: string, host = '') =>
   getJson<Models>(`/models?mode=${mode}${host ? `&host=${encodeURIComponent(host)}` : ''}`)
+export const fetchVoices = () => getJson<{ voices: string[]; error: string }>('/tts/voices')
 export const fetchPending = async () => (await getJson<Pending[]>('/pending')) ?? []
 export const resolvePending = (id: string, approve: boolean) => postJson(`/pending/${id}/${approve ? 'approve' : 'deny'}`)
 

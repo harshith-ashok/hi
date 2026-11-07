@@ -47,7 +47,8 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from hi.action_tiers import confirm_destructive
+from hi.vault import launch_cwd
+
 
 LAUNCH_CWD_ENV_VAR = "HI_LAUNCH_CWD"
 
@@ -76,8 +77,7 @@ _MAX_SEARCH_RESULTS = 50
 
 
 def _base_dir() -> Path:
-    launch_cwd = os.environ.get(LAUNCH_CWD_ENV_VAR)
-    return Path(launch_cwd) if launch_cwd else Path.cwd()
+    return Path(launch_cwd())
 
 
 def _resolve(path: str) -> Path:
@@ -266,10 +266,6 @@ def write_project_file(path: str, content: str) -> str:
         return f"'{path}' exists and is not a file — refusing to overwrite it."
 
     exists = resolved.exists()
-    if exists:
-        old_size = resolved.stat().st_size
-        if not confirm_destructive(f"overwrite '{path}' ({old_size:,}B) with new content ({len(content):,} chars)"):
-            return f"Not written — user declined: {path}"
 
     try:
         resolved.parent.mkdir(parents=True, exist_ok=True)

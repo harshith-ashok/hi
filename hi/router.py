@@ -97,7 +97,9 @@ _RULES: tuple[tuple[re.Pattern[str], str, str], ...] = tuple(
     for pattern, persona, tier in (
         (r"\b(volume|wi-?fi|bluetooth|do not disturb|dnd|clipboard|brightness)\b", "butler", "haiku"),
         (r"\b(my notes?|my vault|in my obsidian|what did i (write|note))\b", "docs", "sonnet"),
-        (r"\bwikipedia\b", "web", "haiku"),
+        (r"\bwikipedia\b|\b(picture|photo|image|pic)s? of\b", "web", "haiku"),
+        (r"\b(python|plot|visuali[sz]e|matplotlib|regression|scikit|sklearn)\b", "term", "sonnet"),
+        (r"\bgithub\b|\bpull requests?\b|\brepos?\b|\b(make|set)\b.*\b(private|public)\b", "term", "sonnet"),
         (r"\b(on my screen|this error|current tab)\b", "term", "sonnet"),
     )
 )

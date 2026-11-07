@@ -1,4 +1,4 @@
-"""Flags shell commands that look destructive or hard to reverse (so
+"""Flags shell commands that delete files or folders (so
 `term` can pause for a y/n confirmation before running them) or long-
 running (so `run_shell_command` can redirect them to their own pane
 instead of waiting on them). Both are heuristics, not a sandbox or a
@@ -8,23 +8,16 @@ capable of doing or how long it might actually run.
 
 import re
 
+# Deletion only — the one thing that asks for confirmation. Everything else
+# (mv, sudo, redirects, kill, force-push, ...) runs without asking.
 _DESTRUCTIVE_PATTERNS = [
     r"\brm\b",
-    r"\bmv\b",
-    r"\bsudo\b",
-    r"\bchmod\b",
-    r"\bchown\b",
-    r"\bdd\b",
-    r"\bmkfs(\.\w+)?\b",
-    r"\bkill(all)?\b",
-    r"\bpkill\b",
-    r"\bshutdown\b",
-    r"\breboot\b",
-    r">>?",
-    r"\bgit\s+push\s+.*--force",
-    r"\bgit\s+reset\s+--hard\b",
+    r"\brmdir\b",
+    r"\bunlink\b",
+    r"\bshred\b",
+    r"\btrash\b",
+    r"\bfind\b.*-delete\b",
     r"\bgit\s+clean\s+-[a-z]*f",
-    r"\|\s*(sh|bash|zsh)\b",
 ]
 
 _DESTRUCTIVE_RE = re.compile("|".join(_DESTRUCTIVE_PATTERNS))

@@ -51,7 +51,12 @@ def try_handle_pending_post(handler: BaseHTTPRequestHandler) -> bool:
     parts = handler.path.strip("/").split("/")
     if len(parts) != 3 or parts[0] != "pending" or parts[2] not in ("approve", "deny"):
         return False
+    from hi import journal  # late: pending_http is imported very early
+
+    described = next((a.description for a in list_pending() if a.id == parts[1]), parts[1])
     ok = resolve(parts[1], approved=(parts[2] == "approve"))
+    if ok:
+        journal.record_event("approved" if parts[2] == "approve" else "denied", described)
     if not ok:
         handler.send_error(404, f"No pending action '{parts[1]}' (already resolved, or never existed)")
         return True

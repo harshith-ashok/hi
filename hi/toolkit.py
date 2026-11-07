@@ -26,7 +26,7 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool, tool
 
-MAX_VISIBLE = 24
+MAX_VISIBLE = 30
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class Group:
 GROUPS: tuple[Group, ...] = (
     # ---- term: core -------------------------------------------------------
     Group("core", 1, (
-        "run_shell_command", "read_project_file", "list_project_files", "search_files",
+        "run_shell_command", "search_vault", "read_vault_note", "read_project_file", "list_project_files", "search_files",
         "edit_project_file", "write_project_file",
         "read_note", "list_notes", "create_note", "append_note",
     )),
@@ -62,14 +62,17 @@ GROUPS: tuple[Group, ...] = (
         "create_pipeline", "add_pipeline_entry", "update_pipeline_entry_stage", "list_pipeline_entries",
         "list_deadlines", "assign_task_owner", "team_status_draft", "team_deadline_pings",
     ), r"leetcode|application|applied|interview|pipeline|deadline|\bdue\b|team|assign|owner", "leetcode, job applications, pipelines, deadlines, team ops"),
+    Group("sandbox", 2, ("run_python",),
+          r"python|\bplot|\bgraph\b|\bchart|visuali[sz]|regression|classif|cluster|train(ing)? (a |the )?model|machine learning|\bml\b|matplotlib|numpy|pandas|scikit|sklearn|dataset|histogram|scatter|simulat|\bcompute\b|calculate",
+          "run Python in a sandbox: calculations, ML, charts shown in the UI"),
     Group("insight", 2, ("what_next", "generate_retro", "reflect_on_week", "synthesize_vault", "check_suggestions", "show_last_run_trace"),
           r"what (should|next)|what's next|retro|reflect|synthes|suggest|trace|summari[sz]e (my|the) (vault|week)", "what to do next, weekly retro/reflection, vault synthesis"),
     # ---- MCP: subsets by priority ----------------------------------------
     Group("github", 2, (
-        "search_repositories", "search_code", "get_file_contents", "list_issues", "issue_read", "issue_write",
+        "get_me", "set_repo_visibility", "search_repositories", "search_code", "get_file_contents", "list_issues", "issue_read", "issue_write",
         "add_issue_comment", "list_pull_requests", "pull_request_read", "create_pull_request",
         "list_commits", "list_branches", "actions_list", "get_job_logs",
-    ), r"github|\brepo\b|repository|pull request|\bpr\b|\bissues?\b|\bcommits?\b|\bbranch|workflow run|ci\b", "GitHub reads, issues, PRs, branches, CI"),
+    ), r"github|\brepos?\b|repositor|\b(make|set)\b.*\b(private|public)\b|visibility|pull request|\bpr\b|\bissues?\b|\bcommits?\b|\bbranch|workflow run|ci\b", "GitHub reads, issues, PRs, branches, CI, repo public/private"),
     Group("github_admin", 3, (
         "merge_pull_request", "push_files", "create_branch", "get_commit", "actions_get", "create_or_update_file", "delete_file", "fork_repository", "create_repository",
         "update_pull_request", "update_pull_request_branch", "pull_request_review_write", "add_comment_to_pending_review",
@@ -167,10 +170,17 @@ class ToolSelector(AgentMiddleware):
                 active.add(g.name)
         return active
 
+    def _rank(self, name: str) -> tuple[int, int]:
+        group = self._tool_group.get(name)
+        if group is None:
+            return (0, 0)
+        return (group.priority, group.tools.index(name) if name in group.tools else 0)
+
     def wrap_model_call(self, request: ModelRequest, handler):
         active = self.active_groups(request.messages)
         shown = [t for t in request.tools if t.name == "more_tools" or (t.name in self._tool_group and self._tool_group[t.name].name in active)]
-        shown.sort(key=lambda t: self._tool_group[t.name].priority if t.name in self._tool_group else 0)
+        # priority first, then the order tools are listed in their group, so a cap cuts the least important
+        shown.sort(key=lambda t: self._rank(t.name))
         return handler(request.override(tools=shown[: MAX_VISIBLE + 1]))
 
 

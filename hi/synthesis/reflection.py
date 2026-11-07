@@ -120,12 +120,14 @@ def run_weekly_reflection(day: date | None = None) -> bool:
 
 @tool
 def reflect_on_week() -> str:
-    """Look back over this week's conversation logs across all personas
-    and propose durable facts/preferences worth saving to
-    preferences.md — recurring signals, not one-off small talk. Runs
-    automatically alongside the weekly retro too; this is for triggering
-    it on demand instead of waiting for that."""
-    wrote = run_weekly_reflection()
-    if wrote:
-        return "Proposed new preferences from this week's conversations — see hi/knowledge/preferences.md."
-    return "Nothing durable stood out in this week's conversations."
+    """Reflect on the last 7 days of the assistant's journal: writes a note with
+    a summary, decisions, open loops and lessons to hi/reflections/, and tidies
+    the long-term memory file. Runs by itself for yesterday each day; use this
+    to get a weekly view on demand."""
+    from hi import reflection_agent
+
+    path = reflection_agent.reflect(days=7, end=date.today())
+    if path is None:
+        return "Nothing in the journal for the last 7 days to reflect on."
+    reflection_agent.consolidate_memory()
+    return f"Wrote the reflection: hi/reflections/{path.name}"

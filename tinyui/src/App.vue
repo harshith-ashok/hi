@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { fetchConfig, fetchPending, getJson, ping, resolvePending, type Pending } from './backend'
+import { BASE_URL, fetchConfig, fetchPending, getJson, ping, resolvePending, type Pending } from './backend'
 import { useChat } from './chat'
 import History from './History.vue'
 import Markdown from './Markdown.vue'
+import Memory from './Memory.vue'
 import Orb from './Orb.vue'
 import Settings from './Settings.vue'
 import Status from './Status.vue'
 import Tasks from './Tasks.vue'
-import { ramble, record, speak, stopSpeaking, transcribe, type Recording } from './voice'
+import { afterWakePhrase, getWakePhrase, ramble, record, speak, stopSpeaking, transcribe, unlockAudio, type Recording } from './voice'
 
 const PERSONAS = ['auto', 'term', 'butler', 'docs', 'web']
-const VIEWS = ['chat', 'history', 'tasks', 'status', 'settings'] as const
+const VIEWS = ['chat', 'history', 'tasks', 'memory', 'status', 'settings'] as const
 
 const { entries, busy, add, ask, cancel, clear } = useChat((text) => void reply(text))
 const mic = ref<'idle' | 'listening' | 'transcribing' | 'structuring'>('idle')
@@ -19,7 +20,16 @@ const rambler = ref(true) // structure spoken transcripts before sending
 const voiceMode = ref(false) // full-screen, voice only
 const caption = ref('')
 const talk = ref(false) // conversation mode: speak replies, then listen again
+// Independent of the mic: speak replies even to typed requests. Remembered across reloads.
+const speakReplies = ref(localStorage.getItem('speakReplies') === '1')
+watch(speakReplies, (on) => {
+  localStorage.setItem('speakReplies', on ? '1' : '0')
+  if (on) unlockAudio()
+  else if (!talk.value) stopSpeaking()
+})
+const wake = ref(false) // always listening for the wake phrase; hands-free input
 let recording: Recording | null = null
+let ttsWarned = false
 const input = ref('')
 const persona = ref('auto')
 const online = ref(false)
@@ -76,6 +86,7 @@ function submit(override?: string) {
 
 // send=false: dictation — the transcript lands in the input box to edit; send=true: hands-free.
 async function listen(send = true) {
+  unlockAudio()
   if (mic.value !== 'idle') return recording?.stop()
   try {
     recording = await record()
@@ -109,13 +120,55 @@ async function listen(send = true) {
   mic.value = 'idle'
 }
 
+// Wake word: each utterance is transcribed locally (whisper.cpp) and acted on only if it
+// starts with the wake phrase. "hey hi, what's due" sends the rest; a bare "hey hi" listens next.
+async function wakeLoop() {
+  while (wake.value) {
+    if (mic.value !== 'idle' || speaking.value || busy.value) {
+      await new Promise((r) => setTimeout(r, 300))
+      continue
+    }
+    let wav: Blob | null
+    try {
+      recording = await record()
+      wav = await recording.result
+      recording = null
+    } catch {
+      add('error', 'microphone unavailable')
+      break
+    }
+    if (!wav || !wake.value || speaking.value) continue // silence, switched off, or our own voice
+    try {
+      const rest = afterWakePhrase(await transcribe(wav))
+      if (rest === null) continue
+      if (rest) submit(rest)
+      else await listen()
+    } catch (err) {
+      add('error', (err as Error).message)
+      break
+    }
+  }
+  wake.value = false
+}
+
+function toggleWake() {
+  unlockAudio()
+  wake.value = !wake.value
+  if (wake.value) void wakeLoop()
+  else recording?.stop()
+}
+
 // Speak the short summary; the full answer stays on screen.
 async function reply(text: string) {
-  if (!talk.value) return
+  if (!talk.value && !speakReplies.value) return
   caption.value = text
   speaking.value = true
+  if (wake.value && mic.value === 'idle') recording?.stop() // don't transcribe our own voice
   try {
-    await speak(text)
+    await speak(text, (why) => {
+      if (!ttsWarned) note(`phonon tts failed (${why}) — using the browser voice`)
+      ttsWarned = true
+    })
   } catch (err) {
     return void add('error', (err as Error).message)
   } finally {
@@ -131,6 +184,7 @@ function toggleVoiceMode() {
 }
 
 function toggleTalk() {
+  unlockAudio()
   talk.value = !talk.value
   if (talk.value) void listen()
   else {
@@ -158,6 +212,7 @@ function onWindowKey(e: KeyboardEvent) {
     if (busy.value) cancel()
     if (voiceMode.value) voiceMode.value = false
     talk.value = false
+    wake.value = false
     recording?.stop()
     stopSpeaking()
   } else if (pending.value.length && !input.value && (e.key === 'y' || e.key === 'n')) {
@@ -184,6 +239,8 @@ watch(
 
 onMounted(() => {
   window.addEventListener('keydown', onWindowKey)
+  window.addEventListener('pointerdown', unlockAudio, { once: true }) // lets later spoken replies play
+  window.addEventListener('keydown', unlockAudio, { once: true })
   timers.push(window.setInterval(refreshStatus, 5000))
   void refreshStatus()
   void briefing()
@@ -193,6 +250,13 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onWindowKey)
   timers.forEach(clearInterval)
 })
+
+// Charts made by run_python come back as /plots/<name>.png paths in the tool result.
+const plots = (result?: string) => [...new Set(result?.match(/\/plots\/[\w-]+\.(?:png|jpg|webp)/g) ?? [])].map((p) => BASE_URL + p)
+
+// Files made by run_python (PDF, CSV, ...) come back as /files/<run>/<name> paths.
+const files = (result?: string) =>
+  [...new Set(result?.match(/\/files\/[\w.-]+\/[\w.-]+/g) ?? [])].map((p) => ({ href: BASE_URL + p, name: p.split('/').pop() }))
 
 const short = (s: string, n = 240) => {
   const flat = s.replace(/\s+/g, ' ').trim()
@@ -223,6 +287,8 @@ const short = (s: string, n = 240) => {
             <div v-else-if="e.kind === 'tool'" class="tool" @click="expanded.has(e.id) ? expanded.delete(e.id) : expanded.add(e.id)">
               <span class="accent">▸ {{ e.name }}</span> <span class="dim">{{ e.text }}</span>
               <div v-if="e.result !== undefined" class="dim indent">{{ expanded.has(e.id) ? e.result : short(e.result) }}</div>
+              <img v-for="src in plots(e.result)" :key="src" :src="src" class="plot" alt="chart" @click.stop />
+              <a v-for="f in files(e.result)" :key="f.href" :href="f.href" target="_blank" class="file" @click.stop>⬇ {{ f.name }}</a>
             </div>
             <Markdown v-else-if="e.kind === 'text'" :source="e.text" class="text" />
             <div v-else :class="e.kind">{{ e.text }}</div>
@@ -247,8 +313,11 @@ const short = (s: string, n = 240) => {
             @keydown.down.prevent="recall(1)"
           />
           <span v-if="mic !== 'idle'" class="dim">{{ mic }}…</span>
+          <span v-else-if="wake" class="dim">say “{{ getWakePhrase() }}”…</span>
           <button title="voice only: full-screen orb, hands-free" @click="toggleVoiceMode">[voice]</button>
           <button :class="{ accent: rambler }" title="rambler: clean up and structure what you say before sending" @click="rambler = !rambler">[{{ rambler ? 'ramble on' : 'ramble' }}]</button>
+          <button :class="{ accent: speakReplies }" title="speak replies aloud, even to typed requests (independent of the mic)" @click="speakReplies = !speakReplies">[{{ speakReplies ? 'speak on' : 'speak' }}]</button>
+          <button :class="{ accent: wake }" title="wake word: always listening; say the wake phrase (set in settings) then your request" @click="toggleWake">[{{ wake ? 'wake on' : 'wake' }}]</button>
           <button :class="{ accent: talk }" title="talk: speak replies and keep listening" @click="toggleTalk">[{{ talk ? 'talk on' : 'talk' }}]</button>
           <button title="dictate into the input box (no send, no speech)" :disabled="mic === 'transcribing' || mic === 'structuring'" @click="listen(false)">[mic]</button>
         </div>
@@ -256,6 +325,7 @@ const short = (s: string, n = 240) => {
 
       <History v-if="view === 'history'" />
       <Tasks v-else-if="view === 'tasks'" />
+      <Memory v-else-if="view === 'memory'" :key="view" />
       <Status v-else-if="view === 'status'" />
       <Settings v-else-if="view === 'settings'" />
     </main>
@@ -296,6 +366,8 @@ main > * { flex: 1; min-height: 0; }
 .error, .err { color: var(--err); }
 .accent { color: var(--accent); }
 .tool { cursor: pointer; }
+.file { display: block; margin: 4px 0 4px 2ch; color: var(--accent); }
+.plot { display: block; max-width: min(100%, 720px); margin: 8px 0 8px 2ch; border-radius: 4px; background: #fff; }
 .indent { padding-left: 2ch; }
 .prompt { display: flex; gap: 1ch; border-top: 1px solid var(--dim); padding-top: 8px; }
 .prompt input { flex: 1; background: none; border: 0; outline: none; }

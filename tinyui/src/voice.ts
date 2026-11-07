@@ -69,6 +69,7 @@ export async function record(): Promise<Recording> {
   recorder.ondataavailable = (e) => chunks.push(e.data)
 
   const context = new AudioContext()
+  await context.resume().catch(() => {}) // a suspended context reads silence, so speech would never be detected
   const analyser = context.createAnalyser()
   context.createMediaStreamSource(stream).connect(analyser)
   const level = new Float32Array(analyser.fftSize)
@@ -123,12 +124,26 @@ export async function ramble(text: string): Promise<string> {
   }
 }
 
-let player: HTMLAudioElement | null = null
+// One audio element for every clip. Safari (and Chrome without a prior click) only lets an
+// element play if it was started inside a user gesture, and our clips arrive after a network
+// fetch, long after the click. So the element is "unlocked" once by a gesture (unlockAudio)
+// and then reused: setting a new src on an unlocked element may play freely.
+const player = new Audio()
+let unlocked = false
+
+/** Call from any click/key handler. Safe to call repeatedly. */
+export function unlockAudio() {
+  if (unlocked) return
+  unlocked = true
+  player.src = URL.createObjectURL(encodeWav(new Float32Array(240)))
+  player.play().catch(() => (unlocked = false)) // not in a gesture after all: try again next time
+  speechSynthesis.speak(new SpeechSynthesisUtterance('')) // same unlock for the browser-voice fallback
+}
 
 export function stopSpeaking() {
-  player?.pause()
-  player = null
+  player.pause()
   speechSynthesis.cancel()
+  audioLevel.value = 0
 }
 
 function speakInBrowser(text: string): Promise<void> {
@@ -146,31 +161,78 @@ function speakInBrowser(text: string): Promise<void> {
   })
 }
 
-/** Speak `text`; resolves when playback ends. Uses the backend's neural TTS
- * (/tts) when it has one, else the browser's built-in voice — the Docker
- * image has no TTS engine. */
-export async function speak(text: string): Promise<void> {
+const WINDOW_S = 0.05
+
+/** Loudness of the clip in 50 ms windows, read from the decoded audio, so the orb can follow
+ * playback without routing the sound through an AudioContext (which could mute it). */
+async function envelope(clip: Blob): Promise<number[]> {
+  const context = new AudioContext()
+  try {
+    const decoded = await context.decodeAudioData(await clip.arrayBuffer())
+    const samples = decoded.getChannelData(0)
+    const step = Math.max(1, Math.floor(decoded.sampleRate * WINDOW_S))
+    const levels: number[] = []
+    for (let i = 0; i < samples.length; i += step) {
+      let sum = 0
+      const end = Math.min(samples.length, i + step)
+      for (let j = i; j < end; j++) sum += samples[j] * samples[j]
+      levels.push(Math.min(1, Math.sqrt(sum / (end - i)) * 5))
+    }
+    return levels
+  } finally {
+    void context.close()
+  }
+}
+
+function followPlayback(levels: number[]): () => void {
+  let on = true
+  const frame = () => {
+    if (!on) return
+    const target = levels.length ? (levels[Math.floor(player.currentTime / WINDOW_S)] ?? 0) : 0.3
+    audioLevel.value = audioLevel.value * 0.6 + target * 0.4
+    requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+  return () => {
+    on = false
+    audioLevel.value = 0
+  }
+}
+
+/** Speak `text`; resolves when playback ends. Uses the backend's TTS (/tts, Ollama's
+ * phonon). Only if that fails does it use the browser's voice, and says why. */
+export async function speak(text: string, onFallback?: (reason: string) => void, voice?: string): Promise<void> {
   stopSpeaking()
   try {
-    const res = await fetch(`${BASE_URL}/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
-    if (!res.ok) throw new Error(`tts failed (${res.status})`)
-    const audio = new Audio(URL.createObjectURL(await res.blob()))
-    player = audio
-    const context = new AudioContext()
-    const analyser = context.createAnalyser()
-    context.createMediaElementSource(audio).connect(analyser)
-    analyser.connect(context.destination)
-    let playing = true
-    trackLevel(analyser, () => playing, 5)
+    const res = await fetch(`${BASE_URL}/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) })
+    if (!res.ok) throw new Error(res.statusText || `tts failed (${res.status})`)
+    const clip = await res.blob()
+    const levels = await envelope(clip).catch(() => [])
+    player.src = URL.createObjectURL(clip)
+    const stopMeter = followPlayback(levels)
     await new Promise<void>((resolve, reject) => {
-      audio.onended = () => resolve()
-      audio.onerror = () => reject(new Error('audio playback failed'))
-      audio.play().catch(reject)
-    }).finally(() => {
-      playing = false
-      void context.close()
-    })
-  } catch {
+      player.onended = () => resolve()
+      player.onpause = () => resolve() // stopSpeaking()
+      player.onerror = () => reject(new Error('audio playback failed'))
+      player.play().catch(reject)
+    }).finally(stopMeter)
+  } catch (err) {
+    onFallback?.((err as Error).message)
     await speakInBrowser(text)
   }
+}
+
+const WAKE_KEY = 'wakePhrase'
+export const DEFAULT_WAKE_PHRASE = 'hey hi'
+export const getWakePhrase = () => localStorage.getItem(WAKE_KEY) || DEFAULT_WAKE_PHRASE
+export const setWakePhrase = (phrase: string) => localStorage.setItem(WAKE_KEY, phrase.trim() || DEFAULT_WAKE_PHRASE)
+
+const words = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ').split(/\s+/).filter(Boolean)
+
+/** What was said after the wake phrase ('' if only the phrase), or null if `heard` doesn't start with it. */
+export function afterWakePhrase(heard: string): string | null {
+  const phrase = words(getWakePhrase())
+  const spoken = words(heard)
+  if (!phrase.every((w, i) => spoken[i] === w)) return null
+  return heard.trim().split(/\s+/).slice(phrase.length).join(' ').replace(/^[\s,.:;!?-]+/, '')
 }

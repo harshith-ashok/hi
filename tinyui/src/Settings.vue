@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { fetchConfig, fetchModels, saveConfig } from './backend'
+import { fetchConfig, fetchModels, fetchVoices, saveConfig } from './backend'
+import { getWakePhrase, setWakePhrase, speak, unlockAudio } from './voice'
 
 type Mode = 'local' | 'tailscale' | 'openrouter'
 const MODES: { id: Mode; hint: string }[] = [
@@ -25,6 +26,36 @@ const available = ref<string[]>([])
 const filter = ref('')
 const focused = ref('')
 const status = ref('')
+
+const voices = ref<string[]>([])
+const voice = ref('default')
+const voiceSaved = ref('default')
+const wakePhrase = ref(getWakePhrase())
+const voiceStatus = ref('')
+
+async function loadVoices() {
+  const result = await fetchVoices()
+  voices.value = result?.voices ?? []
+  voiceStatus.value = result === null ? 'backend unreachable' : result.error
+}
+
+async function preview() {
+  unlockAudio()
+  voiceStatus.value = `speaking as ${voice.value} …`
+  await speak(`Hi, this is ${voice.value}. How does this sound?`, (why) => (voiceStatus.value = `tts failed: ${why}`), voice.value)
+  if (voiceStatus.value.startsWith('speaking')) voiceStatus.value = ''
+}
+
+async function saveVoice() {
+  setWakePhrase(wakePhrase.value)
+  wakePhrase.value = getWakePhrase()
+  if (voice.value !== voiceSaved.value) {
+    const result = await saveConfig({ TTS_VOICE: voice.value })
+    if (!result) return void (voiceStatus.value = 'save failed')
+    voiceSaved.value = voice.value
+  }
+  voiceStatus.value = 'saved'
+}
 
 const endpoint = computed(() => ENDPOINT[mode.value])
 const shown = computed(() => available.value.filter((m) => m.toLowerCase().includes(filter.value.toLowerCase())).slice(0, 200))
@@ -74,6 +105,8 @@ onMounted(async () => {
     return
   }
   active.value = mode.value = String(config.AI_MODE) as Mode
+  voice.value = voiceSaved.value = String(config.TTS_VOICE ?? 'default')
+  void loadVoices()
   endpoints.OLLAMA_HOST = String(config.OLLAMA_HOST ?? '')
   endpoints.TAILSCALE_OLLAMA_URL = String(config.TAILSCALE_OLLAMA_URL ?? '')
   keySet.value = Boolean(config.OPENROUTER_API_KEY_SET)
@@ -119,6 +152,19 @@ onMounted(async () => {
       </div>
     </div>
 
+    <div class="voice">
+      <span class="dim">voice (phonon)</span>
+      <select v-model="voice">
+        <option v-if="!voices.includes(voice)" :value="voice">{{ voice }}</option>
+        <option v-for="v in voices" :key="v" :value="v">{{ v }}</option>
+      </select>
+      <button @click="preview">preview</button>
+      <span class="dim">wake phrase</span>
+      <input v-model="wakePhrase" placeholder="hey hi" spellcheck="false" @keydown.enter="saveVoice" />
+      <button class="accent" @click="saveVoice">save voice</button>
+      <span class="dim">{{ voiceStatus }}</span>
+    </div>
+
     <div class="bar dim">
       {{ status }}
       <span class="actions">
@@ -145,6 +191,10 @@ label { display: grid; gap: 2px; }
 input { background: none; border: 1px solid var(--dim); padding: 4px 8px; outline: none; }
 input:focus { border-color: var(--accent); }
 .filter { margin: 2px 0 8px; }
+.voice { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.voice select { background: var(--bg); color: inherit; border: 1px solid var(--dim); padding: 4px 8px; font: inherit; }
+.voice button { background: none; border: 0; cursor: pointer; padding: 0; color: var(--dim); }
+.voice button:hover, .voice .accent { color: var(--accent); }
 .bar { margin-top: 12px; display: flex; justify-content: space-between; }
 .actions button { background: none; border: 0; cursor: pointer; color: var(--dim); margin-left: 16px; padding: 0; }
 .actions button:hover, .actions .accent { color: var(--accent); }

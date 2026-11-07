@@ -24,8 +24,11 @@ from hi.models import fast_variant
 from hi.note_preview import note_preview
 from hi.tree_cache import read_tree_cache, refresh_tree_cache
 from hi.vault import conversations_dir
+from hi.vault_context import find_notes
 
 NO_NOTES_MESSAGE = "No notes exist in the vault yet."
+KEYWORD_NOTES = 6  # best word-match notes always included, even if the model picks none
+MAX_NOTE_CHARS = 8000  # per note, so a few long notes can't flood the prompt
 
 
 def _is_citable(path: Path) -> bool:
@@ -34,6 +37,8 @@ def _is_citable(path: Path) -> bool:
 
 def _resolve_vault_path(path: str) -> Path:
     resolved = (config.VAULT_PATH / path).resolve()
+    if not resolved.exists() and not path.endswith(".md"):  # wikilinks are written without the extension
+        resolved = (config.VAULT_PATH / f"{path}.md").resolve()
     if not resolved.is_relative_to(config.VAULT_PATH.resolve()) or not _is_citable(resolved):
         raise ValueError(f"Invalid path: {path}")
     return resolved
@@ -130,6 +135,10 @@ def build_vault_rag_graph(note_agent, model: BaseChatModel) -> CompiledStateGrap
         # hi/memory_graph.py's own comment for the measured motive.
         reply = invoke_with_retry(fast_variant(model), [HumanMessage(selection_prompt)])
         relevant_notes = [path for path in known_notes if path in reply]
+        # The model can answer NONE (or miss) on a big vault; plain word matching on names,
+        # paths and text is a floor under it, not a replacement.
+        keyword_hits = [p for p, _ in find_notes(str(question), limit=KEYWORD_NOTES) if p in known_notes]
+        relevant_notes = list(dict.fromkeys(keyword_hits + relevant_notes))
         return {"relevant_notes": relevant_notes}
 
     def load_note_context(state: State) -> dict:
@@ -140,7 +149,7 @@ def build_vault_rag_graph(note_agent, model: BaseChatModel) -> CompiledStateGrap
             context = "No relevant notes were found in the vault for this question."
         else:
             sections = [
-                f"### {path}\n\n{read_vault_note.invoke({'path': path})}" for path in note_paths
+                f"### {path}\n\n{read_vault_note.invoke({'path': path})[:MAX_NOTE_CHARS]}" for path in note_paths
             ]
             context = "\n\n".join(sections)
 

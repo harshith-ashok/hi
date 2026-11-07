@@ -87,12 +87,48 @@ typing, no wake word needed for short exchanges.
       gets a confirm hook.
 - [ ] Decide on docs persona (7 tools, kept as is) and merging
       `list_vault_notes`/`list_notes`, `read_vault_note`/`read_note`.
+- [x] GitHub + fetch MCP servers work in Docker (binaries in the image; token
+      forwarded from ~/.hi/.env by `hi`). Voice TTS = phonon via Ollama.
 - [ ] n8n MCP server fails to connect ("unhandled errors in a TaskGroup").
 - [ ] Keyword rules miss paraphrases; log which group each turn unlocked and
       tune, or fall back to a haiku selector for ambiguous turns.
 - [ ] Models sometimes call a group name as a tool (`github`); handle by
       returning the unlock hint from a no-op alias.
 - [ ] Shrink the remaining term prompt (core sections are still long).
+
+## 1e. The vault as the agent's memory (Hermes-style wrapper)
+- [x] `hi/journal.py`: every turn is journaled to `<vault>/hi/journal/YYYY-MM-DD.md`
+      by the wrapper (ask, each tool call + result, answer, time, `[[links]]` to
+      notes touched); approvals, settings changes and errors too.
+- [x] `hi/vault_context.py`: each turn the term prompt gets recent journal
+      activity + the notes best matching the message (name/path matching,
+      no embeddings), plus `search_vault` / `read_vault_note` tools.
+- [x] Docker uses the real vault: `hi` mounts `VAULT_PATH` at `/vault`.
+- [x] Memory extraction (`hi/memory.py`): after each turn a haiku-tier model
+      appends durable preferences/facts/projects/people/decisions to
+      `hi/memory/memory.md` (background thread; sees only what you said, the
+      answer and tool names; secrets filtered; deduped). `MEMORY_EXTRACTION=off`.
+- [x] Reflection agent (`hi/reflection_agent.py`): yesterday's journal ->
+      `hi/reflections/YYYY-MM-DD.md` (summary, decisions, open loops, lessons),
+      started on the first turn of a day; then memory consolidation with a
+      backup in `hi/memory/history/`. `REFLECTION=off`. Open loops feed context.
+- [x] tinyui `memory` view; `GET /memory`.
+- [ ] Extraction quality: eval on ~30 real turns; check false positives
+      (the model remembers things the user only asked about).
+- [ ] Contradictions: consolidation drops stale items only if the model sees
+      them; verify on real data. Add an "ignored"/"forget" list.
+- [ ] A `forget` tool and a "what do you remember about X" answer path.
+- [ ] Reflection for non-HTTP entry points once they journal.
+- [ ] Skills, Hermes-style: when a multi-step task succeeds, save the
+      procedure as `hi/skills/<name>.md` and load matching skills as context.
+- [ ] Journal the other entry points: wake daemon, TUI, CLI repl (only the
+      HTTP server records turns today), voice-mode raw transcript vs rambler.
+- [ ] Context from content, not just names (grep headings/tags), limited to
+      files that are downloaded locally (iCloud may offload the rest).
+- [ ] Give `docs`, `butler`, `web` the same context block.
+- [ ] A journal view in tinyui; link journal entries from History.
+- [ ] iCloud + Obsidian Git both touch this vault: check the journal does not
+      create merge noise (one file per day, append-only).
 
 ## 2. Reliability
 - [ ] Test the orchestrated-plan path end to end.

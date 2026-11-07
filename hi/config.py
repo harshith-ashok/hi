@@ -15,7 +15,7 @@ _ESCAPE_RE = re.compile(r"\\(.)")
 
 
 def _parse_env(path: Path) -> dict[str, str]:
-    if not path.exists():
+    if not path.is_file():
         return {}
     env: dict[str, str] = {}
     for line in path.read_text().splitlines():
@@ -32,8 +32,18 @@ def _parse_env(path: Path) -> dict[str, str]:
     return env
 
 
-# ~/.hi/.env wins; real environment variables (e.g. from Docker) are the fallback.
-_env = {**os.environ, **_parse_env(ENV_PATH)}
+# Layers, lowest to highest: real environment variables, the host's own credentials in
+# ~/.hi/.env (docker-compose.yml mounts it read-only here), then this
+# machine's ~/.hi/.env (inside Docker: settings saved from the UI).
+HOST_ENV_PATH = Path("/run/hi-host.env")
+# Only credentials come from the host file: paths and addresses in it (VAULT_PATH,
+# OLLAMA_HOST, ...) are right for the Mac and wrong inside the container.
+HOST_ENV_KEYS = (
+    "GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "OPENROUTER_API_KEY",
+    "TAILSCALE_OLLAMA_URL", "HOST_BRIDGE_TOKEN",
+)
+_host_env = {k: v for k, v in _parse_env(HOST_ENV_PATH).items() if k in HOST_ENV_KEYS}
+_env = {**os.environ, **_host_env, **_parse_env(ENV_PATH)}
 
 # --- AI layer -----------------------------------------------------------
 # Three ways to reach a model (see hi/llm.py for what each one does):
@@ -105,10 +115,21 @@ apply_mode()
 
 VAULT_PATH = Path(_env.get("VAULT_PATH", str(Path.home() / ".hi" / "vault")))
 WHISPER_MODEL = _env.get("WHISPER_MODEL", "base.en")
+# Learning from your use, written to the vault (hi/memory.py, hi/reflection_agent.py). "off" disables.
+MEMORY_EXTRACTION = (_env.get("MEMORY_EXTRACTION") or "on").lower() != "off"
+REFLECTION = (_env.get("REFLECTION") or "on").lower() != "off"
 # Text-to-speech: an Ollama speech model (hi/tts_ollama.py), `ollama pull phonon`.
 TTS_MODEL = _env.get("TTS_MODEL") or "phonon"
 TTS_VOICE = _env.get("TTS_VOICE") or "default"
 # whisper.cpp `whisper-server` (hi/stt.py), run natively so it can use Metal.
+# The Mac bridge (hi/host_bridge.py): the Dockerized backend's way to run Mac-only tools.
+HOST_BRIDGE_PORT = int(_env.get("HOST_BRIDGE_PORT") or 8766)
+HOST_BRIDGE_BIND = _env.get("HOST_BRIDGE_BIND") or "127.0.0.1"
+HOST_BRIDGE_URL = _env.get("HOST_BRIDGE_URL") or f"http://host.docker.internal:{HOST_BRIDGE_PORT}"
+HOST_BRIDGE_TOKEN = _env.get("HOST_BRIDGE_TOKEN") or ""
+
+# The code-execution sandbox container (sandbox/, docker-compose.yml).
+SANDBOX_URL = _env.get("SANDBOX_URL") or "http://127.0.0.1:8000"
 WHISPER_CPP_URL = _env.get("WHISPER_CPP_URL") or "http://127.0.0.1:8080"
 
 # hi/perception/vision.py's ask_about_screen — a real vision-capable

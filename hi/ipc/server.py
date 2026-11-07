@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from urllib.parse import parse_qs
 import shutil
 import threading
@@ -60,6 +61,7 @@ from hi.models import get_tier_model
 from hi.orchestrator.complexity import classify_with_plan
 from hi.router import fast_route, remember_route
 from hi.speaker import Speaker
+from hi import journal, memory, reflection_agent
 from hi.orchestrator.graph import latest_run_trace
 from hi.orchestrator.pending_http import try_handle_pending_get, try_handle_pending_post
 from hi.personas import PERSONAS, get_agent_builder
@@ -123,6 +125,7 @@ def stream_query_as_agui(text: str, forced_persona: str | None = None):
     try:
         yield from _stream_query_as_agui(text, forced_persona)
     except Exception as e:
+        journal.record_event("error", f"{text[:120]} — {llm.friendly_error(e)}")
         yield ag.RunErrorEvent(message=llm.friendly_error(e))
 
 
@@ -143,6 +146,7 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None):
     too, and (see module docstring) never triggers an orchestrated plan.
     """
     started = time.monotonic()
+    reflection_agent.maybe_reflect_yesterday()  # background, at most once a day
     if forced_persona in PERSONAS:
         persona_name, tier, needs_plan = forced_persona, _FORCED_PERSONA_TIER, False
     else:
@@ -166,12 +170,19 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None):
     first_token_s: float | None = None
     tool_starts: dict[str, tuple[str, float]] = {}
     tool_times: list[dict] = []
+    journal_tools: dict[str, dict] = {}  # call id -> {name, args, result}, for the journal
     for event in events:
         now = time.monotonic()
         if first_token_s is None and isinstance(event, ag.TextMessageContentEvent):
             first_token_s = now - started
         if isinstance(event, ag.TextMessageContentEvent) and not event.subagent_run_id:
             speaker.feed(event.delta)
+        if isinstance(event, ag.ToolCallStartEvent):
+            journal_tools[event.tool_call_id] = {"name": event.tool_call_name, "args": "", "result": ""}
+        elif isinstance(event, ag.ToolCallArgsEvent) and event.tool_call_id in journal_tools:
+            journal_tools[event.tool_call_id]["args"] += event.delta
+        elif isinstance(event, ag.ToolCallResultEvent) and event.tool_call_id in journal_tools:
+            journal_tools[event.tool_call_id]["result"] = str(event.content)
         if isinstance(event, ag.ToolCallStartEvent):
             speaker.block_ended_by_tool()
             tool_starts[event.tool_call_id] = (event.tool_call_name, now)
@@ -199,6 +210,8 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None):
 
     if final_answer:
         log_conversation(log_persona, text, final_answer)
+        journal.record_turn(log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started)
+        memory.extract_async(text, final_answer, [t["name"] for t in journal_tools.values()])
         if not speaker.has_spoken:  # nothing sayable streamed (tool-only answer, one-liner): summarize
             yield ag.CustomEvent(name="spoken_summary", value={"text": make_spoken_summary(final_answer)})
 
@@ -328,6 +341,42 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_file(self, relative: str) -> None:
+        """A file saved by run_python. Downloads, not pages: agent-written HTML must never
+        run on this origin, which can call the rest of this API."""
+        from hi.vault import files_dir
+
+        path = files_dir() / relative
+        if not re.fullmatch(r"[\w.-]+/[\w.-]+", relative) or not path.is_file():
+            self.send_error(404, "No such file")
+            return
+        data = path.read_bytes()
+        pdf = path.suffix.lower() == ".pdf"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf" if pdf else "application/octet-stream")
+        self.send_header("Content-Disposition", f'{"inline" if pdf else "attachment"}; filename="{path.name}"')
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_plot(self, name: str) -> None:
+        """A chart saved by run_python (hi/agents/term/sandbox.py)."""
+        from hi.vault import plots_dir
+
+        path = plots_dir() / name
+        kind = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}.get(path.suffix.lower())
+        if not re.fullmatch(r"[\w-]+\.(png|jpg|webp)", name) or not kind or not path.is_file():
+            self.send_error(404, "No such plot")
+            return
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "max-age=31536000, immutable")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_OPTIONS(self) -> None:
         # CORS preflight — the browser sends this before POST /query and
         # POST /config (both carry Content-Type: application/json, a
@@ -401,6 +450,8 @@ class _Handler(BaseHTTPRequestHandler):
                 continue
             config.set_value(field, value)
             updated.append(field)
+        if updated:  # never log secrets' values
+            journal.record_event("settings", "changed " + ", ".join(updated))
 
         # VAULT_PATH/HAIKU_MODEL/SONNET_MODEL/OPUS_MODEL/VISION_MODEL are
         # now live for this process (see this method's own docstring) —
@@ -464,7 +515,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             from hi.tts_ollama import synthesize_wav
 
-            wav_bytes = synthesize_wav(text)
+            wav_bytes = synthesize_wav(text, (body.get("voice") or "").strip() or None)
         except Exception as ollama_error:
             try:  # native installs may still have Kokoro (desktop group)
                 from hi.tts_kokoro import synthesize_wav as kokoro_wav
@@ -623,6 +674,20 @@ class _Handler(BaseHTTPRequestHandler):
         if try_handle_pending_get(self):
             return
 
+        if self.path.startswith("/files/"):
+            self._send_file(self.path.removeprefix("/files/"))
+            return
+
+        if self.path.startswith("/plots/"):
+            self._send_plot(self.path.removeprefix("/plots/"))
+            return
+
+        if self.path == "/memory":
+            from hi.reflection_agent import latest_reflection
+
+            self._send_json({"memory": memory.read_memory(), "reflection": latest_reflection()})
+            return
+
         if self.path == "/briefing":
             # Same gathering hi/repl.py's run_router_repl() runs once at
             # session start — plain filesystem lookups plus one haiku-tier
@@ -678,6 +743,15 @@ class _Handler(BaseHTTPRequestHandler):
 
         # ?mode=… previews another mode's model names (the settings screen
         # edits a mode before activating it); everything else is live state.
+        if path == "/tts/voices":
+            from hi.tts_ollama import list_voices
+
+            try:
+                self._send_json({"voices": list_voices(), "error": ""})
+            except RuntimeError as e:
+                self._send_json({"voices": [], "error": str(e)})
+            return
+
         if path == "/config":
             mode = params.get("mode", [config.AI_MODE])[0]
             if mode not in config.MODES:

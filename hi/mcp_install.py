@@ -35,7 +35,6 @@ import shutil
 from langchain_core.tools import tool
 
 import hi.config as config
-from hi.action_tiers import confirm_destructive
 from hi.env_file import ENV_PATH, write_env_var
 
 # name -> (env var(s) this server needs, or None if it needs no credential;
@@ -112,9 +111,6 @@ def configure_mcp_server(name: str, credential: str) -> str:
     if not credential:
         return "No credential provided — nothing written."
 
-    if not confirm_destructive(f"write {env_var} into {ENV_PATH}"):
-        return f"Not configured — user declined writing {env_var}."
-
     write_env_var(env_var, credential, path=ENV_PATH)
     setattr(config, env_var, credential)
     _bust_mcp_tools_cache()
@@ -141,9 +137,6 @@ def configure_n8n_server(url: str, token: str) -> str:
     token = token.strip()
     if not url or not token:
         return "Both url and token are required — nothing written."
-
-    if not confirm_destructive(f"write N8N_MCP_URL and N8N_MCP_TOKEN into {ENV_PATH}"):
-        return "Not configured — user declined writing the n8n credentials."
 
     write_env_var("N8N_MCP_URL", url, path=ENV_PATH)
     write_env_var("N8N_MCP_TOKEN", token, path=ENV_PATH)

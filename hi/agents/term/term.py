@@ -26,14 +26,19 @@ from hi.agents.term.background_tasks import (
     start_background_process,
     stop_process,
 )
+from hi.agents.term.github_repo import set_repo_visibility
+from hi.agents.term.sandbox import run_python
 from hi.agents.term.people import add_person_info, delete_person, get_person_info, list_people
 from hi.agents.term.save_project import save_project_to_vault
 from hi.agents.term.resume import resume_context
 from hi.browser import open_url_in_browser
 from hi.chat_model import make_chat_model
 from hi.config import TERM_MODEL
+from hi.host import passthrough
 from hi.mcp_tools import get_mcp_tools, tool_servers
 from hi.toolkit import ToolSelector, filter_prompt
+from hi.vault_context import build_context, search_vault
+from hi.agents.docs.vault_rag import read_vault_note
 from hi.orchestrator.graph import latest_run_trace
 from hi.perception.browser import observe_current_tab
 from hi.perception.screen import read_screen
@@ -59,6 +64,7 @@ from hi.tracking.team_ops import (
 )
 from hi.watchdogs.dev_servers import check_dev_servers
 from hi.vault import (
+    launch_cwd,
     append_note,
     knowledge_dir,
     create_note,
@@ -72,8 +78,8 @@ LAUNCH_CWD_ENV_VAR = "HI_LAUNCH_CWD"
 SHELL_COMMAND_TIMEOUT_SECONDS = 30.0
 
 
-def _launch_cwd() -> str | None:
-    return os.environ.get(LAUNCH_CWD_ENV_VAR)
+def _launch_cwd() -> str:
+    return launch_cwd()
 
 
 @tool
@@ -199,7 +205,9 @@ def show_last_run_trace() -> str:
 
 PROMPT_PATH = Path(__file__).parent / "term_prompt.md"
 
-TOOLS = [
+TOOLS = passthrough([
+    search_vault,
+    read_vault_note,
     run_shell_command,
     list_background_tasks,
     check_background_task,
@@ -250,20 +258,22 @@ TOOLS = [
     open_url_in_browser,
     read_screen,
     ask_about_screen,
-]
+    set_repo_visibility,
+    run_python,
+])
 
 
 # Which tool groups (hi/toolkit.py) term offers; the rest belong to butler.
 TERM_GROUPS = {
     "core", "background", "devflow", "screen", "people", "history", "tracking", "insight",
-    "github", "github_admin", "browser", "browser_advanced", "obsidian",
+    "github", "github_admin", "browser", "browser_advanced", "obsidian", "sandbox",
 }
 
 # `## ` sections of term_prompt.md that only matter when a tool group is on offer.
 PROMPT_SECTION_GROUPS = {
     "Dev flows": "devflow", "Resuming work": "devflow", "Dev-server health": "background",
     "Deadlines": "tracking", "LeetCode": "tracking", "Applications": "tracking", "Team ops": "tracking",
-    "Pipelines": "tracking", "What to work on": "insight",
+    "Pipelines": "tracking", "Code execution and ML": "sandbox", "What to work on": "insight", "GitHub": "github",
     "Perception (browser tab / screen OCR / screen vision)": "screen", "People": "people",
 }
 
@@ -346,6 +356,9 @@ def build_agent(model: BaseChatModel):
     @dynamic_prompt
     def system_prompt(request: ModelRequest) -> str:
         prompt = filter_prompt(base_prompt, PROMPT_SECTION_GROUPS, selector.active_groups(request.messages))
+        humans = [m for m in request.messages if isinstance(m, HumanMessage)]
+        if context := build_context(str(humans[-1].content) if humans else ""):
+            prompt += f"\n\n## Vault context (added automatically from your Obsidian vault)\n\n{context}"
         preferences = knowledge_dir() / PREFERENCES_PATH
         if not preferences.exists():
             return prompt

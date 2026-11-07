@@ -1,6 +1,7 @@
 """Web: a search-and-summarize persona built with a LangGraph ReAct agent."""
 
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -77,8 +78,47 @@ def search_wikipedia(query: str) -> str:
     return f"{title}: {extract}"
 
 
+IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+MAX_IMAGE_BYTES = 8_000_000
+
+
+def _get(url: str) -> tuple[bytes, str]:
+    request = urllib.request.Request(url, headers={"User-Agent": "hi-web-persona/1.0"})
+    with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        return response.read(MAX_IMAGE_BYTES), response.headers.get_content_type()
+
+
+@tool
+def find_image(query: str) -> str:
+    """Find a picture of a person, place, animal or thing and show it in the UI.
+
+    Args:
+        query: What to show, by full name, e.g. "Shah Rukh Khan" (not an abbreviation).
+    """
+    from hi.vault import plots_dir
+
+    try:
+        title = json.loads(_get(f"{SEARCH_URL}?" + urllib.parse.urlencode(
+            {"action": "query", "list": "search", "srsearch": query, "format": "json"}))[0])["query"]["search"][0]["title"]
+        page = json.loads(_get(SUMMARY_URL.format(title=urllib.parse.quote(title)))[0])
+        source = (page.get("thumbnail") or page.get("originalimage") or {}).get("source")
+        if not source:
+            return f"'{title}' on Wikipedia has no picture."
+        data, kind = _get(re.sub(r"/\d+px-", "/500px-", source))
+    except (IndexError, KeyError):
+        return f"No Wikipedia article found for '{query}'."
+    except (OSError, json.JSONDecodeError) as e:
+        return f"Could not fetch a picture: {e}."
+    if kind not in IMAGE_TYPES:
+        return f"Found '{title}' but its picture is not an image file ({kind})."
+    name = re.sub(r"[^\w-]+", "-", title.lower()).strip("-") + IMAGE_TYPES[kind]
+    plots_dir().mkdir(parents=True, exist_ok=True)
+    (plots_dir() / name).write_bytes(data)
+    return f"Picture of {title} (from Wikipedia), shown in the UI: /plots/{name}"
+
+
 PROMPT_PATH = Path(__file__).parent / "web_prompt.md"
-TOOLS = [search_wikipedia]
+TOOLS = [search_wikipedia, find_image]
 
 
 def build_agent(model: BaseChatModel):

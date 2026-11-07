@@ -17,3 +17,6 @@ wheels/
 # Swift Package Manager build output (voice_companion/) — includes the
 # packaged .app bundle, rebuilt by Scripts/build_app.sh, not checked in
 voice_companion/.build/
+
+# local compose settings (vault path)
+.env

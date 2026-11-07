@@ -1,11 +1,13 @@
 # `docker compose up --build` starts everything; open http://localhost:5173
 #
 # Optional settings go in a `.env` file next to this one:
-#   HI_VAULT=/path/to/your/obsidian/vault   (default: a Docker volume)
+#   HI_VAULT=/path/to/your/obsidian/vault   (`hi` sets this from VAULT_PATH in ~/.hi/.env;
+#                                            without it the stack uses an empty Docker volume)
 #   AI_MODE=local|tailscale|openrouter   (also switchable in the UI's settings view)
 #   OLLAMA_HOST=http://host.docker.internal:11434
 #   TAILSCALE_OLLAMA_URL=http://my-desktop:11434
 #   OPENROUTER_API_KEY=sk-or-...
+#   GITHUB_PERSONAL_ACCESS_TOKEN=ghp_...   (`hi` copies it from ~/.hi/.env for you)
 #   HI_WEB_PORT=5173
 services:
   backend:
@@ -19,6 +21,12 @@ services:
       TAILSCALE_OLLAMA_URL: ${TAILSCALE_OLLAMA_URL:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       VAULT_PATH: /vault
+      MEMORY_EXTRACTION: ${MEMORY_EXTRACTION:-on}   # off = stop learning from turns
+      REFLECTION: ${REFLECTION:-on}                 # off = no daily reflection
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
+      SANDBOX_URL: http://host.docker.internal:8000 # the sandbox's loopback-published port
+      N8N_MCP_URL: ${N8N_MCP_URL:-}
+      N8N_MCP_TOKEN: ${N8N_MCP_TOKEN:-}
       WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://host.docker.internal:8080}
       HI_CORS_ORIGINS: http://localhost:${HI_WEB_PORT:-5173},http://127.0.0.1:${HI_WEB_PORT:-5173}
     extra_hosts:
@@ -26,6 +34,27 @@ services:
     volumes:
       - ${HI_VAULT:-hi-vault}:/vault
       - hi-home:/root/.hi # settings saved from the UI persist here
+      - ${HOME}/.hi/.env:/run/hi-host.env:ro # your host settings/tokens, read directly (create it first: mkdir -p ~/.hi && touch ~/.hi/.env)
+
+  # Runs the Python the agent writes (charts, ML). It has outbound internet and nothing
+  # else: it sits alone on its own network, so the code in it cannot reach the backend's
+  # (unauthenticated) API. The backend calls it through a loopback-only published port.
+  # No capabilities, read-only filesystem, CPU/memory/process limits.
+  sandbox:
+    build: ./sandbox
+    restart: unless-stopped
+    networks: [egress]
+    extra_hosts:
+      - "host.docker.internal:0.0.0.0" # not a way back to the host by name
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    tmpfs: ["/tmp:size=256m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
 
   web:
     build: ./tinyui
@@ -34,6 +63,9 @@ services:
       - "127.0.0.1:${HI_WEB_PORT:-5173}:80"
     depends_on:
       - backend
+
+networks:
+  egress: {} # the sandbox's own network: internet, but no route to the backend
 
 volumes:
   hi-vault:

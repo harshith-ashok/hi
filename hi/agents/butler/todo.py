@@ -9,7 +9,6 @@ hi/capture/store.py migrates any pre-existing flat
 
 from langchain_core.tools import tool
 
-from hi.action_tiers import confirm_destructive
 from hi.capture.ambient import normalize_ambient
 from hi.capture.schema import Task
 from hi.capture.store import delete, find_task, list_items, save
@@ -72,8 +71,6 @@ def remove_task(text: str) -> str:
     task = find_task(text)
     if not task:
         return f"No task matching '{text}' found."
-    if not confirm_destructive(f"delete the task '{task.text}'"):
-        return f"Not removed — user declined: {task.text}"
     delete(task.id)
     return f"Removed task: {task.text}"
 
