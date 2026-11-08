@@ -4,10 +4,16 @@
 FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
 # MCP servers the agents use: GitHub's (a static Go binary, copied out of its
-# official image so no Docker-in-Docker is needed) and `fetch` (installed now so
+# official image so no Docker-in-Docker is needed), Google Workspace's (`workspace-mcp`: Drive, Docs, Sheets,
+# Gmail, Calendar, ...) and `fetch` (installed now so
 # the first request doesn't wait on a download).
 COPY --from=ghcr.io/github/github-mcp-server /server/github-mcp-server /usr/local/bin/github-mcp-server
-RUN UV_TOOL_BIN_DIR=/usr/local/bin uv tool install mcp-server-fetch
+RUN UV_TOOL_BIN_DIR=/usr/local/bin uv tool install mcp-server-fetch && UV_TOOL_BIN_DIR=/usr/local/bin uv tool install workspace-mcp
+
+# git for the terminal agent, which works on your Mac folders (mounted by docker-compose.yml).
+# Mounted repos belong to another user inside the container, so git must trust them.
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client \
+    && rm -rf /var/lib/apt/lists/* && git config --system safe.directory '*'
 
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy HI_HOST=0.0.0.0 PATH="/app/.venv/bin:$PATH"

@@ -40,7 +40,7 @@ HOST_ENV_PATH = Path("/run/hi-host.env")
 # OLLAMA_HOST, ...) are right for the Mac and wrong inside the container.
 HOST_ENV_KEYS = (
     "GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "OPENROUTER_API_KEY",
-    "TAILSCALE_OLLAMA_URL", "HOST_BRIDGE_TOKEN",
+    "TAILSCALE_OLLAMA_URL", "HOST_BRIDGE_TOKEN", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
 )
 _host_env = {k: v for k, v in _parse_env(HOST_ENV_PATH).items() if k in HOST_ENV_KEYS}
 _env = {**os.environ, **_host_env, **_parse_env(ENV_PATH)}
@@ -120,6 +120,8 @@ MEMORY_EXTRACTION = (_env.get("MEMORY_EXTRACTION") or "on").lower() != "off"
 REFLECTION = (_env.get("REFLECTION") or "on").lower() != "off"
 # Text-to-speech: an Ollama speech model (hi/tts_ollama.py), `ollama pull phonon`.
 TTS_MODEL = _env.get("TTS_MODEL") or "phonon"
+# How the assistant addresses you in replies and speech ("" turns it off).
+USER_ADDRESS = _env.get("USER_ADDRESS", "sir").strip()
 TTS_VOICE = _env.get("TTS_VOICE") or "default"
 # whisper.cpp `whisper-server` (hi/stt.py), run natively so it can use Metal.
 # The Mac bridge (hi/host_bridge.py): the Dockerized backend's way to run Mac-only tools.
@@ -153,6 +155,12 @@ WHISPER_CPP_URL = _env.get("WHISPER_CPP_URL") or "http://127.0.0.1:8080"
 # None if unset — the corresponding server is simply left out rather than
 # failing, so `hi` works the same with or without them configured.
 GITHUB_PERSONAL_ACCESS_TOKEN = _env.get("GITHUB_PERSONAL_ACCESS_TOKEN") or None
+# Google Workspace (Drive, Docs, Sheets, Gmail, Calendar, ...): an OAuth "Desktop app" client from
+# Google Cloud Console. The server stays absent until both are set; sign in once when asked.
+GOOGLE_OAUTH_CLIENT_ID = _env.get("GOOGLE_OAUTH_CLIENT_ID") or None
+GOOGLE_OAUTH_CLIENT_SECRET = _env.get("GOOGLE_OAUTH_CLIENT_SECRET") or None
+GOOGLE_MCP_PORT = int(_env.get("GOOGLE_MCP_PORT") or 8777)  # the sign-in callback; published on loopback
+GOOGLE_MCP_URL = _env.get("GOOGLE_MCP_URL") or None  # a running workspace-mcp (docker-compose.yml); unset = start one per call
 OBSIDIAN_REST_API_KEY = _env.get("OBSIDIAN_REST_API_KEY") or None
 # n8n's own MCP server needs two values, not one credential — the
 # instance's own URL (self-hosted, varies per user, unlike Obsidian's

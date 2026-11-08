@@ -95,12 +95,12 @@ STICKY_MAX_WORDS = 4  # "and the second one?", "yes", "do it"
 _RULES: tuple[tuple[re.Pattern[str], str, str], ...] = tuple(
     (re.compile(pattern, re.IGNORECASE), persona, tier)
     for pattern, persona, tier in (
-        (r"\b(volume|wi-?fi|bluetooth|do not disturb|dnd|clipboard|brightness)\b", "butler", "haiku"),
+        (r"\b(on|in|from) my (screen|display|browser)\b|\b(my|this|the) screen\b|this error|current tab|\bwhat am i looking at\b", "term", "sonnet"),
+        (r"\b(volume|wi-?fi|bluetooth|do not disturb|dnd|clipboard|brightness|apple music|playlist|now playing)\b|\b(pause|skip|resume)\b.*\b(music|song|track)\b|\bplay\b.*\b(song|album|music)\b", "butler", "haiku"),
         (r"\b(my notes?|my vault|in my obsidian|what did i (write|note))\b", "docs", "sonnet"),
         (r"\bwikipedia\b|\b(picture|photo|image|pic)s? of\b", "web", "haiku"),
         (r"\b(python|plot|visuali[sz]e|matplotlib|regression|scikit|sklearn)\b", "term", "sonnet"),
         (r"\bgithub\b|\bpull requests?\b|\brepos?\b|\b(make|set)\b.*\b(private|public)\b", "term", "sonnet"),
-        (r"\b(on my screen|this error|current tab)\b", "term", "sonnet"),
     )
 )
 _last_route: tuple[str, str, float] | None = None
@@ -124,3 +124,9 @@ def fast_route(prompt: str) -> tuple[str, str] | None:
 def remember_route(persona: str, tier: str) -> None:
     global _last_route
     _last_route = (persona, tier, time.monotonic())
+
+
+def collapse(persona: str) -> str:
+    """The agents the user actually talks to: butler (Mac, music, to-dos) and term (everything else).
+    web and docs are tool bundles inside term now; a restricted agent only dead-ends a request."""
+    return persona if persona == "butler" else "term"

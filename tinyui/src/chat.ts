@@ -3,7 +3,7 @@
 import { reactive, ref } from 'vue'
 import { streamQuery, type AguiEvent } from './backend'
 
-export type Kind = 'user' | 'note' | 'error' | 'thinking' | 'text' | 'tool'
+export type Kind = 'user' | 'note' | 'error' | 'thinking' | 'text' | 'tool' | 'route' | 'timing' | 'context'
 
 export interface Entry {
   id: number
@@ -39,11 +39,15 @@ export function useChat(onSpoken?: (text: string) => void, onDone?: () => void) 
         case 'CUSTOM':
           if (e.name === 'persona_selected') {
             const v = e.value ?? {}
-            add('note', `${v.name}/${v.tier}${v.plan ? ' · plan' : ''}`)
+            add('route', `${v.name}/${v.tier}${v.plan ? ' · plan' : ''}`)
+          } else if (e.name === 'context_used') {
+            const v = e.value as { memory: number; notes: string[] }
+            const notes = v.notes.length ? ` · notes: ${v.notes.map((n) => n.replace(/\.md$/, '')).join(', ')}` : ''
+            add('context', `memory: ${v.memory} lines${notes}`)
           } else if (e.name === 'timing') {
             const t = e.value as { route_s: number; first_token_s: number | null; total_s: number; tools: { name: string; s: number }[] }
             const tools = t.tools.map((x) => `${x.name} ${x.s}s`).join(', ')
-            add('note', `route ${t.route_s}s · first token ${t.first_token_s ?? '–'}s${tools ? ` · ${tools}` : ''} · total ${t.total_s}s`)
+            add('timing', `route ${t.route_s}s · first token ${t.first_token_s ?? '–'}s${tools ? ` · ${tools}` : ''} · total ${t.total_s}s`)
           } else if (e.name === 'spoken_summary' || e.name === 'spoken_chunk') {
             const text = (e.value as { text?: string | null } | undefined)?.text
             if (text) onSpoken?.(text)

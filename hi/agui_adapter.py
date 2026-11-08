@@ -81,7 +81,7 @@ def _mcp_ui_widget(content: Any) -> dict | None:
     return None
 
 
-def stream_agent_as_agui(agent, text: str, thread_id: str) -> Iterator[ag.BaseEvent]:
+def stream_agent_as_agui(agent, text: str, thread_id: str, history: list[dict] | None = None) -> Iterator[ag.BaseEvent]:
     """Wraps a single (non-orchestrated) persona agent's own real
     `.stream(...)` call — the same one `hi/ipc/server.py`'s old
     `stream_events()` already made — translating it into AG-UI events
@@ -107,7 +107,7 @@ def stream_agent_as_agui(agent, text: str, thread_id: str) -> Iterator[ag.BaseEv
 
     try:
         for _ns, mode, payload in agent.stream(
-            {"messages": [{"role": "user", "content": text}]},
+            {"messages": [*(history or []), {"role": "user", "content": text}]},
             stream_mode=["messages", "values"],
             subgraphs=True,
         ):

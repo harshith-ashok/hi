@@ -48,6 +48,14 @@ def _strip_unspeakable(text: str) -> str:
     return _WHITESPACE_RE.sub(" ", text).strip()
 
 
+def _address_clause() -> str:
+    from hi import config
+
+    if not config.USER_ADDRESS:
+        return ""
+    return f' Address the listener as "{config.USER_ADDRESS}" once, naturally, like a butler.'
+
+
 def make_spoken_summary(full_text: str) -> str | None:
     """Returns a short sentence to speak aloud, or None if there's
     nothing safely speakable left (pure code/table, or an empty answer)."""
@@ -68,7 +76,7 @@ def make_spoken_summary(full_text: str) -> str | None:
         "If the text asks the user a question, say that question. If the "
         "answer is long or detailed, say only the gist and add \"the "
         "details are on screen\". Reply with only what is said, nothing "
-        "else:\n\n"
+        "else." + _address_clause() + "\n\n"
         f"{cleaned[:2000]}"
     )
     summary = invoke_with_retry(model, [HumanMessage(prompt)]).strip()

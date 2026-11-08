@@ -70,6 +70,17 @@ def _parse(reply: str) -> list[dict]:
     return [i for i in items if isinstance(i, dict) and i.get("kind") in KINDS and isinstance(i.get("text"), str)]
 
 
+def forget_line(line: str) -> bool:
+    """Remove one bullet from the memory file (matched exactly); True if it was there."""
+    path = memory_path()
+    lines = read_memory().splitlines()
+    kept = [l for l in lines if l.strip() != line.strip() or not l.lstrip().startswith("- ")]
+    if len(kept) == len(lines):
+        return False
+    path.write_text("\n".join(kept) + "\n")
+    return True
+
+
 def add_items(items: list[dict]) -> list[dict]:
     """Append new items under their kind heading; returns the ones actually added."""
     path = memory_path()

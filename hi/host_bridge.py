@@ -27,7 +27,7 @@ def ensure_token() -> str:
 
 
 def _tools() -> dict:
-    from hi.agents.butler import mac_control
+    from hi.agents.butler import mac_control, music
     from hi.browser import open_url_in_browser
     from hi.perception.browser import observe_current_tab
     from hi.perception.screen import read_screen
@@ -37,6 +37,7 @@ def _tools() -> dict:
         t.name: t
         for t in [
             *(getattr(mac_control, n) for n in dir(mac_control)),
+            *(getattr(music, n) for n in dir(music)),
             open_url_in_browser, observe_current_tab, read_screen, ask_about_screen,
         ]
         if hasattr(t, "invoke") and getattr(t, "name", None) in HOST_TOOLS

@@ -135,6 +135,27 @@ def _server_configs() -> dict:
             "transport": "stdio",
         }
 
+    if config.GOOGLE_OAUTH_CLIENT_ID and config.GOOGLE_OAUTH_CLIENT_SECRET and config.GOOGLE_MCP_URL:
+        # The long-running service from docker-compose.yml: its sign-in callback stays up.
+        servers["google"] = {"url": config.GOOGLE_MCP_URL, "transport": "streamable_http"}
+    elif config.GOOGLE_OAUTH_CLIENT_ID and config.GOOGLE_OAUTH_CLIENT_SECRET and shutil.which("workspace-mcp"):
+        # Everything Google: Drive, Docs, Sheets, Slides, Forms, Gmail, Calendar, Tasks, Contacts, Chat.
+        # First use returns a sign-in link; the callback lands on the published GOOGLE_MCP_PORT, and the
+        # token is kept in ~/.hi/google (the persisted hi-home volume in Docker).
+        servers["google"] = {
+            "command": "workspace-mcp",
+            "args": ["--single-user"],
+            "env": {
+                "GOOGLE_OAUTH_CLIENT_ID": config.GOOGLE_OAUTH_CLIENT_ID,
+                "GOOGLE_OAUTH_CLIENT_SECRET": config.GOOGLE_OAUTH_CLIENT_SECRET,
+                "WORKSPACE_MCP_PORT": str(config.GOOGLE_MCP_PORT),
+                "WORKSPACE_MCP_BASE_URI": "http://localhost",
+                "OAUTHLIB_INSECURE_TRANSPORT": "1",  # the callback is plain http on localhost
+                "GOOGLE_MCP_CREDENTIALS_DIR": str(config.ENV_PATH.parent / "google"),
+            },
+            "transport": "stdio",
+        }
+
     if config.OBSIDIAN_REST_API_KEY:
         # The Local REST API Obsidian plugin's built-in MCP endpoint uses a
         # self-signed certificate by default, which httpx's default async

@@ -21,6 +21,7 @@ HOST_TOOLS = frozenset({
     "set_volume", "mute", "unmute", "toggle_wifi", "toggle_bluetooth", "toggle_dnd", "adjust_brightness",
     "lock_screen", "open_app", "quit_app", "list_running_apps", "take_screenshot", "read_clipboard",
     "write_clipboard", "open_url_in_browser", "observe_current_tab", "read_screen", "ask_about_screen",
+    "play_music", "music_control", "now_playing", "list_playlists",
 })
 CALL_TIMEOUT_SECONDS = 180  # ask_about_screen waits on a vision model
 

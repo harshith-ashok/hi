@@ -6,6 +6,8 @@ const procs = ref<Task[]>([])
 const runs = ref<Task[]>([])
 const selected = ref('')
 const prompt = ref('')
+const pane = ref(false)
+const pick = (id: string) => ((selected.value = id), (pane.value = true))
 const answers = ref<Record<string, string[]>>({})
 let timer = 0
 
@@ -22,7 +24,7 @@ async function startAgent() {
   prompt.value = ''
   const run = await postJson<Task>('/agents', { prompt: text })
   await load()
-  if (run) selected.value = run.id
+  if (run) pick(run.id)
 }
 
 async function answer(run: Task) {
@@ -43,50 +45,57 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
-  <div class="split">
-    <nav>
-      <span class="dim">background</span>
-      <button v-for="p in procs" :key="p.id" :class="{ on: p.id === selected }" @click="selected = p.id">{{ p.id }} {{ p.status }} · {{ p.command }}</button>
-      <span v-if="!procs.length" class="dim">none</span>
-      <span class="dim gap">agents</span>
-      <button v-for="r in runs" :key="r.id" :class="{ on: r.id === selected }" @click="selected = r.id">{{ r.id }} {{ r.status }} · {{ (r.prompt ?? '').slice(0, 40) }}</button>
-      <span v-if="!runs.length" class="dim">none</span>
-      <div class="new">
-        <span class="accent">+</span>
-        <input v-model="prompt" placeholder="new agent: describe a task" spellcheck="false" @keydown.enter="startAgent" />
+  <header class="top">
+    <div><h1>Tasks</h1><span class="sub">{{ procs.filter((p) => p.status === 'running').length }} running · {{ runs.filter((r) => r.status === 'clarifying').length }} waiting on you</span></div>
+  </header>
+  <div class="panes" :class="{ 'detail-open': pane }">
+    <div class="list">
+      <div class="list-scroll">
+        <div class="day">Background</div>
+        <button v-for="p in procs" :key="p.id" class="row-btn" :class="{ on: p.id === selected }" @click="pick(p.id)">
+          <span class="t"><span>{{ p.command ?? p.id }}</span><span class="badge">{{ p.status }}</span></span>
+          <span class="s">{{ p.id }}</span>
+        </button>
+        <div v-if="!procs.length" class="empty">none</div>
+        <div class="day">Agents</div>
+        <button v-for="r in runs" :key="r.id" class="row-btn" :class="{ on: r.id === selected }" @click="pick(r.id)">
+          <span class="t"><span>{{ (r.prompt ?? r.id).slice(0, 40) }}</span><span class="badge" :class="{ hot: r.status === 'clarifying' }">{{ r.status }}</span></span>
+          <span class="s">{{ r.id }}</span>
+        </button>
+        <div v-if="!runs.length" class="empty">none</div>
       </div>
-    </nav>
-    <div class="detail">
-      <template v-if="detail()">
-        <div class="dim">{{ detail()!.command ?? detail()!.prompt }} — {{ detail()!.status }}</div>
-        <button v-if="detail()!.command && detail()!.status === 'running'" class="err" @click="stop(detail()!.id)">stop</button>
-        <template v-if="detail()!.status === 'clarifying'">
-          <label v-for="(q, i) in detail()!.questions" :key="i">
-            <span>{{ q }}</span>
-            <input v-model="(answers[detail()!.id] ??= [])[i]" spellcheck="false" />
-          </label>
-          <button class="accent" @click="answer(detail()!)">answer</button>
-        </template>
-        <pre>{{ detail()!.output_tail ?? detail()!.result ?? detail()!.error ?? '' }}</pre>
-      </template>
+      <form class="addrow" @submit.prevent="startAgent">
+        <input v-model="prompt" class="field" aria-label="New agent goal" placeholder="Describe a new agent…" spellcheck="false" />
+        <button class="btn" type="submit">+ Agent</button>
+      </form>
     </div>
+    <section class="detail-pane" aria-label="Task detail">
+      <template v-if="detail()">
+        <button class="back" @click="pane = false">All tasks</button>
+        <div class="head">
+          <div><h2>{{ detail()!.command ?? detail()!.prompt }}</h2><div class="meta">{{ detail()!.id }} · {{ detail()!.status }}</div></div>
+          <button v-if="detail()!.command" class="btn danger" :disabled="detail()!.status !== 'running'" @click="stop(detail()!.id)">Stop</button>
+        </div>
+        <div v-if="detail()!.status === 'clarifying'" class="ask" role="group" aria-label="Questions from the agent">
+          <span class="lbl">needs your answer</span>
+          <label v-for="(q, i) in detail()!.questions" :key="i">
+            <p>{{ q }}</p>
+            <input v-model="(answers[detail()!.id] ??= [])[i]" class="field" spellcheck="false" />
+          </label>
+          <button class="btn primary" @click="answer(detail()!)">Answer</button>
+        </div>
+        <div v-if="detail()!.output_tail ?? detail()!.result ?? detail()!.error">
+          <div class="lbl">{{ detail()!.command ? 'latest output' : 'result' }}</div>
+          <pre class="tape result">{{ detail()!.output_tail ?? detail()!.result ?? detail()!.error }}</pre>
+        </div>
+      </template>
+      <div v-else class="empty">Select a task.</div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.split { display: flex; gap: 32px; height: 100%; }
-nav { display: flex; flex-direction: column; align-items: flex-start; overflow-y: auto; width: 42ch; }
-nav button { background: none; border: 0; padding: 0; cursor: pointer; color: var(--fg); text-align: left; }
-nav button:hover, nav button.on { color: var(--accent); }
-.gap { margin-top: 16px; }
-.new { margin-top: 16px; display: flex; gap: 1ch; width: 100%; }
-input { background: none; border: 0; border-bottom: 1px solid var(--dim); outline: none; flex: 1; padding: 2px 0; }
-input:focus { border-color: var(--accent); }
-.detail { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-.detail label { display: grid; gap: 2px; width: 100%; }
-.detail button { background: none; border: 0; padding: 0; cursor: pointer; }
-pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
-.dim { color: var(--dim); }
-.accent { color: var(--accent); }
-.err { color: var(--err); }
+.ask { border-left: 1px solid var(--ink); padding: 2px 0 2px 14px; display: flex; flex-direction: column; gap: 10px; }
+.ask label { display: grid; gap: 2px; }
+.ask p { font-weight: 600; max-width: 60ch; }
 </style>

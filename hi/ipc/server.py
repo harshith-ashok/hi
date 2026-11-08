@@ -59,9 +59,9 @@ from hi.mcp_install import _bust_mcp_tools_cache
 from hi.mcp_tools import get_mcp_tools_by_server
 from hi.models import get_tier_model
 from hi.orchestrator.complexity import classify_with_plan
-from hi.router import fast_route, remember_route
+from hi.router import collapse, fast_route, remember_route
 from hi.speaker import Speaker
-from hi import journal, memory, reflection_agent
+from hi import journal, memory, reflection_agent, transcript
 from hi.orchestrator.graph import latest_run_trace
 from hi.orchestrator.pending_http import try_handle_pending_get, try_handle_pending_post
 from hi.personas import PERSONAS, get_agent_builder
@@ -118,6 +118,15 @@ def _get_agent(persona_name: str, tier: str):
         return _agent_cache[key]
 
 
+def _context_used(text: str) -> dict | None:
+    """What memory the agent is given for this message, so the UI can show it."""
+    from hi.vault_context import find_notes
+
+    lines = [l for l in memory.read_memory().splitlines() if l.lstrip().startswith("- ")]
+    notes = [path for path, _ in find_notes(text, limit=5)]
+    return {"memory": len(lines), "notes": notes} if lines or notes else None
+
+
 def stream_query_as_agui(text: str, forced_persona: str | None = None):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
     (no OpenRouter key, unreachable Ollama, missing model) reaches the client
@@ -126,6 +135,7 @@ def stream_query_as_agui(text: str, forced_persona: str | None = None):
         yield from _stream_query_as_agui(text, forced_persona)
     except Exception as e:
         journal.record_event("error", f"{text[:120]} — {llm.friendly_error(e)}")
+        transcript.record_turn(forced_persona or "", "", text, "", [], 0.0, error=repr(e))
         yield ag.RunErrorEvent(message=llm.friendly_error(e))
 
 
@@ -152,20 +162,25 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None):
     else:
         routed = fast_route(text)
         persona_name, tier, needs_plan = (*routed, False) if routed else classify_with_plan(text)
+        persona_name = collapse(persona_name)
     remember_route(persona_name, tier)
     route_s = time.monotonic() - started
 
     yield ag.CustomEvent(name="persona_selected", value={"name": persona_name, "tier": tier, "plan": needs_plan})
+
+    if used := _context_used(text):
+        yield ag.CustomEvent(name="context_used", value=used)
 
     thread_id = uuid.uuid4().hex
     if needs_plan:
         events = stream_orchestrated_as_agui_sync(text, thread_id)
         log_persona = "orchestrator"
     else:
-        events = stream_agent_as_agui(_get_agent(persona_name, tier), text, thread_id)
+        events = stream_agent_as_agui(_get_agent(persona_name, tier), text, thread_id, transcript.history())
         log_persona = persona_name
 
     final_answer = ""
+    run_error = ""
     speaker = Speaker()
     first_token_s: float | None = None
     tool_starts: dict[str, tuple[str, float]] = {}
@@ -191,6 +206,8 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None):
             tool_times.append({"name": name, "s": round(now - began, 2)})
         if isinstance(event, ag.RunFinishedEvent) and isinstance(event.result, str):
             final_answer = event.result
+        elif isinstance(event, ag.RunErrorEvent):
+            run_error = event.message
         yield event
         for line in speaker.ready():
             yield ag.CustomEvent(name="spoken_chunk", value={"text": line})
@@ -208,6 +225,9 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None):
         },
     )
 
+    transcript.record_turn(
+        log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started, needs_plan, run_error,
+    )
     if final_answer:
         log_conversation(log_persona, text, final_answer)
         journal.record_turn(log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started)
@@ -252,6 +272,23 @@ class _Handler(BaseHTTPRequestHandler):
         # request, which still never trigger a plan — see
         # stream_query_as_agui()).
         if try_handle_pending_post(self):
+            return
+
+        if self.path in ("/memory/add", "/memory/forget"):
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except json.JSONDecodeError:
+                self.send_error(400, "Invalid JSON")
+                return
+            text = str(body.get("text") or "").strip()
+            if not text:
+                self.send_error(400, "Missing 'text'")
+                return
+            if self.path == "/memory/add":
+                self._send_json({"added": memory.add_items([{"kind": "Facts", "text": text}])})
+            else:
+                self._send_json({"forgot": memory.forget_line(text)})
             return
 
         if self.path == "/config":

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/harshith/Dev/Projects/hi/memory/conversations /Users/harshith/Dev/Projects/hi/memory/knowledge)",
+      "Bash(touch /Users/harshith/Dev/Projects/hi/memory/conversations/.gitkeep /Users/harshith/Dev/Projects/hi/memory/knowledge/.gitkeep)",
+      "Bash(rm -f /Users/harshith/Dev/Projects/hi/memory/knowledge/smoketest.md /Users/harshith/Dev/Projects/hi/memory/conversations/*.md)",
+      "Bash(uv run *)",
+      "Bash(ollama list *)",
+      "Bash(rm -f /Users/harshith/Dev/Projects/hi/memory/knowledge/preferences.md /Users/harshith/Dev/Projects/hi/memory/conversations/*.md)",
+      "Bash(python -c \"import graph\")"
+    ],
+    "additionalDirectories": [
+      "/Users/harshith/Dev/Projects/hi/memory/conversations"
+    ]
+  }
+}

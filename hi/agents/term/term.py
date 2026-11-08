@@ -203,9 +203,13 @@ def show_last_run_trace() -> str:
     return trace
 
 
+from hi.agents.web.tools import find_image, search_wikipedia
+
 PROMPT_PATH = Path(__file__).parent / "term_prompt.md"
 
 TOOLS = passthrough([
+    search_wikipedia,
+    find_image,
     search_vault,
     read_vault_note,
     run_shell_command,
@@ -266,7 +270,7 @@ TOOLS = passthrough([
 # Which tool groups (hi/toolkit.py) term offers; the rest belong to butler.
 TERM_GROUPS = {
     "core", "background", "devflow", "screen", "people", "history", "tracking", "insight",
-    "github", "github_admin", "browser", "browser_advanced", "obsidian", "sandbox",
+    "github", "github_admin", "browser", "browser_advanced", "obsidian", "sandbox", "web",
 }
 
 # `## ` sections of term_prompt.md that only matter when a tool group is on offer.
@@ -274,7 +278,7 @@ PROMPT_SECTION_GROUPS = {
     "Dev flows": "devflow", "Resuming work": "devflow", "Dev-server health": "background",
     "Deadlines": "tracking", "LeetCode": "tracking", "Applications": "tracking", "Team ops": "tracking",
     "Pipelines": "tracking", "Code execution and ML": "sandbox", "What to work on": "insight", "GitHub": "github",
-    "Perception (browser tab / screen OCR / screen vision)": "screen", "People": "people",
+    "Perception (browser tab / screen OCR / screen vision)": "screen", "People": "people", "Web lookups": "web",
 }
 
 PREFERENCES_PATH = "preferences.md"
@@ -349,6 +353,14 @@ def build_agent(model: BaseChatModel):
         # or "what does this project do" don't require the user to name
         # the directory explicitly.
         base_prompt += f"\n\nYou were launched from: {launch_cwd}\nTreat this as the active project's directory unless told otherwise."
+
+    if host_home := os.environ.get("HI_HOST_HOME"):
+        base_prompt += (
+            f"\n\nYou run in a container, but the user's Mac folders {host_home}/Dev, Documents, Desktop and Downloads "
+            "are mounted at their real paths, so you can read and change them. Their projects live under "
+            f"{host_home}/Dev/Projects. For a named project, run git and other commands there (for example "
+            f"`git -C {host_home}/Dev/Projects/hi status`) instead of asking the user to paste output."
+        )
 
     all_tools = TOOLS + get_mcp_tools()
     selector = ToolSelector(all_tools, persona_groups=TERM_GROUPS, server_groups=tool_servers())

@@ -22,6 +22,7 @@ from hi.agents.butler.mac_control import (
     unmute,
     write_clipboard,
 )
+from hi.agents.butler.music import list_playlists, music_control, now_playing, play_music
 from hi.agents.butler.todo import add_task, capture_note, complete_task, list_tasks, remove_task
 from hi.browser import open_url_in_browser
 from hi.chat_model import make_chat_model
@@ -31,6 +32,10 @@ from hi.mcp_install import configure_mcp_server, configure_n8n_server, list_avai
 
 PROMPT_PATH = Path(__file__).parent / "butler_prompt.md"
 TOOLS = passthrough([
+    play_music,
+    music_control,
+    now_playing,
+    list_playlists,
     toggle_bluetooth,
     open_app,
     open_url_in_browser,

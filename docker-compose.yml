@@ -21,20 +21,55 @@ services:
       TAILSCALE_OLLAMA_URL: ${TAILSCALE_OLLAMA_URL:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       VAULT_PATH: /vault
+      USER_ADDRESS: ${USER_ADDRESS:-sir}            # how replies and speech address you ("" = off)
       MEMORY_EXTRACTION: ${MEMORY_EXTRACTION:-on}   # off = stop learning from turns
       REFLECTION: ${REFLECTION:-on}                 # off = no daily reflection
       GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
       SANDBOX_URL: http://host.docker.internal:8000 # the sandbox's loopback-published port
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_MCP_URL: http://google:8777/mcp
       N8N_MCP_URL: ${N8N_MCP_URL:-}
       N8N_MCP_TOKEN: ${N8N_MCP_TOKEN:-}
       WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://host.docker.internal:8080}
+      HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-${HOME}/Dev/Projects} # where shell commands start
+      HI_HOST_HOME: ${HOME}
+      GIT_CONFIG_GLOBAL: ${HOME}/.gitconfig
       HI_CORS_ORIGINS: http://localhost:${HI_WEB_PORT:-5173},http://127.0.0.1:${HI_WEB_PORT:-5173}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${HI_VAULT:-hi-vault}:/vault
       - hi-home:/root/.hi # settings saved from the UI persist here
+      # Your main Mac folders, read-write, at the same paths as on the Mac so paths you type
+      # (and git) work unchanged. The terminal agent can change files in these.
+      - ${HOME}/Dev:${HOME}/Dev
+      - ${HOME}/Documents:${HOME}/Documents
+      - ${HOME}/Desktop:${HOME}/Desktop
+      - ${HOME}/Downloads:${HOME}/Downloads
+      - ${HOME}/.gitconfig:${HOME}/.gitconfig:ro # your commit name and email
       - ${HOME}/.hi/.env:/run/hi-host.env:ro # your host settings/tokens, read directly (create it first: mkdir -p ~/.hi && touch ~/.hi/.env)
+
+  # Google Workspace MCP, kept running: its sign-in callback (localhost:8777) must stay up while
+  # you approve access in the browser, which a per-call subprocess cannot do. The login token
+  # lives in the hi-google volume.
+  google:
+    build: .
+    restart: unless-stopped
+    command: ["sh", "/google-mcp.sh"] # reads the OAuth client from ~/.hi/.env, mounted below
+    ports:
+      - "127.0.0.1:8777:8777"
+    environment:
+      WORKSPACE_MCP_PORT: "8777"
+      WORKSPACE_MCP_HOST: 0.0.0.0 # inside its container; published to this machine only
+      WORKSPACE_MCP_ALLOWED_HOSTS: localhost,127.0.0.1,google
+      WORKSPACE_MCP_BASE_URI: http://localhost
+      OAUTHLIB_INSECURE_TRANSPORT: "1"
+      GOOGLE_MCP_CREDENTIALS_DIR: /creds
+    volumes:
+      - hi-google:/creds
+      - ./google-mcp.sh:/google-mcp.sh:ro
+      - ${HOME}/.hi/.env:/run/hi-host.env:ro
 
   # Runs the Python the agent writes (charts, ML). It has outbound internet and nothing
   # else: it sits alone on its own network, so the code in it cannot reach the backend's
@@ -70,3 +105,4 @@ networks:
 volumes:
   hi-vault:
   hi-home:
+  hi-google:

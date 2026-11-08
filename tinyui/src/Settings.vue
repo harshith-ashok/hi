@@ -16,6 +16,7 @@ const ENDPOINT: Record<Mode, { key: string; label: string; placeholder: string; 
 }
 const MODEL_KEYS = ['HAIKU_MODEL', 'SONNET_MODEL', 'OPUS_MODEL', 'TERM_MODEL', 'BUTLER_MODEL', 'DOCS_MODEL', 'WEB_MODEL', 'VISION_MODEL']
 
+const tab = ref<'connection' | 'models' | 'voice'>('connection')
 const active = ref<Mode>('local')
 const mode = ref<Mode>('local')
 const keySet = ref(false)
@@ -115,89 +116,111 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="settings">
-    <div class="modes">
-      <button v-for="m in MODES" :key="m.id" :class="{ on: m.id === mode }" @click="selectMode(m.id)">
-        {{ m.id === mode ? '▸' : ' ' }} {{ m.id }}<span v-if="m.id === active" class="accent"> ●</span>
-      </button>
+  <header class="top">
+    <div><h1>Settings</h1></div>
+    <div class="grow"></div>
+    <div class="tabs notab" role="tablist">
+      <button v-for="t in ['connection', 'models', 'voice']" :key="t" role="tab" :class="{ on: tab === t }" @click="tab = t as typeof tab">{{ t }}</button>
     </div>
-    <div class="dim hint">{{ MODES.find((m) => m.id === mode)?.hint }}<span v-if="mode !== active"> — not active until saved</span></div>
-
-    <div class="cols">
-      <div class="fields">
-        <label>
-          <span class="dim">{{ endpoint.label }}</span>
-          <input
-            v-model="endpoints[endpoint.key]"
-            :type="endpoint.secret ? 'password' : 'text'"
-            :placeholder="endpoint.secret && keySet ? '•••••••• (set — type to replace)' : endpoint.placeholder"
-            spellcheck="false"
-            autocomplete="off"
-            @keydown.enter="loadModels"
-          />
-        </label>
-        <label v-for="key in MODEL_KEYS" :key="key">
-          <span class="dim">{{ key }}</span>
-          <input v-model="models[key]" list="available" spellcheck="false" @focus="focused = key" @keydown.enter="save" />
-        </label>
-        <datalist id="available"><option v-for="m in shown" :key="m" :value="m" /></datalist>
-      </div>
-
-      <div class="list">
-        <span class="dim">models</span>
-        <input v-model="filter" class="filter" placeholder="filter" spellcheck="false" />
-        <div class="items">
-          <button v-for="m in shown" :key="m" :disabled="!focused" @click="models[focused] = m">{{ m }}</button>
+  </header>
+  <div class="scroll">
+    <div class="col">
+      <template v-if="tab === 'connection'">
+        <section class="stack">
+          <div class="sect-h"><h2>Where the language model runs</h2></div>
+          <div class="seg" role="radiogroup" aria-label="AI mode">
+            <button v-for="m in MODES" :key="m.id" role="radio" :aria-checked="m.id === mode" @click="selectMode(m.id)">
+              {{ m.id }}<span v-if="m.id === active" class="dim"> · active</span>
+            </button>
+          </div>
+          <p class="hint">{{ MODES.find((m) => m.id === mode)?.hint }}<span v-if="mode !== active"> — not active until saved</span></p>
+        </section>
+        <div class="form">
+          <label>{{ endpoint.label }}
+            <input
+              v-model="endpoints[endpoint.key]"
+              class="field"
+              :type="endpoint.secret ? 'password' : 'text'"
+              :placeholder="endpoint.secret && keySet ? '•••••••• (set — type to replace)' : endpoint.placeholder"
+              spellcheck="false"
+              autocomplete="off"
+              @keydown.enter="loadModels"
+            />
+          </label>
         </div>
+      </template>
+
+      <div v-else-if="tab === 'models'" class="cols two">
+        <section>
+          <div class="sect-h"><h2>Model per role</h2></div>
+          <div class="pick">
+            <button v-for="key in MODEL_KEYS" :key="key" :class="{ on: focused === key }" @click="focused = key">
+              <span class="r">{{ key.replace('_MODEL', '') }}</span><span class="m">{{ models[key] }}</span>
+            </button>
+          </div>
+        </section>
+        <section>
+          <div class="sect-h"><h2>Assign to {{ focused ? focused.replace('_MODEL', '') : '…' }}</h2><span>{{ available.length }} available</span></div>
+          <input v-model="filter" class="field full" aria-label="Filter models" placeholder="Filter models…" spellcheck="false" />
+          <div class="pick items">
+            <button v-for="m in shown" :key="m" :disabled="!focused" @click="models[focused] = m">
+              <span>{{ m }}</span><span v-if="focused && models[focused] === m" class="assigned">assigned</span>
+            </button>
+            <div v-if="!shown.length" class="empty">No models found. Check the connection.</div>
+          </div>
+        </section>
       </div>
-    </div>
 
-    <div class="voice">
-      <span class="dim">voice (phonon)</span>
-      <select v-model="voice">
-        <option v-if="!voices.includes(voice)" :value="voice">{{ voice }}</option>
-        <option v-for="v in voices" :key="v" :value="v">{{ v }}</option>
-      </select>
-      <button @click="preview">preview</button>
-      <span class="dim">wake phrase</span>
-      <input v-model="wakePhrase" placeholder="hey hi" spellcheck="false" @keydown.enter="saveVoice" />
-      <button class="accent" @click="saveVoice">save voice</button>
-      <span class="dim">{{ voiceStatus }}</span>
-    </div>
+      <div v-else class="cols two">
+        <section>
+          <div class="sect-h"><h2>Voice for replies</h2><span>phonon</span></div>
+          <div class="pick" role="radiogroup" aria-label="Voice">
+            <button v-if="!voices.includes(voice)" class="on"><span>{{ voice }}</span></button>
+            <button v-for="v in voices" :key="v" role="radio" :class="{ on: v === voice }" :aria-checked="v === voice" @click="voice = v"><span>{{ v }}</span></button>
+          </div>
+          <button class="btn quiet" @click="preview">Preview {{ voice }}</button>
+        </section>
+        <section>
+          <div class="sect-h"><h2>Wake phrase</h2></div>
+          <div class="form">
+            <input v-model="wakePhrase" class="field big" aria-label="Wake phrase" placeholder="hey hi" spellcheck="false" @keydown.enter="saveVoice" />
+            <p class="hint">Used when Wake is on. Say it, then speak your request.</p>
+            <div><button class="btn primary" @click="saveVoice">Save voice</button> <span class="msg">{{ voiceStatus }}</span></div>
+          </div>
+        </section>
+      </div>
 
-    <div class="bar dim">
-      {{ status }}
-      <span class="actions">
-        <button @click="loadModels">test</button>
-        <button class="accent" @click="save">save &amp; use {{ mode }}</button>
-      </span>
+      <div v-if="tab !== 'voice'" class="formfoot">
+        <button class="btn" @click="loadModels">Test</button>
+        <button class="btn primary" @click="save">Save &amp; use {{ mode }}</button>
+        <span class="msg">{{ status }}</span>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.settings { overflow-y: auto; }
-.modes button { background: none; border: 0; padding: 0; margin-right: 3ch; cursor: pointer; white-space: pre; }
-.modes button:hover, .modes button.on { color: var(--accent); }
-.hint { margin: 4px 0 16px; }
-.cols { display: flex; gap: 32px; }
-.fields { flex: 3; display: grid; gap: 8px; align-content: start; }
-.list { flex: 2; display: flex; flex-direction: column; min-width: 0; }
-.items { display: flex; flex-direction: column; align-items: flex-start; max-height: 420px; overflow-y: auto; }
-.items button { background: none; border: 0; padding: 0; cursor: pointer; text-align: left; word-break: break-all; }
-.items button:hover:not(:disabled) { color: var(--accent); }
-.items button:disabled { cursor: default; }
-label { display: grid; gap: 2px; }
-input { background: none; border: 1px solid var(--dim); padding: 4px 8px; outline: none; }
-input:focus { border-color: var(--accent); }
-.filter { margin: 2px 0 8px; }
-.voice { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
-.voice select { background: var(--bg); color: inherit; border: 1px solid var(--dim); padding: 4px 8px; font: inherit; }
-.voice button { background: none; border: 0; cursor: pointer; padding: 0; color: var(--dim); }
-.voice button:hover, .voice .accent { color: var(--accent); }
-.bar { margin-top: 12px; display: flex; justify-content: space-between; }
-.actions button { background: none; border: 0; cursor: pointer; color: var(--dim); margin-left: 16px; padding: 0; }
-.actions button:hover, .actions .accent { color: var(--accent); }
-.dim { color: var(--dim); }
-.accent { color: var(--accent); }
+.notab { border-bottom: 0; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.seg { display: flex; flex-wrap: wrap; gap: 2px 18px; }
+.seg button { min-height: 34px; color: var(--dim); display: inline-flex; gap: 1ch; }
+.seg button::before { content: '( )'; }
+.seg button[aria-checked='true'] { color: var(--ink); font-weight: 600; }
+.seg button[aria-checked='true']::before { content: '(•)'; }
+.form { display: flex; flex-direction: column; gap: 14px; max-width: 60ch; }
+.form label { display: flex; flex-direction: column; gap: 2px; color: var(--dim); font-size: 12px; }
+.form .field { width: 100%; color: var(--ink); font-size: 13.5px; }
+.field.big { font-size: 16px; }
+.field.full { width: 100%; margin: 12px 0; }
+.two { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.pick { display: flex; flex-direction: column; margin-bottom: 8px; }
+.pick button { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 32px; width: 100%; padding: 3px 0 3px 12px; margin-left: -12px; border-left: 2px solid transparent; overflow-wrap: anywhere; }
+.pick button:hover:not(:disabled) { border-left-color: var(--line); }
+.pick button.on { border-left-color: var(--ink); }
+.pick .r { font-weight: 600; }
+.pick .m { color: var(--dim); }
+.assigned { font-size: 12px; }
+.assigned::before { content: '● '; }
+.items { max-height: 420px; overflow-y: auto; }
+.formfoot { display: flex; align-items: baseline; gap: 20px; flex-wrap: wrap; padding-top: 14px; border-top: 1px solid var(--line); }
 </style>

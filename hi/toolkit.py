@@ -26,7 +26,7 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool, tool
 
-MAX_VISIBLE = 30
+MAX_VISIBLE = 50
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,9 @@ GROUPS: tuple[Group, ...] = (
     Group("sandbox", 2, ("run_python",),
           r"python|\bplot|\bgraph\b|\bchart|visuali[sz]|regression|classif|cluster|train(ing)? (a |the )?model|machine learning|\bml\b|matplotlib|numpy|pandas|scikit|sklearn|dataset|histogram|scatter|simulat|\bcompute\b|calculate",
           "run Python in a sandbox: calculations, ML, charts shown in the UI"),
+    Group("web", 2, ("search_wikipedia", "find_image"),
+          r"wikipedia|who is|who was|what is|what are|look up|define|history of|picture|photo|\bimage|\bpic\b|show me (a|an)\b",
+          "Wikipedia lookups and pictures of people, places and things"),
     Group("insight", 2, ("what_next", "generate_retro", "reflect_on_week", "synthesize_vault", "check_suggestions", "show_last_run_trace"),
           r"what (should|next)|what's next|retro|reflect|synthes|suggest|trace|summari[sz]e (my|the) (vault|week)", "what to do next, weekly retro/reflection, vault synthesis"),
     # ---- MCP: subsets by priority ----------------------------------------
@@ -101,7 +104,7 @@ GROUPS: tuple[Group, ...] = (
     Group("mac", 1, (
         "set_volume", "mute", "unmute", "toggle_wifi", "toggle_bluetooth", "toggle_dnd", "adjust_brightness",
         "lock_screen", "open_app", "quit_app", "list_running_apps", "take_screenshot", "read_clipboard", "write_clipboard",
-        "open_url_in_browser",
+        "open_url_in_browser", "play_music", "music_control", "now_playing", "list_playlists",
     )),
     Group("tasks", 2, ("add_task", "capture_note", "complete_task", "remove_task", "list_tasks"),
           r"task|todo|to-do|remind|capture|jot", "the TODO list and quick capture"),
@@ -111,6 +114,32 @@ GROUPS: tuple[Group, ...] = (
 
 # Duplicates of a higher-priority tool: registered, never shown.
 HIDDEN = frozenset({"what_next_smart", "generate_retro_smart"})
+
+# One MCP server can expose a hundred tools (Google Workspace). Split it by service, matched on tool
+# name, so a request about a spreadsheet offers sheet tools and not Gmail's. First match wins.
+SERVICE_SPLITS: dict[str, tuple[tuple[str, str, str], ...]] = {
+    "google": (
+        ("gmail", r"gmail|email|draft|label|thread", r"gmail|e-?mail|inbox|draft|google"),
+        ("calendar", r"event|calendar|freebusy", r"calendar|\bcal\b|event|meeting|schedule|agenda|google"),
+        ("sheets", r"sheet|spreadsheet|cell", r"sheet|spreadsheet|google"),
+        ("slides", r"slide|presentation", r"slide|presentation|deck|google"),
+        ("forms", r"form", r"\bforms?\b|survey|google"),
+        ("tasks", r"task", r"google tasks?|google"),
+        ("contacts", r"contact", r"contact|google"),
+        ("chat", r"chat|space", r"google chat|google"),
+        ("docs", r"doc", r"\bdocs?\b|document|google"),
+        ("drive", r"", r"drive|file|folder|share|google"),
+    ),
+}
+
+
+def service_group(server: str, tool_name: str) -> Group | None:
+    """The per-service group for `tool_name` of a split server, else None."""
+    for service, name_re, keywords in SERVICE_SPLITS.get(server, ()):
+        if re.search(name_re, tool_name, re.IGNORECASE):
+            return Group(f"{server}_{service}", 2, (), keywords, f"{server} {service}")
+    return None
+
 
 class ToolSelector(AgentMiddleware):
     """Narrows the tools the model sees on each call (see module docstring).
@@ -132,7 +161,8 @@ class ToolSelector(AgentMiddleware):
             group = next((g for g in GROUPS if t.name in g.tools and (persona_groups is None or g.name in persona_groups)), None)
             server = (server_groups or {}).get(t.name)
             if group is None and server:
-                group = self._groups.get(server) or Group(server, 2, (), re.escape(server), f"{server} MCP server")
+                split = service_group(server, t.name)
+                group = (split and self._groups.get(split.name)) or split or self._groups.get(server) or Group(server, 2, (), re.escape(server), f"{server} MCP server")
             if group and t.name not in HIDDEN:
                 self._tool_group[t.name] = group
                 self._groups.setdefault(group.name, group)

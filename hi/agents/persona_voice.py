@@ -7,9 +7,20 @@ appended after it unchanged and still take precedence.
 
 from pathlib import Path
 
+import hi.config as config
+
 _VOICE_PATH = Path(__file__).parent / "shared_persona.md"
 
 
 def voiced_prompt(persona_prompt_path: Path) -> str:
     """Reads `persona_prompt_path` and prepends the shared voice block."""
-    return f"{_VOICE_PATH.read_text()}\n\n{persona_prompt_path.read_text()}"
+    return f"{_VOICE_PATH.read_text()}{_address_rule()}\n\n{persona_prompt_path.read_text()}"
+
+
+def _address_rule() -> str:
+    if not config.USER_ADDRESS:
+        return ""
+    return (
+        f'\n- Address the user as "{config.USER_ADDRESS}", the way a butler would: naturally, '
+        f"about once per reply (often at the start or end), not in every sentence."
+    )
