@@ -126,14 +126,22 @@ def _forwarded_settings() -> dict[str, str]:
     forwarded = {key: saved[key] for key in FORWARDED_KEYS if saved.get(key) and key not in os.environ}
     vault = saved.get("VAULT_PATH")  # the container reads/writes the real vault, mounted at /vault
     if vault and Path(vault).is_dir() and "HI_VAULT" not in os.environ:
-        forwarded["HI_VAULT"] = vault
+        forwarded["HI_VAULT"] = Path(vault).as_posix()  # forward slashes: a Windows path's colons trip compose
     if forwarded.get("HI_VAULT"):
         # Remembered next to the compose file, so a plain `docker compose up` (or Docker
         # restarting the stack) still mounts the real vault, not an empty volume.
         from hi.env_file import write_env_var
 
         write_env_var("HI_VAULT", forwarded["HI_VAULT"], path=COMPOSE_FILE.parent / ".env")
+    forwarded["HI_HOST_ROOT"] = Path.home().as_posix()
     return forwarded
+
+
+def _ensure_mounted_files() -> None:
+    """Docker would create a missing bind-mount source as a directory; these must be files."""
+    for path in (Path.home() / ".gitconfig", Path.home() / ".hi" / ".env"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(exist_ok=True)
 
 
 def host_bridge_up() -> bool:
@@ -169,6 +177,7 @@ def start_stack() -> None:
     if not COMPOSE_FILE.exists():
         sys.exit(f"docker-compose.yml not found at {COMPOSE_FILE}")
     print("starting hi…")
+    _ensure_mounted_files()
     result = subprocess.run(
         ["docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d", "--build"], env={**os.environ, **_forwarded_settings()}
     )

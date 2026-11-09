@@ -41,7 +41,7 @@ docker compose up --build     # backend + web UI, then open http://localhost:517
 
 The AI layer has three modes, switched in the UI's settings view (or `AI_MODE` in a `.env` next to `docker-compose.yml`): **local** (Ollama on your machine — from the container via `host.docker.internal`), **tailscale** (Ollama on another machine over your tailnet, `TAILSCALE_OLLAMA_URL`), and **openrouter** (`OPENROUTER_API_KEY`). Each mode remembers its own model names. Set `HI_VAULT=/path/to/your/vault` in that `.env` to use your real notes — otherwise the container keeps its own empty vault in a Docker volume. If port 5173 is taken, set `HI_WEB_PORT`.
 
-On Windows, Docker bind mounts need separate host and container paths. Add these to `.env` beside `docker-compose.yml` (replace the username; use forward slashes): `HI_HOST_ROOT=C:/Users/your-name`, `HI_HOST_HOME=/host`, and `HI_LAUNCH_CWD=/host/Dev/Projects`. Create `C:/Users/your-name/.hi/.env` before starting the stack. This maps your Windows `Dev`, `Documents`, `Desktop`, and `Downloads` folders into `/host` in the Linux container.
+On Windows, install Docker Desktop and Git, then from PowerShell in this folder run `uv sync` and `uv run hi` (or just `docker compose up -d --build`, then open http://localhost:5173). `hi` sets everything up itself; with plain `docker compose` first create `%USERPROFILE%\.hi\.env` and `%USERPROFILE%\.gitconfig` (empty files are fine). Your Windows `Dev`, `Documents`, `Desktop` and `Downloads` folders appear in the container under `/host`. Mac-only tools (music, volume, screen) and the tmux layouts (`--tmux`, `--code`, ...) don't work on Windows.
 
 Speech uses Ollama's `phonon` model (`ollama pull phonon`); tinyui falls back to the browser's voice if it isn't there.
 

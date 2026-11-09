@@ -9,10 +9,8 @@
 #   OPENROUTER_API_KEY=sk-or-...
 #   GITHUB_PERSONAL_ACCESS_TOKEN=ghp_...   (`hi` copies it from ~/.hi/.env for you)
 #   HI_WEB_PORT=5173
-# On Windows, add these to `.env` (use forward slashes):
-#   HI_HOST_ROOT=C:/Users/your-name
-#   HI_HOST_HOME=/host
-#   HI_LAUNCH_CWD=/host/Dev/Projects
+#   HI_HOST_ROOT=C:/Users/your-name   (your home folder; `hi` sets it, else USERPROFILE/HOME is used)
+# Your Dev, Documents, Desktop and Downloads folders appear in the container under /host on every OS.
 services:
   backend:
     build: .
@@ -36,36 +34,34 @@ services:
       N8N_MCP_URL: ${N8N_MCP_URL:-}
       N8N_MCP_TOKEN: ${N8N_MCP_TOKEN:-}
       WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://host.docker.internal:8080}
-      HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-${HI_HOST_HOME:-${HOME}}/Dev/Projects} # where shell commands start
-      HI_HOST_HOME: ${HI_HOST_HOME:-${HOME}}
-      GIT_CONFIG_GLOBAL: ${HI_HOST_HOME:-${HOME}}/.gitconfig
+      HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-/host/Dev/Projects} # where shell commands start
+      HI_HOST_HOME: /host
+      GIT_CONFIG_GLOBAL: /host/.gitconfig
       HI_CORS_ORIGINS: http://localhost:${HI_WEB_PORT:-5173},http://127.0.0.1:${HI_WEB_PORT:-5173}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ${HI_VAULT:-hi-vault}:/vault
+      - ${HI_VAULT:-hi-vault}:/vault # HI_VAULT uses forward slashes (C:/Users/...); `hi` writes it that way
       - hi-home:/root/.hi # settings saved from the UI persist here
-      # On macOS, source and target default to the same host paths. On Windows,
-      # set HI_HOST_ROOT to the Windows home (e.g. C:/Users/name) and
-      # HI_HOST_HOME to a Linux container path (e.g. /host) in `.env`.
+      # Long form, so Windows drive letters (C:/...) are not mistaken for the source:target colon.
       - type: bind
-        source: ${HI_HOST_ROOT:-${HOME}}/Dev
-        target: ${HI_HOST_HOME:-${HOME}}/Dev
+        source: ${HI_HOST_ROOT:-${USERPROFILE:-${HOME}}}/Dev
+        target: /host/Dev
       - type: bind
-        source: ${HI_HOST_ROOT:-${HOME}}/Documents
-        target: ${HI_HOST_HOME:-${HOME}}/Documents
+        source: ${HI_HOST_ROOT:-${USERPROFILE:-${HOME}}}/Documents
+        target: /host/Documents
       - type: bind
-        source: ${HI_HOST_ROOT:-${HOME}}/Desktop
-        target: ${HI_HOST_HOME:-${HOME}}/Desktop
+        source: ${HI_HOST_ROOT:-${USERPROFILE:-${HOME}}}/Desktop
+        target: /host/Desktop
       - type: bind
-        source: ${HI_HOST_ROOT:-${HOME}}/Downloads
-        target: ${HI_HOST_HOME:-${HOME}}/Downloads
+        source: ${HI_HOST_ROOT:-${USERPROFILE:-${HOME}}}/Downloads
+        target: /host/Downloads
       - type: bind
-        source: ${HI_HOST_ROOT:-${HOME}}/.gitconfig
-        target: ${HI_HOST_HOME:-${HOME}}/.gitconfig
+        source: ${HI_HOST_ROOT:-${USERPROFILE:-${HOME}}}/.gitconfig
+        target: /host/.gitconfig
         read_only: true
       - type: bind
-        source: ${HI_HOST_ROOT:-${HOME}}/.hi/.env
+        source: ${HI_HOST_ROOT:-${USERPROFILE:-${HOME}}}/.hi/.env
         target: /run/hi-host.env
         read_only: true
 
@@ -89,7 +85,7 @@ services:
       - hi-google:/creds
       - ./google-mcp.sh:/google-mcp.sh:ro
       - type: bind
-        source: ${HI_HOST_ROOT:-${HOME}}/.hi/.env
+        source: ${HI_HOST_ROOT:-${USERPROFILE:-${HOME}}}/.hi/.env
         target: /run/hi-host.env
         read_only: true
 
