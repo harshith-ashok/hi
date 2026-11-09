@@ -9,6 +9,10 @@
 #   OPENROUTER_API_KEY=sk-or-...
 #   GITHUB_PERSONAL_ACCESS_TOKEN=ghp_...   (`hi` copies it from ~/.hi/.env for you)
 #   HI_WEB_PORT=5173
+# On Windows, add these to `.env` (use forward slashes):
+#   HI_HOST_ROOT=C:/Users/your-name
+#   HI_HOST_HOME=/host
+#   HI_LAUNCH_CWD=/host/Dev/Projects
 services:
   backend:
     build: .
@@ -32,23 +36,38 @@ services:
       N8N_MCP_URL: ${N8N_MCP_URL:-}
       N8N_MCP_TOKEN: ${N8N_MCP_TOKEN:-}
       WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://host.docker.internal:8080}
-      HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-${HOME}/Dev/Projects} # where shell commands start
-      HI_HOST_HOME: ${HOME}
-      GIT_CONFIG_GLOBAL: ${HOME}/.gitconfig
+      HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-${HI_HOST_HOME:-${HOME}}/Dev/Projects} # where shell commands start
+      HI_HOST_HOME: ${HI_HOST_HOME:-${HOME}}
+      GIT_CONFIG_GLOBAL: ${HI_HOST_HOME:-${HOME}}/.gitconfig
       HI_CORS_ORIGINS: http://localhost:${HI_WEB_PORT:-5173},http://127.0.0.1:${HI_WEB_PORT:-5173}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${HI_VAULT:-hi-vault}:/vault
       - hi-home:/root/.hi # settings saved from the UI persist here
-      # Your main Mac folders, read-write, at the same paths as on the Mac so paths you type
-      # (and git) work unchanged. The terminal agent can change files in these.
-      - ${HOME}/Dev:${HOME}/Dev
-      - ${HOME}/Documents:${HOME}/Documents
-      - ${HOME}/Desktop:${HOME}/Desktop
-      - ${HOME}/Downloads:${HOME}/Downloads
-      - ${HOME}/.gitconfig:${HOME}/.gitconfig:ro # your commit name and email
-      - ${HOME}/.hi/.env:/run/hi-host.env:ro # your host settings/tokens, read directly (create it first: mkdir -p ~/.hi && touch ~/.hi/.env)
+      # On macOS, source and target default to the same host paths. On Windows,
+      # set HI_HOST_ROOT to the Windows home (e.g. C:/Users/name) and
+      # HI_HOST_HOME to a Linux container path (e.g. /host) in `.env`.
+      - type: bind
+        source: ${HI_HOST_ROOT:-${HOME}}/Dev
+        target: ${HI_HOST_HOME:-${HOME}}/Dev
+      - type: bind
+        source: ${HI_HOST_ROOT:-${HOME}}/Documents
+        target: ${HI_HOST_HOME:-${HOME}}/Documents
+      - type: bind
+        source: ${HI_HOST_ROOT:-${HOME}}/Desktop
+        target: ${HI_HOST_HOME:-${HOME}}/Desktop
+      - type: bind
+        source: ${HI_HOST_ROOT:-${HOME}}/Downloads
+        target: ${HI_HOST_HOME:-${HOME}}/Downloads
+      - type: bind
+        source: ${HI_HOST_ROOT:-${HOME}}/.gitconfig
+        target: ${HI_HOST_HOME:-${HOME}}/.gitconfig
+        read_only: true
+      - type: bind
+        source: ${HI_HOST_ROOT:-${HOME}}/.hi/.env
+        target: /run/hi-host.env
+        read_only: true
 
   # Google Workspace MCP, kept running: its sign-in callback (localhost:8777) must stay up while
   # you approve access in the browser, which a per-call subprocess cannot do. The login token
@@ -69,7 +88,10 @@ services:
     volumes:
       - hi-google:/creds
       - ./google-mcp.sh:/google-mcp.sh:ro
-      - ${HOME}/.hi/.env:/run/hi-host.env:ro
+      - type: bind
+        source: ${HI_HOST_ROOT:-${HOME}}/.hi/.env
+        target: /run/hi-host.env
+        read_only: true
 
   # Runs the Python the agent writes (charts, ML). It has outbound internet and nothing
   # else: it sits alone on its own network, so the code in it cannot reach the backend's

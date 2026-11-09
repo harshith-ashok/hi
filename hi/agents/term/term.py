@@ -1,3 +1,4 @@
+from hi.agents.web.tools import find_image, search_wikipedia
 import os
 import subprocess
 from pathlib import Path
@@ -203,8 +204,6 @@ def show_last_run_trace() -> str:
     return trace
 
 
-from hi.agents.web.tools import find_image, search_wikipedia
-
 PROMPT_PATH = Path(__file__).parent / "term_prompt.md"
 
 TOOLS = passthrough([
@@ -313,7 +312,8 @@ class _StatefulAgent:
 
     def invoke(self, input: dict, *args, **kwargs) -> dict:
         self._messages.extend(input["messages"])
-        result = self._agent.invoke({"messages": self._messages}, *args, **kwargs)
+        result = self._agent.invoke(
+            {"messages": self._messages}, *args, **kwargs)
         self._messages = _trim_history(result["messages"], self._max_history)
         return result
 
@@ -328,7 +328,8 @@ class _StatefulAgent:
         for item in self._agent.stream({"messages": self._messages}, *args, **kwargs):
             _ns, mode, payload = item
             if mode == "values":
-                self._messages = _trim_history(payload["messages"], self._max_history)
+                self._messages = _trim_history(
+                    payload["messages"], self._max_history)
             yield item
 
 
@@ -356,18 +357,20 @@ def build_agent(model: BaseChatModel):
 
     if host_home := os.environ.get("HI_HOST_HOME"):
         base_prompt += (
-            f"\n\nYou run in a container, but the user's Mac folders {host_home}/Dev, Documents, Desktop and Downloads "
-            "are mounted at their real paths, so you can read and change them. Their projects live under "
+            f"\n\nYou run in a container, and the user's host folders {host_home}/Dev, Documents, Desktop and Downloads "
+            "are mounted there, so you can read and change them. Their projects live under "
             f"{host_home}/Dev/Projects. For a named project, run git and other commands there (for example "
             f"`git -C {host_home}/Dev/Projects/hi status`) instead of asking the user to paste output."
         )
 
     all_tools = TOOLS + get_mcp_tools()
-    selector = ToolSelector(all_tools, persona_groups=TERM_GROUPS, server_groups=tool_servers())
+    selector = ToolSelector(
+        all_tools, persona_groups=TERM_GROUPS, server_groups=tool_servers())
 
     @dynamic_prompt
     def system_prompt(request: ModelRequest) -> str:
-        prompt = filter_prompt(base_prompt, PROMPT_SECTION_GROUPS, selector.active_groups(request.messages))
+        prompt = filter_prompt(
+            base_prompt, PROMPT_SECTION_GROUPS, selector.active_groups(request.messages))
         humans = [m for m in request.messages if isinstance(m, HumanMessage)]
         if context := build_context(str(humans[-1].content) if humans else ""):
             prompt += f"\n\n## Vault context (added automatically from your Obsidian vault)\n\n{context}"
@@ -381,7 +384,8 @@ def build_agent(model: BaseChatModel):
     # server is bounded by its own per-server timeout rather than hanging
     # agent construction indefinitely.
     return _StatefulAgent(
-        create_agent(model=model, tools=all_tools + [selector.more_tools], middleware=[system_prompt, selector])
+        create_agent(model=model, tools=all_tools +
+                     [selector.more_tools], middleware=[system_prompt, selector])
     )
 
 

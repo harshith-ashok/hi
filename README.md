@@ -19,7 +19,7 @@ Everything it remembers is a Markdown file you can open, edit, or delete yoursel
 
 ![demo](demo.png)
 
-*One real session, no cuts: `butler` explaining what's running, `web` reading a live dev-server URL back, and `term` creating a file and confirming a destructive-looking command before running it.*
+_One real session, no cuts: `butler` explaining what's running, `web` reading a live dev-server URL back, and `term` creating a file and confirming a destructive-looking command before running it._
 
 ## Why `hi`
 
@@ -27,7 +27,7 @@ Everything it remembers is a Markdown file you can open, edit, or delete yoursel
 - **Several personas, one memory.** Dedicated agents for shell/general assistance, macOS control, vault search, and web lookup all read and write the same vault, plus an auto-routing mode that classifies each prompt and picks the right one for you.
 - **Reachable from wherever you actually are.** A CLI, a native macOS voice companion app, and a web frontend all talk to the exact same backend and memory — pick whichever fits the moment.
 
-The memory/recall half of that design — turning a vague natural-language ask into a grounded, multi-source, narrated answer — isn't ad hoc. It follows the same five-stage pipeline described in an Indian patent application the author co-invented, *"Agentic System for Contextual Digital Memory Reconstruction Using Multi-Source Activity Correlation"* (IN Application No. 202641052767, filed 25-04-2026). See [Architecture](#architecture) for how each stage of that filing maps onto an actual module in this repo, and where `hi` deliberately narrows the patent's scope.
+The memory/recall half of that design — turning a vague natural-language ask into a grounded, multi-source, narrated answer — isn't ad hoc. It follows the same five-stage pipeline described in an Indian patent application the author co-invented, _"Agentic System for Contextual Digital Memory Reconstruction Using Multi-Source Activity Correlation"_ (IN Application No. 202641052767, filed 25-04-2026). See [Architecture](#architecture) for how each stage of that filing maps onto an actual module in this repo, and where `hi` deliberately narrows the patent's scope.
 
 ## Run with Docker
 
@@ -40,6 +40,8 @@ docker compose up --build     # backend + web UI, then open http://localhost:517
 `hi` with no flag is the main entry point: it runs `docker compose up -d --build` when the backend isn't already answering, then opens tinyui in your browser. `hi --tui` is the terminal UI, `hi --tmux` the old auto-routing tmux pane, and `hi --code`/`--butler`/`--docs`/`--web`/`--term` the single-persona panes.
 
 The AI layer has three modes, switched in the UI's settings view (or `AI_MODE` in a `.env` next to `docker-compose.yml`): **local** (Ollama on your machine — from the container via `host.docker.internal`), **tailscale** (Ollama on another machine over your tailnet, `TAILSCALE_OLLAMA_URL`), and **openrouter** (`OPENROUTER_API_KEY`). Each mode remembers its own model names. Set `HI_VAULT=/path/to/your/vault` in that `.env` to use your real notes — otherwise the container keeps its own empty vault in a Docker volume. If port 5173 is taken, set `HI_WEB_PORT`.
+
+On Windows, Docker bind mounts need separate host and container paths. Add these to `.env` beside `docker-compose.yml` (replace the username; use forward slashes): `HI_HOST_ROOT=C:/Users/your-name`, `HI_HOST_HOME=/host`, and `HI_LAUNCH_CWD=/host/Dev/Projects`. Create `C:/Users/your-name/.hi/.env` before starting the stack. This maps your Windows `Dev`, `Documents`, `Desktop`, and `Downloads` folders into `/host` in the Linux container.
 
 Speech uses Ollama's `phonon` model (`ollama pull phonon`); tinyui falls back to the browser's voice if it isn't there.
 
@@ -59,7 +61,7 @@ The image is Linux: shell, notes, files, web, docs and orchestration all work, b
 - **Visible model thinking** — every persona's model streams its real `thinking`/reasoning content live before its answer, not silently dropped — probed once per model so it's only enabled where the model actually supports it.
 - **Smarter opt-in reasoning layers** — real model calls sit alongside every deliberately-deterministic default, never replacing it: `what_next_smart()`/`generate_retro_smart()` (a narrative justification instead of a fixed formula), `reflect_on_week()` (proposes durable preferences from the week's conversations), `synthesize_vault()` (a genuine whole-vault synthesis, not a relevance-selected subset), and an opt-in model-judgment pass over `hi --suggest-daemon`'s own suggestions.
 - **Multi-turn arbiter negotiation** — "What should I work on" → a recommendation → "no, something else" works as a real back-and-forth: the next pick excludes whatever was just turned down, re-running the same real scoring pass instead of repeating itself or losing the thread.
-- **Multi-agent orchestration** — a genuinely complex, multi-part request ("search X and Y, then compare them in a note") is decomposed into a real task DAG, not just an ordered list — independent tasks run *concurrently* via a real LangGraph `StateGraph`, each a scoped subagent with only the tools its one task needs. A dependent task gets the real upstream results threaded into its own prompt. Checkpointed (a crash mid-DAG can resume), and every run is written as a dated trace note under `hi/conversations/runs/`.
+- **Multi-agent orchestration** — a genuinely complex, multi-part request ("search X and Y, then compare them in a note") is decomposed into a real task DAG, not just an ordered list — independent tasks run _concurrently_ via a real LangGraph `StateGraph`, each a scoped subagent with only the tools its one task needs. A dependent task gets the real upstream results threaded into its own prompt. Checkpointed (a crash mid-DAG can resume), and every run is written as a dated trace note under `hi/conversations/runs/`.
 - **Pending-approval queue for autonomous actions** — a destructive action an orchestrated subagent hits queues for approval instead of blocking on nothing, and the voice companion's menu bar shows a live "N awaiting approval" indicator with per-action Approve/Deny. A normal interactive confirm prompt is unaffected.
 
 </details>
@@ -112,7 +114,7 @@ cd hi
 uv tool install --editable .
 ```
 
-This puts a `hi` shim on `PATH` at `~/.local/bin/hi`, pointing to an isolated venv `uv` manages — `--editable` means edits to this repo's *source* take effect immediately, no reinstall needed. It does **not** auto-sync new *dependencies* added to `pyproject.toml`, though — after pulling a change that adds one, run `uv tool upgrade hi`, or `hi` will fail with `ModuleNotFoundError` for the new package even though `uv run` inside the repo works fine (that uses this repo's own `.venv`, a separate environment). Make sure `~/.local/bin` is on your `PATH` (`uv tool update-shell` will add it if it isn't).
+This puts a `hi` shim on `PATH` at `~/.local/bin/hi`, pointing to an isolated venv `uv` manages — `--editable` means edits to this repo's _source_ take effect immediately, no reinstall needed. It does **not** auto-sync new _dependencies_ added to `pyproject.toml`, though — after pulling a change that adds one, run `uv tool upgrade hi`, or `hi` will fail with `ModuleNotFoundError` for the new package even though `uv run` inside the repo works fine (that uses this repo's own `.venv`, a separate environment). Make sure `~/.local/bin` is on your `PATH` (`uv tool update-shell` will add it if it isn't).
 
 Voice input needs mic access (macOS will prompt the first time) and downloads its `faster-whisper` model on first use.
 
@@ -153,7 +155,7 @@ starts the assistant in auto-routing mode by default, or add a flag below to for
 
 `term` is the general-purpose default — there used to be a separate `code` persona for memory, notes, and dev flows, which was removed and folded into `term`, so there's one persona for that instead of two with overlapping jobs. It's the only persona with real cross-turn memory (recalls a previous command's output or a loaded note without re-running/re-searching) and the only one grounded in `hi/knowledge/`/`hi/conversations/`.
 
-**Voice, per explicit request**: all four personas speak with a shared Jarvis-like tone — `hi/agents/shared_persona.md`, prepended to each persona's own prompt via `hi/agents/persona_voice.py`'s `voiced_prompt()` (one file, not four drifting copies). Dry, understated humor; no cheerleading or performed enthusiasm; a light tease is fine, dropped entirely when the moment doesn't call for it. Delivery only — every persona's own grounding/citation/tool-use rules are unchanged and still take precedence (`docs` still never answers from outside the vault, `term`/`butler` still never simulate a tool call instead of making one). Live-verified the tone actually shows up (`term`: *"I'm functioning within expected parameters—no existential crises on the horizon."*) while staying out of the way when it should (`butler` reciting a real todo list stayed a plain list, no forced joke — "wit is a garnish, not a replacement" in the prompt's own words).
+**Voice, per explicit request**: all four personas speak with a shared Jarvis-like tone — `hi/agents/shared_persona.md`, prepended to each persona's own prompt via `hi/agents/persona_voice.py`'s `voiced_prompt()` (one file, not four drifting copies). Dry, understated humor; no cheerleading or performed enthusiasm; a light tease is fine, dropped entirely when the moment doesn't call for it. Delivery only — every persona's own grounding/citation/tool-use rules are unchanged and still take precedence (`docs` still never answers from outside the vault, `term`/`butler` still never simulate a tool call instead of making one). Live-verified the tone actually shows up (`term`: _"I'm functioning within expected parameters—no existential crises on the horizon."_) while staying out of the way when it should (`butler` reciting a real todo list stayed a plain list, no forced joke — "wit is a garnish, not a replacement" in the prompt's own words).
 
 ## Auto-Routing Mode
 
@@ -187,6 +189,7 @@ Answering with a bare `y`/`yes`/`sure`/etc. as the very first input runs the sug
 Two more real model passes sit inside auto-routing mode, both gated so the common single-step turn pays no extra cost:
 
 - **Multi-agent DAG orchestration.** A single classification call already picks a persona/tier per turn; the same call also decides whether the request genuinely needs to be broken into several sub-tasks (most don't — no extra latency for an ordinary turn). When it does, a real `opus`-tier call decomposes it into an actual dependency graph, not just an ordered list — tasks with no shared dependency run **concurrently** (a real LangGraph `StateGraph`, not a hand-rolled scheduler), each a scoped subagent limited to only the tools its one task needs, and a dependent task gets the real upstream results threaded into its own prompt:
+
   ```text
   (hi) > search wikipedia for what a kubernetes pod is, and separately search
          wikipedia for what a docker container is, then save a note comparing them
@@ -198,7 +201,9 @@ Two more real model passes sit inside auto-routing mode, both gated so the commo
 
   (ran 3 tasks — see hi/conversations/runs/ for the full trace)
   ```
+
   Checkpointed (a crash mid-run can resume), and every run is written as a dated trace note under `hi/conversations/runs/` — the real DAG shape, which subagent called which tools, and each task's actual result.
+
 - **Multi-turn arbiter negotiation.** "What should I work on" → a recommendation → "no, something else" now works as a real back-and-forth instead of three unrelated turns: the router remembers which task the arbiter just recommended, and a rejection ("no", "something else", "not that") re-runs the same real scoring pass with that task excluded — never repeating the same answer, and never needing a model call just to notice it's a pushback.
 
 Every persona also now streams the model's real `thinking`/reasoning content live (dimmed, prefixed `(thinking) ...`) before its actual answer, wherever the underlying model supports it — probed once per model and cached, so it's silently skipped for a model that doesn't. `what_next_smart()`/`generate_retro_smart()`/`reflect_on_week()`/`synthesize_vault()` (all `term` tools) are further opt-in "smart" layers over the existing deterministic defaults — see [Personas](#personas), above, for when to reach for each.
@@ -243,7 +248,7 @@ All actual memory — knowledge notes and conversation logs, from every persona 
     └── applications/     # one note per tracked job/internship application
 ```
 
-Every note, conversation log, task, and event carries Obsidian-compatible YAML frontmatter (`tags: [hi, ...]`), so the vault's own tag search finds them like any other note. Any note can also carry a `due:` field to declare a deadline (`hi/frontmatter.py`) — tasks use it as their canonical example, but it isn't limited to them. `docs` can additionally *read* any note anywhere in the vault (not just `hi/knowledge/`) to answer questions, but only ever *writes* inside `hi/knowledge/` — your own notes are never edited or overwritten.
+Every note, conversation log, task, and event carries Obsidian-compatible YAML frontmatter (`tags: [hi, ...]`), so the vault's own tag search finds them like any other note. Any note can also carry a `due:` field to declare a deadline (`hi/frontmatter.py`) — tasks use it as their canonical example, but it isn't limited to them. `docs` can additionally _read_ any note anywhere in the vault (not just `hi/knowledge/`) to answer questions, but only ever _writes_ inside `hi/knowledge/` — your own notes are never edited or overwritten.
 
 Changing `VAULT_PATH` or the haiku/sonnet/opus/vision models via the voice companion's Settings screen (`POST /config`, `hi/ipc/server.py`) takes effect immediately — no restart of the voice daemon needed. `BUTLER_MODEL`/`DOCS_MODEL`/`WEB_MODEL`/`TERM_MODEL` are the one exception: they're only read by a CLI session forcing that persona (`hi --butler`, etc.), so a change there takes effect the next time you start one, not retroactively for one already running.
 
@@ -309,9 +314,9 @@ A server that isn't configured is simply absent — no crash, `term` works the s
 `term` can look at your current browser tab or take a one-off screenshot and read/describe it — for "what am I looking at" or "what does this error say" type questions. Callable directly whenever a prompt calls for it, no enable step required — an earlier version needed one and it was removed at explicit request, since the friction of a separate permission grant before an obviously-relevant tool wasn't wanted. Still deliberately narrow, not a general "watch what I do" feature:
 
 - **On-demand only, never a background watcher.** Every read is triggered by one specific tool call answering one specific question — there is no interval loop, no history log, nothing running when you're not actively asking. Being reachable without a prior enable step is not the same as running unprompted.
-- **Browser observation reads metadata only** — every *running* supported browser's (Safari/Chrome/Brave/Edge) current tab title and URL via AppleScript, never page content. Checks which browsers are actually running, not which one happens to be frontmost — asking `hi` itself necessarily makes its own window/process frontmost, not your browser, so a frontmost-only check would report "no browser" on nearly every real question (a real bug, caught live and fixed). If you want actual page content, that's what `term`'s Playwright tools are for (a separate, already-existing capability).
+- **Browser observation reads metadata only** — every _running_ supported browser's (Safari/Chrome/Brave/Edge) current tab title and URL via AppleScript, never page content. Checks which browsers are actually running, not which one happens to be frontmost — asking `hi` itself necessarily makes its own window/process frontmost, not your browser, so a frontmost-only check would report "no browser" on nearly every real question (a real bug, caught live and fixed). If you want actual page content, that's what `term`'s Playwright tools are for (a separate, already-existing capability).
 - **Screen capture never saves the image.** One screenshot — OCR'd on-device via Apple's Vision framework for verbatim text (`read_screen`), or handed to a real vision model for actual scene understanding (`ask_about_screen`, `gemma4:31b-cloud` by default — "what app is this", "describe this diagram", not just what the text says) — the file is deleted immediately either way, verified nothing is left behind after every call.
-- **Auto-refuses near anything sensitive, with no opt-out**: a password manager (1Password, Bitwarden, Keychain Access, ...) being the frontmost app refuses everything outright; separately, browser observation skips (rather than reports) any individual running browser whose window looks Private/Incognito, checked per-browser via its own accessibility-level window title (verified live: this title carries a "Private Browsing" marker Safari's *own* AppleScript dictionary doesn't expose, and is readable even when that browser isn't frontmost). This is best-effort, not a guarantee — it can't see inside a browser's actual per-tab incognito state (Chromium-based browsers weren't verified to expose an equivalent marker, and likely don't). The real backstop is that nothing runs unless something explicitly asks for one read, right now.
+- **Auto-refuses near anything sensitive, with no opt-out**: a password manager (1Password, Bitwarden, Keychain Access, ...) being the frontmost app refuses everything outright; separately, browser observation skips (rather than reports) any individual running browser whose window looks Private/Incognito, checked per-browser via its own accessibility-level window title (verified live: this title carries a "Private Browsing" marker Safari's _own_ AppleScript dictionary doesn't expose, and is readable even when that browser isn't frontmost). This is best-effort, not a guarantee — it can't see inside a browser's actual per-tab incognito state (Chromium-based browsers weren't verified to expose an equivalent marker, and likely don't). The real backstop is that nothing runs unless something explicitly asks for one read, right now.
 
 ```text
 (term) > what does this error dialog say
@@ -321,9 +326,9 @@ A server that isn't configured is simply absent — no crash, `term` works the s
 
 ### Gated Background Awareness
 
-`hi/watchdogs/context_shift.py` is a real, narrow exception to "never a background watcher" above — and deliberately kept separate from `read_screen`/`ask_about_screen`, which are completely unmodified by it. Running `hi --suggest-daemon` also polls the frontmost app's *name* (never content) every 45s purely to notice state changes — an app switch, or the same app staying frontmost a long time — and feeds that into the same confidence-gated, per-day-deduped `Suggestion` pipeline every other background signal here already uses (idle repos, deadlines, LeetCode, applications), not a parallel notification path. E.g. staying on one app for 20+ minutes straight surfaces as one more gated nudge, once a day, same as everything else.
+`hi/watchdogs/context_shift.py` is a real, narrow exception to "never a background watcher" above — and deliberately kept separate from `read_screen`/`ask_about_screen`, which are completely unmodified by it. Running `hi --suggest-daemon` also polls the frontmost app's _name_ (never content) every 45s purely to notice state changes — an app switch, or the same app staying frontmost a long time — and feeds that into the same confidence-gated, per-day-deduped `Suggestion` pipeline every other background signal here already uses (idle repos, deadlines, LeetCode, applications), not a parallel notification path. E.g. staying on one app for 20+ minutes straight surfaces as one more gated nudge, once a day, same as everything else.
 
-`hi/perception/diff_watch.py` goes a step further — hashing a screenshot every ~2min purely to detect *changed vs. didn't* (the pixels themselves are never OCR'd, never inspected, never stored — only a hash, deleted immediately) — and is a genuinely different privacy posture than everything above, so it's **off by default**, opt in explicitly with `DIFF_WATCH_ENABLED=true` in `~/.hi/.env`. Once enabled, it still runs every single check through the same sensitive-context refusal every other perception tool uses first — a password manager frontmost or a private/incognito window skips that cycle's screenshot entirely. When the screen hashes unchanged for 10+ minutes, that surfaces as one more gated `Suggestion` too ("still stuck, or just reading?").
+`hi/perception/diff_watch.py` goes a step further — hashing a screenshot every ~2min purely to detect _changed vs. didn't_ (the pixels themselves are never OCR'd, never inspected, never stored — only a hash, deleted immediately) — and is a genuinely different privacy posture than everything above, so it's **off by default**, opt in explicitly with `DIFF_WATCH_ENABLED=true` in `~/.hi/.env`. Once enabled, it still runs every single check through the same sensitive-context refusal every other perception tool uses first — a password manager frontmost or a private/incognito window skips that cycle's screenshot entirely. When the screen hashes unchanged for 10+ minutes, that surfaces as one more gated `Suggestion` too ("still stuck, or just reading?").
 
 ## Architecture
 
@@ -340,14 +345,14 @@ flowchart TD
     E -->|follow-up query| B
 ```
 
-The patent's own abstract frames the problem: traditional retrieval is document-centric and keyed on explicit identifiers (filenames, timestamps, participants), but people actually remember *situations* — a rough topic, a rough time, "the thing I was doing across three apps at once" — not query keywords. Its fix is an agent per data source, a correlation engine that links their output by timing/meaning rather than exact match, and a reconstruction engine that narrates the result.
+The patent's own abstract frames the problem: traditional retrieval is document-centric and keyed on explicit identifiers (filenames, timestamps, participants), but people actually remember _situations_ — a rough topic, a rough time, "the thing I was doing across three apps at once" — not query keywords. Its fix is an agent per data source, a correlation engine that links their output by timing/meaning rather than exact match, and a reconstruction engine that narrates the result.
 
 `hi` implements the same shape, single-user and scoped to what a personal assistant can actually access, rather than the patent's always-on OS-level ingestion daemon over email/browser/app logs:
 
 <details>
 <summary><strong>Phase 1 — Memory Understanding</strong> (natural-language cue → structured intent)</summary>
 
-Patent claim language: *"receive a natural-language memory cue and generate one or more structured memory hypotheses."*
+Patent claim language: _"receive a natural-language memory cue and generate one or more structured memory hypotheses."_
 
 Implemented by [`hi/router.py`](hi/router.py)'s `classify()`, [`hi/orchestrator/complexity.py`](hi/orchestrator/complexity.py), and [`hi/orchestrator/planner.py`](hi/orchestrator/planner.py) — a raw prompt is turned into structured intent (persona, tier, and for multi-part asks, a task DAG) before anything is retrieved. The patent's "memory hypotheses" (topics/entities/time/apps) become a routing decision plus, for complex asks, an explicit dependency graph.
 
@@ -356,7 +361,7 @@ Implemented by [`hi/router.py`](hi/router.py)'s `classify()`, [`hi/orchestrator/
 <details>
 <summary><strong>Phase 2 — Agentic Retrieval</strong> (specialized agents per data source)</summary>
 
-Patent claim language: *"a plurality of retrieval agents configured to operate over different activity sources... to obtain activity fragments."*
+Patent claim language: _"a plurality of retrieval agents configured to operate over different activity sources... to obtain activity fragments."_
 
 Implemented by [`hi/memory_graph.py`](hi/memory_graph.py), [`hi/agents/docs/vault_rag.py`](hi/agents/docs/vault_rag.py), [`hi/agents/term/resume.py`](hi/agents/term/resume.py)'s `resume_context`, and the [`hi/tracking/`](hi/tracking) modules — the same pattern of specialized retrieval per source. The patent's sources (OS logs, browser history, email, calendar, media) become `hi`'s actual sources: the Obsidian vault's knowledge notes and conversation logs, git commits and working-tree state, and the tasks/deadlines/LeetCode/applications trackers — everything `hi` actually has access to, not a full activity-ingestion layer.
 
@@ -365,7 +370,7 @@ Implemented by [`hi/memory_graph.py`](hi/memory_graph.py), [`hi/agents/docs/vaul
 <details>
 <summary><strong>Phase 3 — Correlation</strong> (linking fragments into one context)</summary>
 
-Patent claim language: *"link related activity fragments... using temporal proximity, semantic similarity, and behavioural relationships... into a unified event graph."*
+Patent claim language: _"link related activity fragments... using temporal proximity, semantic similarity, and behavioural relationships... into a unified event graph."_
 
 This is the deliberate simplification. [`hi/briefing.py`](hi/briefing.py), [`hi/context/weekday.py`](hi/context/weekday.py), `resume_context`, and [`hi/tracking/deadlines.py`](hi/tracking/deadlines.py) correlate fragments functionally — a task, a note, a commit, and a deadline that share a topic or a day get bundled into one context payload handed to the model — but there's no persisted, queryable event-graph data structure like the patent claims. This is an explicit scope cut, not an oversight: a graph store is real future work (see [docs/TODO.md](docs/TODO.md)), not something claimed as done here.
 
@@ -374,7 +379,7 @@ This is the deliberate simplification. [`hi/briefing.py`](hi/briefing.py), [`hi/
 <details>
 <summary><strong>Phase 4 — Timeline & Narrative Generation</strong></summary>
 
-Patent claim language: *"generate... a narrative representation of a reconstructed digital experience."*
+Patent claim language: _"generate... a narrative representation of a reconstructed digital experience."_
 
 Implemented by [`hi/synthesis/retro.py`](hi/synthesis/retro.py), [`hi/synthesis/longcontext.py`](hi/synthesis/longcontext.py), [`hi/synthesis/reflection.py`](hi/synthesis/reflection.py), and [`hi/ipc/spoken_summary.py`](hi/ipc/spoken_summary.py) — same job, different cadence: instead of reconstructing one queried memory on demand, `hi` narrates on a schedule (the Sunday retro), on request (`synthesize_vault()` over the whole vault), or per-turn (the spoken-summary rewrite before TTS). All three turn correlated fragments into one coherent, human-readable account rather than a list of raw hits.
 
@@ -383,7 +388,7 @@ Implemented by [`hi/synthesis/retro.py`](hi/synthesis/retro.py), [`hi/synthesis/
 <details>
 <summary><strong>Phase 5 — Interactive Recall Interface</strong></summary>
 
-Patent claim language: *"presented... via an interactive recall interface that allows user inspection, refinement, and adaptive query expansion."*
+Patent claim language: _"presented... via an interactive recall interface that allows user inspection, refinement, and adaptive query expansion."_
 
 Implemented by [`hi/repl.py`](hi/repl.py) + [`hi/streaming.py`](hi/streaming.py), [`hi/synthesis/negotiation.py`](hi/synthesis/negotiation.py), `voice_companion/`, and `frontend/` — the CLI, the voice companion, and the web frontend are three renderings of the same recall interface. Multi-turn arbiter negotiation ("no, something else" excluding the last recommendation and re-scoring) is the concrete version of the patent's "adaptive query expansion" claim — a follow-up narrows or redirects the same underlying context instead of starting over.
 
@@ -663,7 +668,7 @@ Every persona module exposes both a `model`/`agent` pair built at import time (u
 
 - Personas: 4 dedicated + 1 auto-router
 - Built-in tools across all personas: 74
-- + Playwright MCP tools (`term`, on by default): 24 more
+- - Playwright MCP tools (`term`, on by default): 24 more
 - Python source: 10,783 lines across 100 files
 - Model tiers: 3 (haiku / sonnet / opus)
 - Direct dependencies: 12
