@@ -33,6 +33,17 @@ const voice = ref('default')
 const voiceSaved = ref('default')
 const wakePhrase = ref(getWakePhrase())
 const voiceStatus = ref('')
+const ttsBackend = ref('ollama')
+const BACKENDS: [string, string][] = [['ollama', 'phonon (Ollama)'], ['huggingface', 'Hugging Face (GPU)']]
+
+async function pickBackend(value: string) {
+  ttsBackend.value = value
+  voice.value = 'default' // voices differ per engine
+  const result = await saveConfig({ TTS_BACKEND: value, TTS_VOICE: 'default' })
+  if (!result) return void (voiceStatus.value = 'save failed')
+  voiceSaved.value = 'default'
+  await loadVoices()
+}
 
 async function loadVoices() {
   const result = await fetchVoices()
@@ -107,6 +118,7 @@ onMounted(async () => {
   }
   active.value = mode.value = String(config.AI_MODE) as Mode
   voice.value = voiceSaved.value = String(config.TTS_VOICE ?? 'default')
+  ttsBackend.value = String(config.TTS_BACKEND ?? 'ollama')
   void loadVoices()
   endpoints.OLLAMA_HOST = String(config.OLLAMA_HOST ?? '')
   endpoints.TAILSCALE_OLLAMA_URL = String(config.TAILSCALE_OLLAMA_URL ?? '')
@@ -173,7 +185,11 @@ onMounted(async () => {
 
       <div v-else class="cols two">
         <section>
-          <div class="sect-h"><h2>Voice for replies</h2><span>phonon</span></div>
+          <div class="sect-h"><h2>Voice for replies</h2><span>{{ ttsBackend === 'huggingface' ? 'phonon-40m-en' : 'phonon' }}</span></div>
+          <div class="pick" role="radiogroup" aria-label="Voice engine">
+            <button v-for="[id, label] in BACKENDS" :key="id" role="radio" :class="{ on: id === ttsBackend }" :aria-checked="id === ttsBackend" @click="pickBackend(id)"><span>{{ label }}</span></button>
+          </div>
+          <p v-if="ttsBackend === 'huggingface'" class="hint">Needs the GPU service: <code>docker compose --profile gpu up -d --build tts</code></p>
           <div class="pick" role="radiogroup" aria-label="Voice">
             <button v-if="!voices.includes(voice)" class="on"><span>{{ voice }}</span></button>
             <button v-for="v in voices" :key="v" role="radio" :class="{ on: v === voice }" :aria-checked="v === voice" @click="voice = v"><span>{{ v }}</span></button>

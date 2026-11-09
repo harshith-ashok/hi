@@ -33,6 +33,8 @@ services:
       GOOGLE_MCP_URL: http://google:8777/mcp
       N8N_MCP_URL: ${N8N_MCP_URL:-}
       N8N_MCP_TOKEN: ${N8N_MCP_TOKEN:-}
+      TTS_BACKEND: ${TTS_BACKEND:-ollama}           # huggingface = the GPU `tts` service below
+      TTS_URL: http://tts:8780
       WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://host.docker.internal:8080}
       HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-/host/Dev/Projects} # where shell commands start
       HI_HOST_HOME: /host
@@ -89,6 +91,28 @@ services:
         target: /run/hi-host.env
         read_only: true
 
+  # Optional GPU voice for machines where Ollama's phonon has no CUDA build (needs an NVIDIA GPU and
+  # the NVIDIA container toolkit). `docker compose --profile gpu up -d --build tts`, then set
+  # TTS_BACKEND=huggingface (Settings > voice, or ~/.hi/.env). Needs HF_TOKEN in ~/.hi/.env and the
+  # gradium/phonon-40m-en terms accepted on Hugging Face. Weights cache in hi-tts-models.
+  tts:
+    build: ./tts
+    profiles: [gpu]
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-} # `hi` forwards it from ~/.hi/.env
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8780:8780"
+    volumes:
+      - hi-tts-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   # Runs the Python the agent writes (charts, ML). It has outbound internet and nothing
   # else: it sits alone on its own network, so the code in it cannot reach the backend's
   # (unauthenticated) API. The backend calls it through a loopback-only published port.
@@ -124,3 +148,4 @@ volumes:
   hi-vault:
   hi-home:
   hi-google:
+  hi-tts-models:

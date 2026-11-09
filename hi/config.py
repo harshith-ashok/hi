@@ -41,6 +41,7 @@ HOST_ENV_PATH = Path("/run/hi-host.env")
 HOST_ENV_KEYS = (
     "GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "OPENROUTER_API_KEY",
     "TAILSCALE_OLLAMA_URL", "HOST_BRIDGE_TOKEN", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
+    "TTS_BACKEND",
 )
 _host_env = {k: v for k, v in _parse_env(HOST_ENV_PATH).items() if k in HOST_ENV_KEYS}
 _env = {**os.environ, **_host_env, **_parse_env(ENV_PATH)}
@@ -120,6 +121,10 @@ MEMORY_EXTRACTION = (_env.get("MEMORY_EXTRACTION") or "on").lower() != "off"
 REFLECTION = (_env.get("REFLECTION") or "on").lower() != "off"
 # Text-to-speech: an Ollama speech model (hi/tts_ollama.py), `ollama pull phonon`.
 TTS_MODEL = _env.get("TTS_MODEL") or "phonon"
+# Which engine speaks: "ollama" (phonon) or "huggingface" (phonon-40m-en from Hugging Face on a CUDA GPU, the `tts` compose
+# service, hi/tts_hf.py), for machines where phonon has no GPU build.
+TTS_BACKEND = (_env.get("TTS_BACKEND") or "ollama").lower()
+TTS_URL = _env.get("TTS_URL") or "http://localhost:8780"
 # How the assistant addresses you in replies and speech ("" turns it off).
 USER_ADDRESS = _env.get("USER_ADDRESS", "sir").strip()
 TTS_VOICE = _env.get("TTS_VOICE") or "default"

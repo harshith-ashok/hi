@@ -76,7 +76,7 @@ from hi.vault import list_conversations, log_conversation, read_conversation
 _CONFIG_FIELDS = (
     "VAULT_PATH", "BUTLER_MODEL", "DOCS_MODEL", "WEB_MODEL", "TERM_MODEL",
     "HAIKU_MODEL", "SONNET_MODEL", "OPUS_MODEL", "VISION_MODEL",
-    "AI_MODE", "OLLAMA_HOST", "TAILSCALE_OLLAMA_URL", "TTS_MODEL", "TTS_VOICE",
+    "AI_MODE", "OLLAMA_HOST", "TAILSCALE_OLLAMA_URL", "TTS_MODEL", "TTS_VOICE", "TTS_BACKEND",
 )
 # Accepted on POST /config but never echoed back by GET (reported only as
 # `<NAME>_SET: bool`) — same rule as the MCP credentials.
@@ -550,7 +550,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_error(400, "Missing 'text'")
             return
         try:
-            from hi.tts_ollama import synthesize_wav
+            from hi.tts_engine import synthesize_wav
 
             wav_bytes = synthesize_wav(text, (body.get("voice") or "").strip() or None)
         except Exception as ollama_error:
@@ -781,7 +781,7 @@ class _Handler(BaseHTTPRequestHandler):
         # ?mode=… previews another mode's model names (the settings screen
         # edits a mode before activating it); everything else is live state.
         if path == "/tts/voices":
-            from hi.tts_ollama import list_voices
+            from hi.tts_engine import list_voices
 
             try:
                 self._send_json({"voices": list_voices(), "error": ""})
