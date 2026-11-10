@@ -46,6 +46,33 @@ def warm_up(model: BaseChatModel, attempts: int = 3) -> None:
             pass
 
 
+def preload_models(names: list[str]) -> None:
+    """Load each model into the Ollama server's memory and pin it there
+    (an empty /api/generate with keep_alive=-1), in a background thread so
+    startup never blocks. Only meaningful for a self-hosted box (tailscale
+    mode); best-effort, a failed load is dropped and the first real call
+    just pays the load instead."""
+    import json
+    import urllib.request
+
+    from hi import llm
+
+    host = llm.ollama_host()
+    if not host:
+        return
+
+    def _load() -> None:
+        for name in names:  # smallest first: reflex is usable while the big ones load
+            body = json.dumps({"model": name, "keep_alive": -1}).encode()
+            request = urllib.request.Request(f"{host}/api/generate", body, {"Content-Type": "application/json"})
+            try:
+                urllib.request.urlopen(request, timeout=600).close()
+            except Exception:
+                pass
+
+    threading.Thread(target=_load, daemon=True).start()
+
+
 def start_keepalive(model: BaseChatModel, interval_seconds: int = 240) -> None:
     """Pings `model` with a trivial call every `interval_seconds`, forever,
     in a daemon background thread — keeps an Ollama Cloud model from

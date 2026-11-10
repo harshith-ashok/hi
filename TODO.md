@@ -148,6 +148,12 @@ typing, no wake word needed for short exchanges.
 
 ## 4. Proactivity
 - [x] Interruption budget: at most N unprompted messages per hour.
+- [x] Always-on context (`hi --context-daemon`, `hi/context/`): app, window, idle, processes, OCR on change,
+      local-model one-line activity -> `~/.hi/context/now.json`. Local models only; denylist, pause file.
+- [x] `hi/proactive.py`: nudge gated by idle/budget/evidence-quote check; briefing opens from live context.
+- [x] Vault skills (`hi/skills.py`): `<vault>/skills/*/SKILL.md`, index + hint + `use_skill`.
+- [ ] Context daemon under launchd (auto-start, restart) + pause hotkey.
+- [ ] Nudges still comment on routine activity; tune the prompt/eval on real days.
 - [ ] Context model: calendar, active project, what was ignored before.
 - [ ] Learn from dismissals; suggest less after being ignored.
 - [ ] Proactive output is visual first, spoken only when urgent.

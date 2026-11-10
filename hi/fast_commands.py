@@ -108,6 +108,28 @@ _ADD_TASK_RE = re.compile(
 )
 
 
+_BT_RE = re.compile(r"^(?:turn\s+(on|off)\s+bluetooth|turn\s+bluetooth\s+(on|off)|bluetooth\s+(on|off)|(enable|disable)\s+bluetooth)$")
+_UNIT_SECONDS = {"s": 1, "sec": 1, "second": 1, "m": 60, "min": 60, "minute": 60, "h": 3600, "hr": 3600, "hour": 3600}
+_DURATION = r"(\d+(?:\.\d+)?)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|[smh])\b"
+_TIMER_RES = (
+    re.compile(rf"^(?:set\s+)?(?:a\s+|an\s+)?timer\s+(?:for\s+)?{_DURATION}(?:\s+(?:for|called|to)\s+(.+))?$"),
+    re.compile(rf"^(?:set\s+)?(?:a\s+|an\s+)?{_DURATION}\s+timer(?:\s+(?:for|called|to)\s+(.+))?$"),
+    re.compile(rf"^remind\s+me\s+in\s+{_DURATION}(?:\s+(?:to|about)\s+(.+))?$"),
+)
+_LIST_TIMERS_PHRASES = {"list timers", "show timers", "my timers", "timers", "how much time is left", "time left"}
+_CANCEL_TIMERS_PHRASES = {"cancel timer", "cancel timers", "cancel all timers", "stop timer", "stop the timer", "clear timers"}
+
+
+def _timer_args(normalized: str) -> dict | None:
+    for pattern in _TIMER_RES:
+        match = pattern.match(normalized)
+        if match:
+            amount, unit, label = match.groups()
+            seconds = int(float(amount) * _UNIT_SECONDS[unit.rstrip("s") if len(unit) > 1 else unit])
+            return {"seconds": seconds, "label": (label or "").strip()}
+    return None
+
+
 def _normalize(stripped: str) -> str:
     return stripped.lower().strip(" ?!.")
 
@@ -136,6 +158,29 @@ def maybe_fast_reply(stripped: str) -> tuple[str, str] | None:
         task_text = (original_match or add_task_match).group(1).strip()
         if task_text:
             return "butler", add_task.invoke({"text": task_text})
+
+    timer_args = _timer_args(normalized)
+    if timer_args:
+        from hi.agents.butler.timers import set_timer
+
+        return "butler", set_timer.invoke(timer_args)
+
+    if normalized in _LIST_TIMERS_PHRASES:
+        from hi.agents.butler.timers import list_timers
+
+        return "butler", list_timers.invoke({})
+
+    if normalized in _CANCEL_TIMERS_PHRASES:
+        from hi.agents.butler.timers import cancel_timer
+
+        return "butler", cancel_timer.invoke({})
+
+    bluetooth_match = _BT_RE.match(normalized)
+    if bluetooth_match:
+        from hi.agents.butler.mac_control import toggle_bluetooth
+
+        word = next(g for g in bluetooth_match.groups() if g)
+        return "butler", toggle_bluetooth.invoke({"state": "off" if word in ("off", "disable") else "on"})
 
     if normalized in _CLIPBOARD_READ_PHRASES:
         from hi.agents.butler.mac_control import read_clipboard

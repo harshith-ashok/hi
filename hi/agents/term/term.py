@@ -34,10 +34,14 @@ from hi.agents.term.save_project import save_project_to_vault
 from hi.agents.term.resume import resume_context
 from hi.browser import open_url_in_browser
 from hi.chat_model import make_chat_model
-from hi.config import TERM_MODEL
+from hi.config import KEEP_ALIVE, TERM_MODEL
 from hi.host import passthrough
 from hi.mcp_tools import get_mcp_tools, tool_servers
 from hi.toolkit import ToolSelector, filter_prompt
+from hi.context.tools import current_context, pause_screen_context, resume_screen_context
+from hi.context.now import describe as screen_context
+from hi.agents.term.host_git import git_on_mac, git_push
+from hi.skills import hint_for, index as skills_index, use_skill
 from hi.vault_context import build_context, search_vault
 from hi.agents.docs.vault_rag import read_vault_note
 from hi.orchestrator.graph import latest_run_trace
@@ -207,6 +211,12 @@ def show_last_run_trace() -> str:
 PROMPT_PATH = Path(__file__).parent / "term_prompt.md"
 
 TOOLS = passthrough([
+    git_on_mac,
+    git_push,
+    use_skill,
+    current_context,
+    pause_screen_context,
+    resume_screen_context,
     search_wikipedia,
     find_image,
     search_vault,
@@ -310,6 +320,9 @@ class _StatefulAgent:
         self._messages: list = []
         self._max_history = max_history
 
+    def reset(self) -> None:
+        self._messages = []
+
     def invoke(self, input: dict, *args, **kwargs) -> dict:
         self._messages.extend(input["messages"])
         result = self._agent.invoke(
@@ -358,9 +371,12 @@ def build_agent(model: BaseChatModel):
     if host_home := os.environ.get("HI_HOST_HOME"):
         base_prompt += (
             f"\n\nYou run in a container, and the user's host folders {host_home}/Dev, Documents, Desktop and Downloads "
-            "are mounted there, so you can read and change them. Their projects live under "
-            f"{host_home}/Dev/Projects. For a named project, run git and other commands there (for example "
-            f"`git -C {host_home}/Dev/Projects/hi status`) instead of asking the user to paste output."
+            "are mounted there, so you can read and change them. Their repos can be "
+            f"anywhere under {host_home}/Dev (for example {host_home}/Dev/Projects/hi or {host_home}/Dev/LogicPlay/logic_play), "
+            "so look a project up by name (`find` under the mounted folders) rather than guessing one parent folder. "
+            "For ANY git work use git_on_mac and git_push with the repo name or path: they run on the user's Mac, "
+            "which has the SSH keys and credentials your container lacks, so `git push` through run_shell_command "
+            "always fails. Look at `status` and `diff`, then commit with a short message YOU write from the diff (never ask the user for one), then git_push. When asked to commit and push, do both in the same turn. Do not ask the user to paste output."
         )
 
     all_tools = TOOLS + get_mcp_tools()
@@ -374,10 +390,17 @@ def build_agent(model: BaseChatModel):
         humans = [m for m in request.messages if isinstance(m, HumanMessage)]
         if context := build_context(str(humans[-1].content) if humans else ""):
             prompt += f"\n\n## Vault context (added automatically from your Obsidian vault)\n\n{context}"
+        if skills := skills_index():
+            prompt += f"\n\n## {skills}"
         preferences = knowledge_dir() / PREFERENCES_PATH
-        if not preferences.exists():
-            return prompt
-        return f"{prompt}\n\n## User preferences (knowledge/{PREFERENCES_PATH})\n\n{preferences.read_text()}"
+        if preferences.exists():
+            prompt += f"\n\n## User preferences (knowledge/{PREFERENCES_PATH})\n\n{preferences.read_text()}"
+        # Last, because it changes every turn: everything above stays a stable prefix for the model's KV cache.
+        if hint := hint_for(str(humans[-1].content) if humans else ""):
+            prompt += f"\n\n{hint}"
+        if live := screen_context():
+            prompt += f"\n\n## What the user is doing right now (live from their Mac)\n\n{live}"
+        return prompt
 
     # get_mcp_tools() is cached (hi/mcp_tools.py) — only the first call in
     # the process actually connects to any MCP servers; a slow/misbehaving
@@ -389,5 +412,5 @@ def build_agent(model: BaseChatModel):
     )
 
 
-model = make_chat_model(TERM_MODEL, temperature=0, keep_alive="30m")
+model = make_chat_model(TERM_MODEL, temperature=0, keep_alive=KEEP_ALIVE)
 agent = build_agent(model)

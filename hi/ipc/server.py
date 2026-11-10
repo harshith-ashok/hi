@@ -57,7 +57,7 @@ from hi.ipc.spoken_summary import make_spoken_summary
 from hi.mcp_install import _CATALOG as MCP_CATALOG
 from hi.mcp_install import _bust_mcp_tools_cache
 from hi.mcp_tools import get_mcp_tools_by_server
-from hi.models import get_tier_model
+from hi.models import get_tier_model, get_tier_model_fast
 from hi.orchestrator.complexity import classify_with_plan
 from hi.router import collapse, fast_route, remember_route
 from hi.speaker import Speaker
@@ -127,19 +127,19 @@ def _context_used(text: str) -> dict | None:
     return {"memory": len(lines), "notes": notes} if lines or notes else None
 
 
-def stream_query_as_agui(text: str, forced_persona: str | None = None):
+def stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bool = False):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
     (no OpenRouter key, unreachable Ollama, missing model) reaches the client
     as a RUN_ERROR event instead of a silently dropped connection."""
     try:
-        yield from _stream_query_as_agui(text, forced_persona)
+        yield from _stream_query_as_agui(text, forced_persona, fresh)
     except Exception as e:
         journal.record_event("error", f"{text[:120]} — {llm.friendly_error(e)}")
         transcript.record_turn(forced_persona or "", "", text, "", [], 0.0, error=repr(e))
         yield ag.RunErrorEvent(message=llm.friendly_error(e))
 
 
-def _stream_query_as_agui(text: str, forced_persona: str | None = None):
+def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bool = False):
     """Yields AG-UI events for one query — a `persona_selected` CUSTOM
     event first (this project's own extension; AG-UI has no built-in
     field for "which persona/tier answered"), then either
@@ -176,7 +176,10 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None):
         events = stream_orchestrated_as_agui_sync(text, thread_id)
         log_persona = "orchestrator"
     else:
-        events = stream_agent_as_agui(_get_agent(persona_name, tier), text, thread_id, transcript.history())
+        agent = _get_agent(persona_name, tier)
+        if fresh and hasattr(agent, "reset"):
+            agent.reset()  # a question about the screen right now must not be answered from an earlier one
+        events = stream_agent_as_agui(agent, text, thread_id, [] if fresh else transcript.history())
         log_persona = persona_name
 
     final_answer = ""
@@ -349,6 +352,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_error(400, "Missing 'text'")
             return
         forced_persona = body.get("persona") or None
+        fresh = bool(body.get("fresh"))  # the menu bar prompt: start from a clean conversation
 
         encoder = EventEncoder()
         self.send_response(200)
@@ -362,7 +366,7 @@ class _Handler(BaseHTTPRequestHandler):
         # since both are still real completed requests.
         start = time.monotonic()
         try:
-            for event in stream_query_as_agui(text, forced_persona=forced_persona):
+            for event in stream_query_as_agui(text, forced_persona=forced_persona, fresh=fresh):
                 self.wfile.write(encoder.encode(event).encode("utf-8"))
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
@@ -897,6 +901,24 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_error(404, "Not found")
 
 
+def _warm_up() -> None:
+    """Pay the one-time costs at startup, not on the user's first question: load the always-resident model
+    on the model server, and build the agents (MCP connections, tool lists, prompts) that turns will use.
+    Best-effort, in the background; the server answers requests meanwhile."""
+    from hi import config
+    from hi.model_warmup import preload_models
+
+    try:
+        if config.AI_MODE == "tailscale":
+            preload_models([config.HAIKU_MODEL])
+        for tier in ("sonnet",):
+            for persona_name in ("term", "butler"):
+                _get_agent(persona_name, tier)
+        get_tier_model_fast("haiku").invoke("ok")  # the routing model, so the first classification is fast
+    except Exception as e:
+        print(f"warm-up skipped: {llm.friendly_error(e)}", flush=True)
+
+
 def run_ipc_daemon(port: int = DEFAULT_PORT) -> None:
     # No terminal to input() on here — every destructive-action confirm
     # goes through the pending queue, answered via POST /pending/{id}/….
@@ -905,6 +927,7 @@ def run_ipc_daemon(port: int = DEFAULT_PORT) -> None:
 
     set_confirm_handler(wait_for_approval)
     server = ThreadingHTTPServer((HOST, port), _Handler)
+    threading.Thread(target=_warm_up, daemon=True).start()
     print(f"Voice companion backend listening on http://{HOST}:{port} (loopback only). Ctrl-C to stop.")
     try:
         server.serve_forever()

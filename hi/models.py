@@ -52,7 +52,7 @@ def get_tier_model(tier: str) -> BaseChatModel:
     key = (tier, model_name, llm.signature())
     if key not in _model_cache:
         ensure_pulled(model_name)
-        _model_cache[key] = make_chat_model(model_name, temperature=0, keep_alive="30m")
+        _model_cache[key] = make_chat_model(model_name, temperature=0, keep_alive=config.KEEP_ALIVE)
     return _model_cache[key]
 
 
@@ -82,7 +82,7 @@ def get_tier_model_fast(tier: str) -> BaseChatModel:
     key = (tier, model_name, llm.signature())
     if key not in _fast_model_cache:
         ensure_pulled(model_name)
-        _fast_model_cache[key] = llm.build_chat_model(model_name, temperature=0, keep_alive="30m")
+        _fast_model_cache[key] = llm.build_chat_model(model_name, temperature=0, keep_alive=config.KEEP_ALIVE)
     return _fast_model_cache[key]
 
 
@@ -98,5 +98,5 @@ def fast_variant(model: BaseChatModel) -> BaseChatModel:
     name = llm.model_name(model)
     key = (name, llm.signature())
     if key not in _fast_variant_cache:
-        _fast_variant_cache[key] = llm.build_chat_model(name, temperature=0, keep_alive="30m")
+        _fast_variant_cache[key] = llm.build_chat_model(name, temperature=0, keep_alive=config.KEEP_ALIVE)
     return _fast_variant_cache[key]

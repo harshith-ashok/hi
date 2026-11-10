@@ -71,6 +71,19 @@ def frontmost_window_title() -> str | None:
     return result.stdout.strip() or None
 
 
+def reason_for(app: str | None, title: str | None) -> str | None:
+    """Like sensitive_context_reason(), for an app/title the caller already has (the context
+    daemon polls both every few seconds, so it must not re-ask System Events). Also honours
+    the user's CONTEXT_DENYLIST."""
+    import hi.config as config
+
+    if app and (app.lower() in SENSITIVE_APP_NAMES or app.lower() in config.CONTEXT_DENYLIST):
+        return f"'{app}' is on the sensitive-app list."
+    if title and any(marker in title.lower() for marker in SENSITIVE_TITLE_MARKERS):
+        return "the window looks private/incognito."
+    return None
+
+
 def sensitive_context_reason() -> str | None:
     """Returns a human-readable reason capture should be refused right
     now, or None if it's fine to proceed. Best-effort — see module

@@ -23,10 +23,11 @@ from hi.agents.butler.mac_control import (
     write_clipboard,
 )
 from hi.agents.butler.music import list_playlists, music_control, now_playing, play_music
+from hi.agents.butler.timers import cancel_timer, list_timers, set_timer
 from hi.agents.butler.todo import add_task, capture_note, complete_task, list_tasks, remove_task
 from hi.browser import open_url_in_browser
 from hi.chat_model import make_chat_model
-from hi.config import BUTLER_MODEL
+from hi.config import KEEP_ALIVE, BUTLER_MODEL
 from hi.host import passthrough
 from hi.mcp_install import configure_mcp_server, configure_n8n_server, list_available_mcp_servers
 
@@ -37,6 +38,9 @@ TOOLS = passthrough([
     now_playing,
     list_playlists,
     toggle_bluetooth,
+    set_timer,
+    list_timers,
+    cancel_timer,
     open_app,
     open_url_in_browser,
     adjust_brightness,
@@ -72,5 +76,5 @@ def build_agent(model: BaseChatModel):
     )
 
 
-model = make_chat_model(BUTLER_MODEL, temperature=0, keep_alive="30m")
+model = make_chat_model(BUTLER_MODEL, temperature=0, keep_alive=KEEP_ALIVE)
 agent = build_agent(model)

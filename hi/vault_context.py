@@ -21,7 +21,7 @@ MAX_CONTEXT_CHARS = 8000
 CONTEXT_NOTES = 5
 MIN_SCORE = 3  # a word of the note's own name, or two distinct words in its text (one text hit scores 2)
 SKIP_DIRS = {".obsidian", ".git", ".trash", "attachments", "node_modules"}
-SKIP_PREFIXES = ("hi/conversations/", "hi/journal/", "hi/tasks/", "hi/knowledge/preferences.md")
+SKIP_PREFIXES = ("skills/", "hi/conversations/", "hi/journal/", "hi/tasks/", "hi/knowledge/preferences.md")
 STOPWORDS = frozenset(
     "that this with from have what when where which about would could should there their them then than into your "
     "just like want need make some more also does please tell show give find figure out write wrote written note notes "

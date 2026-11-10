@@ -41,7 +41,7 @@ HOST_ENV_PATH = Path("/run/hi-host.env")
 HOST_ENV_KEYS = (
     "GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "OPENROUTER_API_KEY",
     "TAILSCALE_OLLAMA_URL", "HOST_BRIDGE_TOKEN", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
-    "TTS_BACKEND",
+    "TTS_BACKEND", "AI_MODE",
 )
 _host_env = {k: v for k, v in _parse_env(HOST_ENV_PATH).items() if k in HOST_ENV_KEYS}
 _env = {**os.environ, **_host_env, **_parse_env(ENV_PATH)}
@@ -95,6 +95,22 @@ _OPENROUTER_DEFAULTS = {
 }
 
 
+# The tailscale box is the RTX PRO 4000 laptop (16GB VRAM): all local models, no cloud. Measured there:
+# gemma4:e4b (6.5GB, fits fully on the GPU) does ~250 tok/s and ~0.1s tool calls, so it serves every role and
+# stays resident. gpt-oss:20b (14GB) spills ~20% to CPU (~11 tok/s) and evicts gemma while loaded, so it is
+# only the opus tier, used for big tasks. Voice (phonon) runs on the Mac, not here.
+_TAILSCALE_DEFAULTS = {
+    "HAIKU_MODEL": "gemma4:e4b",
+    "SONNET_MODEL": "gemma4:e4b",
+    "OPUS_MODEL": "gpt-oss:20b",
+    "TERM_MODEL": "gemma4:e4b",
+    "BUTLER_MODEL": "gemma4:e4b",
+    "DOCS_MODEL": "gemma4:e4b",
+    "WEB_MODEL": "gemma4:e4b",
+    "VISION_MODEL": "gemma4:e4b",
+}
+
+
 def env_key(role: str, mode: str) -> str:
     return _MODE_PREFIX[mode] + role
 
@@ -102,7 +118,7 @@ def env_key(role: str, mode: str) -> str:
 def model_for(role: str, mode: str | None = None) -> str:
     """`role`'s model name under `mode` (default: the active mode)."""
     mode = mode or AI_MODE
-    defaults = _OPENROUTER_DEFAULTS if mode == "openrouter" else _OLLAMA_DEFAULTS
+    defaults = {"openrouter": _OPENROUTER_DEFAULTS, "tailscale": _TAILSCALE_DEFAULTS}.get(mode, _OLLAMA_DEFAULTS)
     return _env.get(env_key(role, mode)) or defaults[role]
 
 
@@ -114,12 +130,20 @@ def apply_mode() -> None:
 
 apply_mode()
 
+# Self-hosted models stay loaded forever (Ollama's keep_alive=-1); hosted/cloud ones just get a long TTL.
+KEEP_ALIVE: int | str = -1 if AI_MODE == "tailscale" else "30m"
+
+# Always-on screen context (hi/context/daemon.py): extra app names it must never read, comma separated.
+CONTEXT_DENYLIST = {a.strip().lower() for a in (_env.get("CONTEXT_DENYLIST") or "").split(",") if a.strip()}
+
 VAULT_PATH = Path(_env.get("VAULT_PATH", str(Path.home() / ".hi" / "vault")))
 WHISPER_MODEL = _env.get("WHISPER_MODEL", "base.en")
 # Learning from your use, written to the vault (hi/memory.py, hi/reflection_agent.py). "off" disables.
 MEMORY_EXTRACTION = (_env.get("MEMORY_EXTRACTION") or "on").lower() != "off"
 REFLECTION = (_env.get("REFLECTION") or "on").lower() != "off"
 # Text-to-speech: an Ollama speech model (hi/tts_ollama.py), `ollama pull phonon`.
+# Phonon has no CUDA build, so voice always uses the Mac's own Ollama, never the tailscale box.
+TTS_OLLAMA_HOST = _env.get("TTS_OLLAMA_HOST") or OLLAMA_HOST
 TTS_MODEL = _env.get("TTS_MODEL") or "phonon"
 # Which engine speaks: "ollama" (phonon) or "huggingface" (phonon-40m-en from Hugging Face on a CUDA GPU, the `tts` compose
 # service, hi/tts_hf.py), for machines where phonon has no GPU build.

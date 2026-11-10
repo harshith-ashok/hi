@@ -57,6 +57,19 @@ def _ocr_image(path: Path) -> list[str]:
     return lines
 
 
+def ocr_screen() -> list[str]:
+    """Screenshot the whole screen, OCR it on-device, delete the image. No privacy check:
+    callers (read_screen, the context daemon) gate first. [] on any failure."""
+    path = Path(tempfile.mktemp(suffix=".png"))
+    try:
+        result = subprocess.run(["screencapture", "-x", str(path)], capture_output=True, text=True)
+        if result.returncode != 0 or not path.exists():
+            return []
+        return _ocr_image(path)
+    finally:
+        path.unlink(missing_ok=True)
+
+
 @tool
 def read_screen() -> str:
     """Take a single screenshot of the whole screen right now, extract
@@ -66,6 +79,10 @@ def read_screen() -> str:
     callable directly, no enable step needed. Refuses if the active
     window looks private/incognito or a password manager is frontmost.
     """
+    from hi.context.now import pinned_text
+
+    if pinned := pinned_text():  # opened from the menu bar prompt: that capture IS the screen being asked about
+        return pinned
     reason = sensitive_context_reason()
     if reason:
         return f"Refused: {reason}"

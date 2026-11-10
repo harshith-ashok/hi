@@ -9,7 +9,8 @@ from prompt_toolkit.key_binding import KeyBindings
 
 from hi.capture.store import find_task
 from hi.fast_commands import maybe_fast_reply
-from hi.model_warmup import start_keepalive
+import hi.config as config
+from hi.model_warmup import preload_models, start_keepalive
 from hi.models import get_tier_model, get_tier_model_fast
 from hi.orchestrator.budget import get_budget, set_budget
 from hi.orchestrator.complexity import classify_with_plan
@@ -164,6 +165,8 @@ def run_router_repl() -> None:
     # documented double-round-trip "cold reload" tax on that call. See
     # start_keepalive()'s own docstring for why only haiku, not every tier.
     start_keepalive(get_tier_model_fast("haiku"))
+    if config.AI_MODE == "tailscale":
+        preload_models([config.HAIKU_MODEL])
 
     session: PromptSession = PromptSession(key_bindings=_build_key_bindings())
     agent_cache: dict[tuple[str, str], object] = {}

@@ -33,6 +33,8 @@ ROUTER_MARKER = "router"
 
 CAPTURE_DAEMON_MARKER = "capture-daemon"
 SUGGEST_DAEMON_MARKER = "suggest-daemon"
+CONTEXT_DAEMON_MARKER = "context-daemon"
+MENUBAR_MARKER = "menubar"
 VOICE_DAEMON_MARKER = "voice-daemon"
 WAKE_DAEMON_MARKER = "wake-daemon"
 TUI_MARKER = "tui"
@@ -62,6 +64,12 @@ def parse_persona(argv: list[str]) -> str | None:
         help="run the continuous suggestion engine (standalone, no tmux)",
     )
     group.add_argument(
+        "--context-daemon",
+        action="store_true",
+        help="run the always-on screen/context agent (standalone, native on the Mac)",
+    )
+    group.add_argument("--menubar", action="store_true", help="menu bar prompt that uses your screen as context (macOS)")
+    group.add_argument(
         "--voice-daemon",
         action="store_true",
         help="run the local backend for the native voice companion app (standalone, no tmux)",
@@ -82,6 +90,10 @@ def parse_persona(argv: list[str]) -> str | None:
         return CAPTURE_DAEMON_MARKER
     if args.suggest_daemon:
         return SUGGEST_DAEMON_MARKER
+    if args.menubar:
+        return MENUBAR_MARKER
+    if args.context_daemon:
+        return CONTEXT_DAEMON_MARKER
     if args.voice_daemon:
         return VOICE_DAEMON_MARKER
     if args.wake_daemon:
@@ -116,7 +128,7 @@ def backend_up() -> bool:
 
 
 # Credentials the container can't read from the host's ~/.hi/.env itself.
-FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "OPENROUTER_API_KEY", "TAILSCALE_OLLAMA_URL", "HF_TOKEN")
+FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "OPENROUTER_API_KEY", "TAILSCALE_OLLAMA_URL", "HF_TOKEN", "AI_MODE")
 
 
 def _forwarded_settings() -> dict[str, str]:
@@ -166,10 +178,40 @@ def start_host_bridge() -> None:
     subprocess.Popen([sys.executable, "-m", "hi.host_bridge"], stdout=log, stderr=log, start_new_session=True)
 
 
+def context_daemon_up() -> bool:
+    """The daemon rewrites its snapshot every few seconds, so a fresh one means it is running."""
+    from hi.context import now
+
+    snapshot = now.read()
+    return bool(snapshot) and time.time() - snapshot["ts"] < now.STALE_SECONDS
+
+
+def start_context_daemon() -> None:
+    """On a Mac, run the always-on context agent (hi/context/daemon.py) alongside the bridge. It has to be
+    native — screen, window and Accessibility APIs don't exist inside the container — so `hi` starts it
+    here, detached, instead of the user running `hi --context-daemon` by hand."""
+    if sys.platform != "darwin" or context_daemon_up():
+        return
+    log = open(Path.home() / ".hi" / "context.log", "ab")
+    subprocess.Popen([sys.executable, "-m", "hi.cli", "--context-daemon"], stdout=log, stderr=log, start_new_session=True)
+
+
+def start_menubar() -> None:
+    """On a Mac, start the menu bar app (hi/menubar/app.py) unless it is already running."""
+    from hi.menubar.app import lock_is_free
+
+    if sys.platform != "darwin" or not lock_is_free():
+        return
+    log = open(Path.home() / ".hi" / "menubar.log", "ab")
+    subprocess.Popen([sys.executable, "-m", "hi.cli", "--menubar"], stdout=log, stderr=log, start_new_session=True)
+
+
 def start_stack() -> None:
     """`docker compose up -d --build` for the backend + tinyui, unless the
     backend is already answering."""
     start_host_bridge()
+    start_context_daemon()
+    start_menubar()
     if backend_up():
         return
     if not shutil.which("docker"):
@@ -217,6 +259,18 @@ def main() -> None:
         from hi.suggest.engine import run_suggest_daemon
 
         run_suggest_daemon()
+        return
+
+    if persona == MENUBAR_MARKER:
+        from hi.menubar.app import run_menubar
+
+        run_menubar()
+        return
+
+    if persona == CONTEXT_DAEMON_MARKER:
+        from hi.context.daemon import run_context_daemon
+
+        run_context_daemon()
         return
 
     if persona == VOICE_DAEMON_MARKER:

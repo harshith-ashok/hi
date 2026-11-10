@@ -8,7 +8,7 @@ from hi.agents.web.tools import find_image, search_wikipedia
 from hi.agents.persona_voice import voiced_prompt
 from hi.mcp_tools import get_mcp_tools_by_server
 from hi.chat_model import make_chat_model
-from hi.config import WEB_MODEL
+from hi.config import KEEP_ALIVE, WEB_MODEL
 
 PROMPT_PATH = Path(__file__).parent / "web_prompt.md"
 TOOLS = [search_wikipedia, find_image]
@@ -22,5 +22,5 @@ def build_agent(model: BaseChatModel):
     return create_agent(model=model, tools=TOOLS + fetch, system_prompt=voiced_prompt(PROMPT_PATH))
 
 
-model = make_chat_model(WEB_MODEL, temperature=0, keep_alive="30m")
+model = make_chat_model(WEB_MODEL, temperature=0, keep_alive=KEEP_ALIVE)
 agent = build_agent(model)

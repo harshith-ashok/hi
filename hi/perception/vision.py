@@ -56,6 +56,10 @@ def ask_about_screen(question: str = DEFAULT_QUESTION) -> str:
     Args:
         question: What to ask about the screen. Defaults to a general description.
     """
+    from hi.context.now import pinned_text
+
+    if pinned := pinned_text():  # opened from the menu bar prompt: answer from that capture's OCR text, no second screenshot
+        return f"{pinned}\n\n(Answer the question \"{question}\" from this text.)"
     reason = sensitive_context_reason()
     if reason:
         return f"Refused: {reason}"

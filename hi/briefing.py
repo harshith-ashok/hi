@@ -85,6 +85,13 @@ def _last_opened_project() -> str | None:
     return latest.name
 
 
+def _live_context() -> str | None:
+    """The always-on context (hi/context/), as activity only; None when the daemon isn't running."""
+    from hi.context import now
+
+    return now.describe(include_screen=False) or None
+
+
 def build_briefing() -> tuple[str, str, str] | None:
     """Return (context, suggestion, action) to show before the first
     router-mode prompt, or None if there's nothing worth surfacing (no
@@ -102,7 +109,8 @@ def build_briefing() -> tuple[str, str, str] | None:
     leetcode = _leetcode_line()
     follow_ups = _application_follow_ups_line()
 
-    sources = (tasks, last_note, last_project, idle_repos, deadlines, leetcode, follow_ups)
+    live = _live_context()
+    sources = (live, tasks, last_note, last_project, idle_repos, deadlines, leetcode, follow_ups)
     if not any(sources):
         return None
 
@@ -123,11 +131,15 @@ def build_briefing() -> tuple[str, str, str] | None:
         context_lines.append(follow_ups)
     context = "\n".join(context_lines)
 
+    right_now = f"What the user is doing right now:\n{live}\n\n" if live else ""
     prompt = (
         "Here's a quick snapshot of the user's current state:\n\n"
-        f"{context}\n\n"
+        f"{right_now}{context}\n\n"
         'Suggest ONE short, concrete, actionable next step as a yes/no '
-        'question, e.g. "Want to check off the push-the-repo task?". Base '
+        'question, e.g. "Want to check off the push-the-repo task?". If the '
+        "user is clearly in the middle of something, offer help with THAT "
+        "(what's open, the error or file on screen) before anything from the "
+        "list. Base "
         "it on what's actually shown above — don't invent details that "
         "aren't there. Reply in exactly this two-line format:\n"
         "SUGGESTION: <the one-line yes/no question>\n"

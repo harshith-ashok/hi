@@ -27,7 +27,9 @@ def ensure_token() -> str:
 
 
 def _tools() -> dict:
-    from hi.agents.butler import mac_control, music
+    from hi.agents.butler import mac_control, music, timers
+    from hi.context import tools as context_tools
+    from hi.agents.term import host_git
     from hi.browser import open_url_in_browser
     from hi.perception.browser import observe_current_tab
     from hi.perception.screen import read_screen
@@ -38,6 +40,9 @@ def _tools() -> dict:
         for t in [
             *(getattr(mac_control, n) for n in dir(mac_control)),
             *(getattr(music, n) for n in dir(music)),
+            *(getattr(timers, n) for n in dir(timers)),
+            *(getattr(context_tools, n) for n in dir(context_tools)),
+            *(getattr(host_git, n) for n in dir(host_git)),
             open_url_in_browser, observe_current_tab, read_screen, ask_about_screen,
         ]
         if hasattr(t, "invoke") and getattr(t, "name", None) in HOST_TOOLS
