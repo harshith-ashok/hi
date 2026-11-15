@@ -12,7 +12,7 @@ const ENDPOINT: Record<Mode, { key: string; label: string; placeholder: string }
   local: { key: 'OLLAMA_HOST', label: 'ollama url', placeholder: 'http://127.0.0.1:11434' },
   tailscale: { key: 'TAILSCALE_OLLAMA_URL', label: 'tailscale ollama url', placeholder: 'http://my-desktop:11434 or http://100.x.y.z:11434' },
 }
-const MODEL_KEYS = ['HAIKU_MODEL', 'SONNET_MODEL', 'OPUS_MODEL', 'TERM_MODEL', 'BUTLER_MODEL', 'DOCS_MODEL', 'WEB_MODEL', 'VISION_MODEL']
+const MODEL_KEYS = ['HAIKU_MODEL', 'SONNET_MODEL', 'OPUS_MODEL', 'VISION_MODEL']
 
 const tab = ref<'connection' | 'models' | 'voice'>('connection')
 const active = ref<Mode>('local')

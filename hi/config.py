@@ -70,17 +70,13 @@ TAILSCALE_OLLAMA_URL = _env.get("TAILSCALE_OLLAMA_URL") or ""
 # 30-85s per call on this machine).
 MODEL_ROLES = (
     "HAIKU_MODEL", "SONNET_MODEL", "OPUS_MODEL",
-    "TERM_MODEL", "BUTLER_MODEL", "DOCS_MODEL", "WEB_MODEL", "VISION_MODEL",
+    "VISION_MODEL",
 )
 _MODE_PREFIX = {"local": "", "tailscale": "TAILSCALE_"}
 _OLLAMA_DEFAULTS = {
     "HAIKU_MODEL": "gpt-oss:20b-cloud",
     "SONNET_MODEL": DEFAULT_MODEL,
     "OPUS_MODEL": "nemotron-3-ultra:cloud",
-    "TERM_MODEL": DEFAULT_MODEL,
-    "BUTLER_MODEL": DEFAULT_MODEL,
-    "DOCS_MODEL": DEFAULT_MODEL,
-    "WEB_MODEL": "gpt-oss:20b-cloud",
     "VISION_MODEL": "gemma4:31b-cloud",
 }
 # The tailscale box is the RTX PRO 4000 laptop (16GB VRAM): all local models, no cloud. Measured there:
@@ -91,10 +87,6 @@ _TAILSCALE_DEFAULTS = {
     "HAIKU_MODEL": "gemma4:e4b",
     "SONNET_MODEL": "gemma4:e4b",
     "OPUS_MODEL": "gpt-oss:20b",
-    "TERM_MODEL": "gemma4:e4b",
-    "BUTLER_MODEL": "gemma4:e4b",
-    "DOCS_MODEL": "gemma4:e4b",
-    "WEB_MODEL": "gemma4:e4b",
     "VISION_MODEL": "gemma4:e4b",
 }
 

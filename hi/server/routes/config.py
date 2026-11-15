@@ -16,7 +16,7 @@ from hi.server.http import json_body
 # Settings tinyui's settings screen can read and write. Credentials never appear here: they are write-only
 # (see routes/mcp.py), so a GET can't echo a secret back.
 CONFIG_FIELDS = (
-    "VAULT_PATH", "BUTLER_MODEL", "DOCS_MODEL", "WEB_MODEL", "TERM_MODEL",
+    "VAULT_PATH",
     "HAIKU_MODEL", "SONNET_MODEL", "OPUS_MODEL", "VISION_MODEL",
     "AI_MODE", "OLLAMA_HOST", "TAILSCALE_OLLAMA_URL", "TTS_MODEL", "TTS_VOICE", "TTS_BACKEND",
 )

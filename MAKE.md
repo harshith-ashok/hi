@@ -374,7 +374,7 @@ Findings that changed the plan:
 - P4 was overstated: copying config at import only mattered for the suggestion flags and the Whisper model (fixed). The agent modules no longer build a model at import at all.
 - `hi/mcp_tools.py` already skips a failing MCP server on its own, so §4.2's MCP concern is closed.
 - The two reflection modules do different jobs (a daily note vs. weekly preference proposals), so they were moved (`memory/reflection.py`, `synthesis/reflection.py`), not merged.
-- `TERM_MODEL`, `BUTLER_MODEL`, `DOCS_MODEL` and `WEB_MODEL` are no longer read by anything: the server builds every agent from a tier. tinyui's settings screen still shows them. Remove them, or make agents use them.
+- `TERM_MODEL`, `BUTLER_MODEL`, `DOCS_MODEL` and `WEB_MODEL` were read by nothing (the server builds every agent from a tier), so they were removed from config, `POST /config` and tinyui's settings screen.
 
 Not done:
 

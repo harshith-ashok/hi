@@ -41,3 +41,9 @@ def test_a_saved_openrouter_mode_falls_back_to_local(tmp_path):
     )
     assert out.stdout.split()[-2:] == ["local", config.model_for("SONNET_MODEL", "local")]
     assert "no longer supported" in out.stdout
+
+
+def test_the_unused_per_persona_model_settings_are_gone():
+    for role in ("TERM_MODEL", "BUTLER_MODEL", "DOCS_MODEL", "WEB_MODEL"):
+        assert role not in config.MODEL_ROLES
+    assert config.MODEL_ROLES == ("HAIKU_MODEL", "SONNET_MODEL", "OPUS_MODEL", "VISION_MODEL")
