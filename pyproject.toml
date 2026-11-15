@@ -25,7 +25,6 @@ dependencies = [
 # Docker image with `--no-group desktop` (Linux, no audio/screen access).
 [dependency-groups]
 desktop = [
-    "kokoro>=0.9.4",
     "openwakeword>=0.4.0",
     "pynput>=1.7.7",
     "pyobjc-framework-vision>=12.2",

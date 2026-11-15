@@ -213,7 +213,7 @@ async function reply(text: string) {
   if (wake.value && mic.value === 'idle') recording?.stop() // don't transcribe our own voice
   try {
     await speak(text, (why) => {
-      if (!ttsWarned) note(`phonon tts failed (${why}) — using the browser voice`)
+      if (!ttsWarned) note(`voice offline (${why}) — showing text only`)
       ttsWarned = true
     }, undefined, lastPersona())
   } catch (err) {

@@ -137,28 +137,11 @@ export function unlockAudio() {
   unlocked = true
   player.src = URL.createObjectURL(encodeWav(new Float32Array(240)))
   player.play().catch(() => (unlocked = false)) // not in a gesture after all: try again next time
-  speechSynthesis.speak(new SpeechSynthesisUtterance('')) // same unlock for the browser-voice fallback
 }
 
 export function stopSpeaking() {
   player.pause()
-  speechSynthesis.cancel()
   audioLevel.value = 0
-}
-
-function speakInBrowser(text: string): Promise<void> {
-  return new Promise((resolve) => {
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.onboundary = () => (audioLevel.value = 0.6)
-    utterance.onend = utterance.onerror = () => {
-      audioLevel.value = 0
-      resolve()
-    }
-    const decay = window.setInterval(() => (audioLevel.value *= 0.8), 50)
-    utterance.addEventListener('end', () => clearInterval(decay))
-    utterance.addEventListener('error', () => clearInterval(decay))
-    speechSynthesis.speak(utterance)
-  })
 }
 
 const WINDOW_S = 0.05
@@ -199,9 +182,10 @@ function followPlayback(levels: number[]): () => void {
   }
 }
 
-/** Speak `text`; resolves when playback ends. Uses the backend's TTS (/tts, Ollama's
- * phonon). Only if that fails does it use the browser's voice, and says why. */
-export async function speak(text: string, onFallback?: (reason: string) => void, voice?: string, persona?: string): Promise<void> {
+/** Speak `text`; resolves when playback ends. Uses the backend's TTS (/tts, Ollama's phonon).
+ * If that fails it stays silent (a different voice would be worse) and reports why via `onFailure`;
+ * the reply is still on screen. */
+export async function speak(text: string, onFailure?: (reason: string) => void, voice?: string, persona?: string): Promise<void> {
   stopSpeaking()
   try {
     const res = await fetch(`${BASE_URL}/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice, persona }) })
@@ -217,8 +201,7 @@ export async function speak(text: string, onFallback?: (reason: string) => void,
       player.play().catch(reject)
     }).finally(stopMeter)
   } catch (err) {
-    onFallback?.((err as Error).message)
-    await speakInBrowser(text)
+    onFailure?.((err as Error).message)
   }
 }
 

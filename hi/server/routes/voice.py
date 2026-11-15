@@ -8,6 +8,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
+from hi.core import health
 from hi.server.http import json_body, required_text
 
 
@@ -18,19 +19,24 @@ def _synthesize(text: str, voice: str, persona: str) -> bytes:
     return synthesize_wav(text, voice or voice_for(persona))
 
 
+def _synthesize_with_retry(text: str, voice: str, persona: str) -> bytes:
+    """The configured engine, tried twice; there is deliberately no other engine to fall back to."""
+    try:
+        return _synthesize(text, voice, persona)
+    except Exception:
+        return _synthesize(text, voice, persona)
+
+
 async def tts(request: Request) -> Response:
     body = await json_body(request)
     text = required_text(body)
     voice, persona = str(body.get("voice") or "").strip(), str(body.get("persona") or "").strip()
     try:
-        wav = await run_in_threadpool(_synthesize, text, voice, persona)
-    except Exception as ollama_error:
-        try:  # native installs may still have Kokoro (desktop group)
-            from hi.tts_kokoro import synthesize_wav as kokoro_wav
-
-            wav = await run_in_threadpool(kokoro_wav, text)
-        except Exception:
-            raise HTTPException(500, f"TTS synthesis failed: {ollama_error}")
+        wav = await run_in_threadpool(_synthesize_with_retry, text, voice, persona)
+    except Exception as e:  # boundary: no other engine is tried, a different voice would be worse than silence
+        health.mark_down("tts", e)
+        raise HTTPException(503, f"voice offline: {e}")
+    health.mark_ok("tts")
     return Response(wav, media_type="audio/wav")
 
 

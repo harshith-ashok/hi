@@ -192,3 +192,45 @@ def test_stopping_early_closes_the_generator_on_its_own_thread():
             break
         time.sleep(0.01)
     assert got == [0, 1, 2] and state["closed"] and state["threads"] == {"stream"}
+
+
+def test_tts_retries_the_configured_engine_once(client, monkeypatch):
+    from hi.server.routes import voice
+
+    calls = []
+
+    def flaky(text, voice_name, persona):
+        calls.append(text)
+        if len(calls) == 1:
+            raise RuntimeError("phonon is loading")
+        return b"RIFFwav"
+
+    monkeypatch.setattr(voice, "_synthesize", flaky)
+    r = client.post("/tts", json={"text": "hello"})
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/wav" and r.content == b"RIFFwav"
+    assert len(calls) == 2
+
+
+def test_tts_stays_silent_when_the_engine_is_down_and_tries_no_other_engine(client, monkeypatch):
+    from hi.core import health
+    from hi.server.routes import voice
+
+    calls = []
+
+    def down(text, voice_name, persona):
+        calls.append(1)
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(voice, "_synthesize", down)
+    health.reset()
+    r = client.post("/tts", json={"text": "hello"})
+    assert r.status_code == 503 and "voice offline" in r.text and "connection refused" in r.text
+    assert len(calls) == 2  # one retry, nothing else
+    assert not health.is_up("tts")
+    health.reset()
+
+
+def test_there_is_no_kokoro_fallback_left():
+    import importlib.util
+
+    assert importlib.util.find_spec("hi.tts_kokoro") is None
