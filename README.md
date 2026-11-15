@@ -37,7 +37,7 @@ hi                            # starts the stack if needed and opens the web UI
 docker compose up --build     # backend + web UI, then open http://localhost:5173
 ```
 
-`hi` with no flag is the main entry point: it runs `docker compose up -d --build` when the backend isn't already answering, then opens tinyui in your browser. `hi --tui` is the terminal UI, `hi --tmux` the old auto-routing tmux pane, and `hi --code`/`--butler`/`--docs`/`--web`/`--term` the single-persona panes.
+`hi` with no flag is the main entry point: it runs `docker compose up -d --build` when the backend isn't already answering, then opens tinyui in your browser. The terminal UI, tmux panes and per-persona flags (`--tui`, `--tmux`, `--term`, ...) were removed; tinyui is the one interface.
 
 The AI layer has two modes, switched in the UI's settings view (or `AI_MODE` in a `.env` next to `docker-compose.yml`): **local** (Ollama on your machine — from the container via `host.docker.internal`), **tailscale** (Ollama on another machine over your tailnet, `TAILSCALE_OLLAMA_URL`). Each mode remembers its own model names. Set `HI_VAULT=/path/to/your/vault` in that `.env` to use your real notes — otherwise the container keeps its own empty vault in a Docker volume. If port 5173 is taken, set `HI_WEB_PORT`.
 
@@ -168,7 +168,7 @@ Running `hi` with no flag starts it as `(hi) >` instead of a fixed persona. Each
 
 Every turn is classified independently — it's not "locked in" to one persona for the rest of the session, so a short follow-up with no persona-specific wording can occasionally route somewhere unexpected (a known trade-off of per-turn classification, not a bug). `term`'s own conversation memory is unaffected either way — it picks back up correctly once a later turn routes back to it.
 
-`--butler`/`--docs`/`--web`/`--term` still work exactly as shown above, for when you want to force a specific persona and skip routing/tiering entirely.
+The per-persona flags (`--butler`/`--docs`/`--web`/`--term`) were removed along with the terminal front-ends; tinyui's persona tabs force a persona instead.
 
 Auto-routing mode also opens with a one-line briefing — pending TODO items, the most recently edited vault note, and the most recently opened project, distilled into one actionable suggestion:
 
