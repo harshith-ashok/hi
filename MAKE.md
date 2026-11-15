@@ -359,12 +359,29 @@ Phases 1–3 deliver most of the value: the config bug is fixed, failures are vi
 
 Branch `restructure/make-plan`. Done:
 
-- Phase 0: root clutter removed; Swift app archived under tag `archive/voice-companion`; `Details.pdf` moved to `docs/`. Not done: merging the TODO files, and `ggml-base.en.bin` is still in the repo root (gitignored; `hi/stt.py` expects `~/.hi/models/`).
-- Phase 0b: OpenRouter removed (D4); REPL, TUI, tmux and persona flags removed (D1).
-- Phase 1: pytest and unit tests for vault, router, config, CLI, fallbacks, probes and routing fallback. The layering and full-import tests are not written yet.
-- Phase 3 (part): `hi/core/health.py`, `hi/core/fallback.py`, `GET /health`, and a routing fallback with an 8 s budget (`classify_or_default`).
+- **Phase 0 / 0b:** root clutter removed; Swift app archived (tag `archive/voice-companion`); OpenRouter removed (D4); REPL, TUI, tmux and persona flags removed (D1).
+- **Phase 1:** pytest, with unit tests for the vault, router, config, CLI, fallbacks, probes, routing fallback, the model registry, records, agents, jobs, the server routes and the layering rule.
+- **Phase 2/3, core + llm:** `hi/core/` (health, fallback, jobs) and the `hi/llm/` package. Tier and host fallback, no model pulls inside a request, a routing fallback with an 8 s budget, `GET /health`.
+- **Phase 4, memory:** the `hi/memory/` package and `TurnRecord` / `record_turn`, with each sink isolated.
+- **Phase 5, agents (part):** `agents/base.make_agent`, no model built at import, `personas.py` reduced to a registry, the router choosing only butler/term, tools hidden while the Mac bridge or sandbox is down.
+- **Phase 6, server:** Starlette + uvicorn (D6) with a route module per area; the second approval server is gone.
+- **Phase 7 (part):** no voice fallback (D3); Kokoro and the browser-voice fallback removed.
+- **Phase 8 (part):** the background jobs the REPL used to start now start from the server lifespan, with backoff.
+- **Phase 10 (part):** `CLAUDE.md` rewritten, `docs/architecture.md` and an ADR added.
 
-Not started: the package moves (core/llm/memory/agents/voice/proactive), `TurnRecord`, Starlette, voice chains, `core/jobs.py`, repo layout, ADRs and the CLAUDE.md rewrite.
+Findings that changed the plan:
+
+- P4 was overstated: copying config at import only mattered for the suggestion flags and the Whisper model (fixed). The agent modules no longer build a model at import at all.
+- `hi/mcp_tools.py` already skips a failing MCP server on its own, so §4.2's MCP concern is closed.
+- The two reflection modules do different jobs (a daily note vs. weekly preference proposals), so they were moved (`memory/reflection.py`, `synthesis/reflection.py`), not merged.
+- `TERM_MODEL`, `BUTLER_MODEL`, `DOCS_MODEL` and `WEB_MODEL` are no longer read by anything: the server builds every agent from a tier. tinyui's settings screen still shows them. Remove them, or make agents use them.
+
+Not done:
+
+- Moving the rest of the flat modules (`voice`/`stt`/`tts*`, `proactive`, `context`, `suggest`, `watchdogs`, `capture`, `platform/`), and one hotkey implementation.
+- `agents/tools/` split, `safety.py` (danger + action tiers + reviewer), and a shared timeouts table.
+- Repo layout (`clients/`, `services/`, `docker/`), merging the TODO files, and moving docstring history into ADRs.
+- `Settings` as a single object (config is still module globals, read live).
 
 ## 9. Open questions
 
