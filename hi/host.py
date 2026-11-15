@@ -15,6 +15,7 @@ import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 
 import hi.config as config
+from hi.core import health
 
 # The only tools the bridge will run. `mac_shell` is the one that runs arbitrary commands: the
 # agent reaches it only through hi/agents/term/mac_shell.py's confirmation gate.
@@ -40,7 +41,9 @@ def call(name: str, args: dict) -> str:
             timeout=CALL_TIMEOUT_SECONDS,
         )
     except httpx.HTTPError as e:
+        health.mark_down("host_bridge", e)
         return f"Can't reach the Mac bridge at {config.HOST_BRIDGE_URL} ({e}). It starts with `hi` on your Mac."
+    health.mark_ok("host_bridge")
     if response.status_code != 200:
         return f"Mac bridge error {response.status_code}: {response.text[:300]}"
     return response.json()["result"]

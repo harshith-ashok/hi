@@ -1,12 +1,9 @@
 from pathlib import Path
 
-from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from hi.agents.docs.vault_rag import build_vault_rag_graph, list_vault_notes, read_vault_note
 from hi.agents.persona_voice import voiced_prompt
-from hi.llm.reasoning import make_chat_model
-from hi.llm.resilience import retry_middleware
-from hi.config import KEEP_ALIVE, DOCS_MODEL
+from hi.agents.base import make_agent
 from hi.memory.vault import append_note, create_note, list_notes, read_note
 from hi.memory.widgets import recall_widget
 
@@ -15,12 +12,7 @@ TOOLS = [list_vault_notes, read_vault_note, create_note, append_note, read_note,
 
 
 def build_agent(model: BaseChatModel):
-    """Build a fresh docs agent bound to `model` — used directly below for
-    the default DOCS_MODEL instance, and by hi/router.py to build one on a
-    router-selected tier instead."""
-    note_agent = create_agent(model=model, tools=TOOLS, system_prompt=voiced_prompt(PROMPT_PATH), middleware=[retry_middleware()])
+    """Build a fresh docs agent bound to `model`."""
+    note_agent = make_agent(model, TOOLS, system_prompt=voiced_prompt(PROMPT_PATH))
     return build_vault_rag_graph(note_agent, model)
 
-
-model = make_chat_model(DOCS_MODEL, temperature=0, keep_alive=KEEP_ALIVE)
-agent = build_agent(model)

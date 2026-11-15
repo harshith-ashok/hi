@@ -958,6 +958,9 @@ def run_ipc_daemon(port: int = DEFAULT_PORT) -> None:
 
     set_confirm_handler(wait_for_approval)
     server = ThreadingHTTPServer((HOST, port), _Handler)
+    from hi import startup
+
+    startup.start_background_jobs()
     threading.Thread(target=_warm_up, daemon=True).start()
     print(f"Voice companion backend listening on http://{HOST}:{port} (loopback only). Ctrl-C to stop.")
     try:

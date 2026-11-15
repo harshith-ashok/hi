@@ -4,7 +4,6 @@ import os
 import subprocess
 from pathlib import Path
 
-from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRequest, dynamic_prompt
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
@@ -35,11 +34,9 @@ from hi.agents.term.people import add_person_info, delete_person, get_person_inf
 from hi.agents.term.save_project import save_project_to_vault
 from hi.agents.term.resume import resume_context
 from hi.browser import open_url_in_browser
-from hi.llm.reasoning import make_chat_model
-from hi.config import KEEP_ALIVE, TERM_MODEL
 from hi.host import passthrough
 from hi.mcp_tools import get_mcp_tools, tool_servers
-from hi.llm.resilience import retry_middleware
+from hi.agents.base import make_agent
 from hi.toolkit import ToolSelector, filter_prompt
 from hi.context.tools import current_context, pause_screen_context, resume_screen_context
 from hi.context.now import describe as screen_context
@@ -353,11 +350,8 @@ class _StatefulAgent:
 
 
 def build_agent(model: BaseChatModel):
-    """Build a fresh, independently-stateful term agent bound to `model` —
-    used directly below for the default TERM_MODEL instance, and by the
-    router/IPC server to build one on a router-selected tier instead (each
-    gets its own session memory, since they're different underlying
-    agents).
+    """Build a fresh, independently-stateful term agent bound to `model`
+    (each gets its own session memory).
 
     Memory is tool-driven: the model calls list_notes/read_note itself when
     a question needs stored context, instead of a separate model call
@@ -412,11 +406,5 @@ def build_agent(model: BaseChatModel):
     # the process actually connects to any MCP servers; a slow/misbehaving
     # server is bounded by its own per-server timeout rather than hanging
     # agent construction indefinitely.
-    return _StatefulAgent(
-        create_agent(model=model, tools=all_tools +
-                     [selector.more_tools], middleware=[system_prompt, selector, retry_middleware()])
-    )
+    return _StatefulAgent(make_agent(model, all_tools, selector=selector, middleware=[system_prompt]))
 
-
-model = make_chat_model(TERM_MODEL, temperature=0, keep_alive=KEEP_ALIVE)
-agent = build_agent(model)
