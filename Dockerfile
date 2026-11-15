@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git openssh-cli
     && rm -rf /var/lib/apt/lists/* && git config --system safe.directory '*'
 
 WORKDIR /app
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy HI_HOST=0.0.0.0 PATH="/app/.venv/bin:$PATH"
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy HI_HOST=0.0.0.0 HF_HOME=/root/.hi/hf PATH="/app/.venv/bin:$PATH"
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-group desktop --no-install-project

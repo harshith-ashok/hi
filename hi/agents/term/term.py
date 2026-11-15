@@ -1,4 +1,5 @@
 from hi.agents.web.tools import find_image, search_wikipedia
+from hi.visualise import visualise
 import os
 import subprocess
 from pathlib import Path
@@ -28,7 +29,8 @@ from hi.agents.term.background_tasks import (
     stop_process,
 )
 from hi.agents.term.github_repo import set_repo_visibility
-from hi.agents.term.sandbox import run_python
+from hi.agents.term.mac_shell import run_mac_shell
+from hi.agents.term.sandbox import run_python, run_python_file
 from hi.agents.term.people import add_person_info, delete_person, get_person_info, list_people
 from hi.agents.term.save_project import save_project_to_vault
 from hi.agents.term.resume import resume_context
@@ -37,6 +39,7 @@ from hi.chat_model import make_chat_model
 from hi.config import KEEP_ALIVE, TERM_MODEL
 from hi.host import passthrough
 from hi.mcp_tools import get_mcp_tools, tool_servers
+from hi.retry import retry_middleware
 from hi.toolkit import ToolSelector, filter_prompt
 from hi.context.tools import current_context, pause_screen_context, resume_screen_context
 from hi.context.now import describe as screen_context
@@ -219,9 +222,11 @@ TOOLS = passthrough([
     resume_screen_context,
     search_wikipedia,
     find_image,
+    visualise,
     search_vault,
     read_vault_note,
     run_shell_command,
+    run_mac_shell,
     list_background_tasks,
     check_background_task,
     stop_background_task,
@@ -273,6 +278,7 @@ TOOLS = passthrough([
     ask_about_screen,
     set_repo_visibility,
     run_python,
+    run_python_file,
 ])
 
 
@@ -408,7 +414,7 @@ def build_agent(model: BaseChatModel):
     # agent construction indefinitely.
     return _StatefulAgent(
         create_agent(model=model, tools=all_tools +
-                     [selector.more_tools], middleware=[system_prompt, selector])
+                     [selector.more_tools], middleware=[system_prompt, selector, retry_middleware()])
     )
 
 

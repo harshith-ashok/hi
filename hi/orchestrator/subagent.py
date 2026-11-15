@@ -32,6 +32,8 @@ import importlib
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 
+from hi.retry import retry_middleware
+
 _PERSONA_MODULES = {
     "term": "hi.agents.term.term",
     "butler": "hi.agents.butler.butler",
@@ -134,4 +136,19 @@ def build_subagent(
             prompt = f"{prompt}\n\n{overlay}"
     if extra_prompt:
         prompt = f"{prompt}\n\n{extra_prompt}"
-    return create_agent(model=model, tools=tools, system_prompt=prompt)
+    return create_agent(model=model, tools=tools, system_prompt=prompt, middleware=[retry_middleware()])
+
+
+SHELL_ONLY_PROMPT = (
+    "Earlier attempts at this task, using other tools, failed. This is the last approach: "
+    "do the task directly in the user's real macOS shell with run_mac_shell, and read the real output. "
+    "Prefer plain commands (ls, cat, grep, curl, git, python3). If it still cannot be done, say exactly "
+    "what you tried and what blocked it."
+)
+
+
+def build_shell_subagent(model: BaseChatModel):
+    """The last-resort agent for a task whose other attempts all failed: one tool, the user's own shell."""
+    from hi.agents.term.mac_shell import run_mac_shell
+
+    return create_agent(model=model, tools=[run_mac_shell], system_prompt=SHELL_ONLY_PROMPT, middleware=[retry_middleware()])

@@ -8,6 +8,8 @@ from hi.agents.persona_voice import voiced_prompt
 from hi.toolkit import ToolSelector
 from hi.agents.butler.mac_control import (
     adjust_brightness,
+    resize_window,
+    scale_window,
     list_running_apps,
     lock_screen,
     mute,
@@ -27,6 +29,7 @@ from hi.agents.butler.timers import cancel_timer, list_timers, set_timer
 from hi.agents.butler.todo import add_task, capture_note, complete_task, list_tasks, remove_task
 from hi.browser import open_url_in_browser
 from hi.chat_model import make_chat_model
+from hi.retry import retry_middleware
 from hi.config import KEEP_ALIVE, BUTLER_MODEL
 from hi.host import passthrough
 from hi.mcp_install import configure_mcp_server, configure_n8n_server, list_available_mcp_servers
@@ -44,6 +47,8 @@ TOOLS = passthrough([
     open_app,
     open_url_in_browser,
     adjust_brightness,
+    resize_window,
+    scale_window,
     lock_screen,
     add_task,
     capture_note,
@@ -72,7 +77,7 @@ def build_agent(model: BaseChatModel):
     on a router-selected tier instead."""
     selector = ToolSelector(TOOLS, persona_groups={"mac", "tasks", "mcp_setup"})
     return create_agent(
-        model=model, tools=TOOLS + [selector.more_tools], system_prompt=voiced_prompt(PROMPT_PATH), middleware=[selector]
+        model=model, tools=TOOLS + [selector.more_tools], system_prompt=voiced_prompt(PROMPT_PATH), middleware=[selector, retry_middleware()]
     )
 
 

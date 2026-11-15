@@ -14,7 +14,7 @@ import re
 import time
 from pathlib import Path
 
-from hi.context import now
+from hi.context import inbox, now
 
 NUDGE_EVERY = 300  # seconds between considerations
 ACTIVE_WITHIN = 120  # the user must have touched the keyboard/mouse this recently
@@ -98,6 +98,8 @@ def nudge() -> str | None:
     if not snapshot or snapshot.get("paused") or snapshot.get("private") or snapshot.get("idle", 0) > ACTIVE_WITHIN:
         return None
     if engine._budget_left() <= 0:
+        return None
+    if inbox.quiet_for() > 0:  # the last few were ignored: stay quiet for a while
         return None
     message = compose()
     if message is None:

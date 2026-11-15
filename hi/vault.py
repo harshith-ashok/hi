@@ -39,6 +39,11 @@ def files_dir() -> Path:
     return config.VAULT_PATH / "hi" / "files"
 
 
+def context_dir() -> Path:
+    """Files the user dropped into the chat as context (hi/attachments.py)."""
+    return config.VAULT_PATH / "hi" / "context"
+
+
 def launch_cwd() -> str:
     """The project directory `hi` was launched from, else the vault workspace."""
     launched = os.environ.get("HI_LAUNCH_CWD")

@@ -109,7 +109,10 @@ def _write(snapshot: dict) -> None:
 
 
 def run_context_daemon() -> None:
+    from hi.menubar.supervisor import die_with_parent
     from hi.perception.screen import ocr_screen
+
+    die_with_parent()  # exits with the menu bar app that started it
 
     summarizing = local_model_ok()
     print(f"Context daemon running every {POLL_SECONDS}s ({'with' if summarizing else 'WITHOUT'} local summaries). Ctrl-C to stop.")

@@ -47,7 +47,7 @@ function encodeWav(samples: Float32Array): Blob {
   return new Blob([view], { type: 'audio/wav' })
 }
 
-async function toWav(recording: Blob): Promise<Blob> {
+export async function toWav(recording: Blob): Promise<Blob> {
   const decoded = await new AudioContext().decodeAudioData(await recording.arrayBuffer())
   const offline = new OfflineAudioContext(1, Math.ceil(decoded.duration * SAMPLE_RATE), SAMPLE_RATE)
   const source = offline.createBufferSource()
@@ -201,10 +201,10 @@ function followPlayback(levels: number[]): () => void {
 
 /** Speak `text`; resolves when playback ends. Uses the backend's TTS (/tts, Ollama's
  * phonon). Only if that fails does it use the browser's voice, and says why. */
-export async function speak(text: string, onFallback?: (reason: string) => void, voice?: string): Promise<void> {
+export async function speak(text: string, onFallback?: (reason: string) => void, voice?: string, persona?: string): Promise<void> {
   stopSpeaking()
   try {
-    const res = await fetch(`${BASE_URL}/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) })
+    const res = await fetch(`${BASE_URL}/tts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice, persona }) })
     if (!res.ok) throw new Error(res.statusText || `tts failed (${res.status})`)
     const clip = await res.blob()
     const levels = await envelope(clip).catch(() => [])

@@ -41,7 +41,7 @@ class Group:
 GROUPS: tuple[Group, ...] = (
     # ---- term: core -------------------------------------------------------
     Group("core", 1, (
-        "run_shell_command", "search_vault", "read_vault_note", "read_project_file", "list_project_files", "search_files",
+        "run_shell_command", "run_mac_shell", "search_vault", "read_vault_note", "read_project_file", "list_project_files", "search_files",
         "edit_project_file", "write_project_file",
         "read_note", "list_notes", "create_note", "append_note", "current_context", "use_skill", "git_on_mac", "git_push",
     )),
@@ -63,12 +63,15 @@ GROUPS: tuple[Group, ...] = (
         "create_pipeline", "add_pipeline_entry", "update_pipeline_entry_stage", "list_pipeline_entries",
         "list_deadlines", "assign_task_owner", "team_status_draft", "team_deadline_pings",
     ), r"leetcode|application|applied|interview|pipeline|deadline|\bdue\b|team|assign|owner", "leetcode, job applications, pipelines, deadlines, team ops"),
-    Group("sandbox", 2, ("run_python",),
-          r"python|\bplot|\bgraph\b|\bchart|visuali[sz]|regression|classif|cluster|train(ing)? (a |the )?model|machine learning|\bml\b|matplotlib|numpy|pandas|scikit|sklearn|dataset|histogram|scatter|simulat|\bcompute\b|calculate",
+    Group("sandbox", 2, ("run_python", "run_python_file"),
+          r"python|\bplot|\bgraph\b|\bchart|visuali[sz]|regression|classif|cluster|train(ing)? (a |the )?model|machine learning|\bml\b|matplotlib|numpy|pandas|scikit|sklearn|dataset|\.py\b|run (it|this|the (file|script))|histogram|scatter|simulat|\bcompute\b|calculate",
           "run Python in a sandbox: calculations, ML, charts shown in the UI"),
     Group("web", 2, ("search_wikipedia", "find_image"),
           r"wikipedia|who is|who was|what is|what are|look up|define|history of|picture|photo|\bimage|\bpic\b|show me (a|an)\b",
           "Wikipedia lookups and pictures of people, places and things"),
+    Group("visualise", 2, ("visualise",),
+          r"explain|visuali[sz]e|diagram|illustrate|draw|how does .+ work|show me how|walk me through",
+          "explain a topic by drawing a diagram shown in the UI"),
     Group("insight", 2, ("what_next", "generate_retro", "reflect_on_week", "synthesize_vault", "check_suggestions", "show_last_run_trace"),
           r"what (should|next)|what's next|retro|reflect|synthes|suggest|trace|summari[sz]e (my|the) (vault|week)", "what to do next, weekly retro/reflection, vault synthesis"),
     # ---- MCP: subsets by priority ----------------------------------------
@@ -103,7 +106,7 @@ GROUPS: tuple[Group, ...] = (
     Group("fetch", 1, ("fetch",), about="fetch a URL as markdown"),
     # ---- butler ----------------------------------------------------------
     Group("mac", 1, (
-        "set_volume", "mute", "unmute", "toggle_wifi", "toggle_bluetooth", "toggle_dnd", "adjust_brightness",
+        "set_volume", "mute", "unmute", "toggle_wifi", "toggle_bluetooth", "toggle_dnd", "adjust_brightness", "resize_window", "scale_window",
         "lock_screen", "open_app", "quit_app", "list_running_apps", "take_screenshot", "read_clipboard", "write_clipboard",
         "open_url_in_browser", "play_music", "music_control", "now_playing", "list_playlists",
         "set_timer", "list_timers", "cancel_timer",

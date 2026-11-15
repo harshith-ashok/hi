@@ -62,11 +62,25 @@ export async function ping(): Promise<boolean> {
   }
 }
 
-export async function* streamQuery(text: string, persona: string | null, signal: AbortSignal): AsyncGenerator<AguiEvent> {
+export interface Uploaded { id: string; name: string; size: number; chars: number; error?: string }
+
+// Saves a dropped file as context. Never starts a reply.
+export async function uploadContext(file: Blob, name: string, kind = ''): Promise<Uploaded> {
+  const res = await fetch(`${BASE_URL}/context?name=${encodeURIComponent(name)}${kind ? `&kind=${kind}` : ''}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+  })
+  const body = (await res.json().catch(() => ({}))) as Uploaded
+  if (!res.ok || body.error) throw new Error(body.error ?? `upload failed (${res.status})`)
+  return body
+}
+
+export async function* streamQuery(text: string, persona: string | null, signal: AbortSignal, attachments: string[] = []): AsyncGenerator<AguiEvent> {
   const res = await fetch(`${BASE_URL}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, persona: persona ?? undefined }),
+    body: JSON.stringify({ text, persona: persona ?? undefined, attachments: attachments.length ? attachments : undefined }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`backend returned ${res.status} — is \`hi --voice-daemon\` running?`)

@@ -89,3 +89,23 @@ def run_python(code: str) -> str:
             "contents or links): " + ", ".join(files)
         )
     return "\n".join(parts)
+
+
+@tool
+def run_python_file(path: str) -> str:
+    """Run a Python file in the same isolated sandbox as run_python (120s limit,
+    outbound internet). Use it for a script the user attached or one saved in the
+    vault or a project. The file must be self-contained: other files next to it are
+    not available inside the sandbox.
+
+    Args:
+        path: Absolute path of a .py file, e.g. the saved path of an attached script.
+    """
+    from hi.agents.term.files import _resolve
+
+    file = _resolve(path)
+    if file.suffix != ".py" or not file.is_file():
+        return f"'{path}' is not a Python file that exists (resolved to {file})."
+    if file.stat().st_size > 200_000:
+        return "That file is too large for the sandbox (200 KB limit)."
+    return run_python.invoke({"code": file.read_text(errors="replace")})

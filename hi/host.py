@@ -16,13 +16,14 @@ from langchain_core.tools import BaseTool, StructuredTool
 
 import hi.config as config
 
-# The only tools the bridge will run (it never executes arbitrary commands).
+# The only tools the bridge will run. `mac_shell` is the one that runs arbitrary commands: the
+# agent reaches it only through hi/agents/term/mac_shell.py's confirmation gate.
 HOST_TOOLS = frozenset({
     "set_volume", "mute", "unmute", "toggle_wifi", "toggle_bluetooth", "toggle_dnd", "adjust_brightness",
     "lock_screen", "open_app", "quit_app", "list_running_apps", "take_screenshot", "read_clipboard",
     "write_clipboard", "open_url_in_browser", "observe_current_tab", "read_screen", "ask_about_screen",
     "play_music", "music_control", "now_playing", "list_playlists",
-    "git_on_mac", "git_push_on_mac", "set_timer", "list_timers", "cancel_timer", "current_context", "pause_screen_context", "resume_screen_context",
+    "mac_shell", "git_on_mac", "git_push_on_mac", "set_timer", "list_timers", "cancel_timer", "current_context", "pause_screen_context", "resume_screen_context",
 })
 CALL_TIMEOUT_SECONDS = 180  # ask_about_screen waits on a vision model
 

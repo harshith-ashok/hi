@@ -35,6 +35,8 @@ CAPTURE_DAEMON_MARKER = "capture-daemon"
 SUGGEST_DAEMON_MARKER = "suggest-daemon"
 CONTEXT_DAEMON_MARKER = "context-daemon"
 MENUBAR_MARKER = "menubar"
+INSTALL_APP_MARKER = "install-app"
+UNINSTALL_APP_MARKER = "uninstall-app"
 VOICE_DAEMON_MARKER = "voice-daemon"
 WAKE_DAEMON_MARKER = "wake-daemon"
 TUI_MARKER = "tui"
@@ -68,6 +70,8 @@ def parse_persona(argv: list[str]) -> str | None:
         action="store_true",
         help="run the always-on screen/context agent (standalone, native on the Mac)",
     )
+    group.add_argument("--install-app", action="store_true", help="package the menu bar app as ~/Applications/hi.app and add it to Login Items")
+    group.add_argument("--uninstall-app", action="store_true", help="remove hi.app and its Login Item")
     group.add_argument("--menubar", action="store_true", help="menu bar prompt that uses your screen as context (macOS)")
     group.add_argument(
         "--voice-daemon",
@@ -90,6 +94,10 @@ def parse_persona(argv: list[str]) -> str | None:
         return CAPTURE_DAEMON_MARKER
     if args.suggest_daemon:
         return SUGGEST_DAEMON_MARKER
+    if args.install_app:
+        return INSTALL_APP_MARKER
+    if args.uninstall_app:
+        return UNINSTALL_APP_MARKER
     if args.menubar:
         return MENUBAR_MARKER
     if args.context_daemon:
@@ -166,52 +174,39 @@ def host_bridge_up() -> bool:
         return False
 
 
-def start_host_bridge() -> None:
-    """On a Mac, run the bridge that lets the Dockerized backend use Mac-only tools
-    (open apps, Bluetooth, screen, ...). Detached, so it outlives this command."""
-    if sys.platform != "darwin" or host_bridge_up():
-        return
-    from hi.host_bridge import ensure_token
-
-    ensure_token()  # before compose starts: the backend reads it from ~/.hi/.env
-    log = open(Path.home() / ".hi" / "bridge.log", "ab")
-    subprocess.Popen([sys.executable, "-m", "hi.host_bridge"], stdout=log, stderr=log, start_new_session=True)
-
-
-def context_daemon_up() -> bool:
-    """The daemon rewrites its snapshot every few seconds, so a fresh one means it is running."""
-    from hi.context import now
-
-    snapshot = now.read()
-    return bool(snapshot) and time.time() - snapshot["ts"] < now.STALE_SECONDS
-
-
-def start_context_daemon() -> None:
-    """On a Mac, run the always-on context agent (hi/context/daemon.py) alongside the bridge. It has to be
-    native — screen, window and Accessibility APIs don't exist inside the container — so `hi` starts it
-    here, detached, instead of the user running `hi --context-daemon` by hand."""
-    if sys.platform != "darwin" or context_daemon_up():
-        return
-    log = open(Path.home() / ".hi" / "context.log", "ab")
-    subprocess.Popen([sys.executable, "-m", "hi.cli", "--context-daemon"], stdout=log, stderr=log, start_new_session=True)
+APP_BUNDLE = Path.home() / "Applications" / "hi.app"
 
 
 def start_menubar() -> None:
-    """On a Mac, start the menu bar app (hi/menubar/app.py) unless it is already running."""
-    from hi.menubar.app import lock_is_free
+    """On a Mac, start the menu bar app unless it is already running. The app starts and owns the context
+    daemon and the host bridge (hi/menubar/supervisor.py), so quitting it stops them. If hi.app is installed
+    (`hi --install-app`) it is opened as an app, so macOS shows permissions under "hi"."""
+    from hi.menubar.lock import lock_is_free
 
     if sys.platform != "darwin" or not lock_is_free():
+        return
+    if APP_BUNDLE.exists():
+        subprocess.run(["open", "-g", str(APP_BUNDLE)])
         return
     log = open(Path.home() / ".hi" / "menubar.log", "ab")
     subprocess.Popen([sys.executable, "-m", "hi.cli", "--menubar"], stdout=log, stderr=log, start_new_session=True)
 
 
+def wait_for_host_bridge(seconds: float = 15.0) -> None:
+    deadline = time.time() + seconds
+    while time.time() < deadline and not host_bridge_up():
+        time.sleep(0.5)
+
+
 def start_stack() -> None:
     """`docker compose up -d --build` for the backend + tinyui, unless the
     backend is already answering."""
-    start_host_bridge()
-    start_context_daemon()
-    start_menubar()
+    if sys.platform == "darwin":
+        from hi.host_bridge import ensure_token
+
+        ensure_token()  # before compose starts: the backend reads it from ~/.hi/.env
+        start_menubar()  # brings up the bridge and the context daemon, and owns them
+        wait_for_host_bridge()
     if backend_up():
         return
     if not shutil.which("docker"):
@@ -259,6 +254,12 @@ def main() -> None:
         from hi.suggest.engine import run_suggest_daemon
 
         run_suggest_daemon()
+        return
+
+    if persona in (INSTALL_APP_MARKER, UNINSTALL_APP_MARKER):
+        from hi.menubar import install
+
+        print(install.install_app() if persona == INSTALL_APP_MARKER else install.uninstall_app())
         return
 
     if persona == MENUBAR_MARKER:

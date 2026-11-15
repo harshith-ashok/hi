@@ -1,7 +1,7 @@
 """Timers: set, list, cancel. State lives in ~/.hi/timers.json (the filesystem is the source of truth).
 
 Each timer is a detached `python -m hi.agents.butler.timers run <id>` process that sleeps until the timer is
-due, re-checks the file (so a cancel wins), then notifies and speaks. No model is involved after parsing, so
+due, re-checks the file (so a cancel wins), then notifies and speaks (phonon). No model is involved after parsing, so
 a timer fires the same whether or not hi is still open. Timers do not survive a reboot (they are dropped).
 """
 
@@ -42,7 +42,9 @@ def _alert(label: str) -> None:
     text = f"Timer done: {label}" if label else "Timer done"
     script = f'display notification "{text}" with title "hi" sound name "Glass"'
     subprocess.run(["osascript", "-e", script], capture_output=True)
-    subprocess.run(["say", text], capture_output=True)
+    from hi.tts import speak  # phonon on the Mac's Ollama, never the system `say` voice
+
+    speak(text, "butler")
 
 
 @tool

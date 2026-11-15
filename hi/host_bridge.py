@@ -2,8 +2,9 @@
 that need the real machine (hi/host.py lists them). `hi` starts it with the stack.
 
 POST /tool {"name", "args"} runs one allowlisted tool and returns {"result": text}.
+`mac_shell` is the one tool that runs an arbitrary command, in the user's own zsh.
 Requests need `Authorization: Bearer <HOST_BRIDGE_TOKEN>` (kept in ~/.hi/.env and
-given only to the backend, never to the sandbox). Nothing else is executed.
+given only to the backend, never to the sandbox). Nothing else is exposed.
 
 Run directly: python -m hi.host_bridge
 """
@@ -29,7 +30,7 @@ def ensure_token() -> str:
 def _tools() -> dict:
     from hi.agents.butler import mac_control, music, timers
     from hi.context import tools as context_tools
-    from hi.agents.term import host_git
+    from hi.agents.term import host_git, mac_shell as mac_shell_module
     from hi.browser import open_url_in_browser
     from hi.perception.browser import observe_current_tab
     from hi.perception.screen import read_screen
@@ -43,6 +44,7 @@ def _tools() -> dict:
             *(getattr(timers, n) for n in dir(timers)),
             *(getattr(context_tools, n) for n in dir(context_tools)),
             *(getattr(host_git, n) for n in dir(host_git)),
+            *(getattr(mac_shell_module, n) for n in dir(mac_shell_module)),
             open_url_in_browser, observe_current_tab, read_screen, ask_about_screen,
         ]
         if hasattr(t, "invoke") and getattr(t, "name", None) in HOST_TOOLS
@@ -92,6 +94,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    from hi.menubar.supervisor import die_with_parent
+
+    die_with_parent()  # exits with the menu bar app that started it
     Handler.tools, Handler.token = _tools(), ensure_token()
     server = ThreadingHTTPServer((config.HOST_BRIDGE_BIND, config.HOST_BRIDGE_PORT), Handler)
     print(f"host bridge on {config.HOST_BRIDGE_BIND}:{config.HOST_BRIDGE_PORT} ({len(Handler.tools)} tools)", flush=True)

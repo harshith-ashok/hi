@@ -55,7 +55,8 @@ from hi.orchestrator import aggregator
 from hi.orchestrator.blackboard import checkpointer
 from hi.orchestrator.pending_actions import mark_orchestrated_active, mark_orchestrated_done
 from hi.orchestrator.planner import TaskSpec, plan_tasks
-from hi.orchestrator.subagent import build_subagent
+from hi.orchestrator.subagent import build_shell_subagent, build_subagent
+from hi.retry import MAX_ATTEMPTS
 from hi.vault import conversations_dir, with_frontmatter
 
 def _runs_dir():
@@ -91,13 +92,16 @@ def _emit(event_queue: asyncio.Queue[DAGEvent] | None, event: DAGEvent) -> None:
         event_queue.put_nowait(event)
 
 
-async def _run_subagent_once(task: TaskSpec, tier: str, content: str) -> tuple[str, list[str]]:
+async def _run_subagent_once(task: TaskSpec, tier: str, content: str, shell_only: bool = False) -> tuple[str, list[str]]:
     """One real attempt: builds a subagent at `tier` (which may differ
     from `task.tier` on a retry — see `_TIER_ESCALATION`) and invokes it
     with `content`. Raises on failure rather than swallowing it — the
     caller decides whether to retry."""
     model = get_tier_model(tier)
-    agent = build_subagent(model, task.persona, task.tool_scope or None, task.archetype or None)
+    if shell_only:
+        agent = build_shell_subagent(model)
+    else:
+        agent = build_subagent(model, task.persona, task.tool_scope or None, task.archetype or None)
     # TODO.md Phase 17: marks the window in which a destructive tool
     # call (run_shell_command, confirm_destructive()) must route to the
     # async pending-approval queue instead of a blocking input() —
@@ -120,6 +124,32 @@ async def _run_subagent_once(task: TaskSpec, tier: str, content: str) -> tuple[s
         for call in m.tool_calls
     ]
     return final_text, tool_names
+
+
+async def _attempt_task(
+    task: TaskSpec, content: str, event_queue: asyncio.Queue[DAGEvent] | None,
+) -> tuple[str, list[str]]:
+    """Up to MAX_ATTEMPTS tries. Each retry moves one tier up (see `_TIER_ESCALATION`);
+    the last attempt drops the persona's tools and works directly in the user's shell."""
+    tier, last_error = task.tier, None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        shell_only = attempt == MAX_ATTEMPTS and MAX_ATTEMPTS > 1
+        if attempt > 1:
+            how = "directly in the shell" if shell_only else f"at tier {tier}"
+            _emit(event_queue, DAGEvent(
+                kind="subagent_retrying", task_id=task.id, persona=task.persona,
+                text=f"attempt {attempt}/{MAX_ATTEMPTS} {how} after {type(last_error).__name__}: {last_error}",
+            ))
+        try:
+            return await _run_subagent_once(task, tier, content, shell_only)
+        except Exception as error:
+            last_error = error
+            tier = _TIER_ESCALATION[tier]
+    _emit(event_queue, DAGEvent(
+        kind="subagent_error", task_id=task.id, persona=task.persona,
+        text=f"{type(last_error).__name__}: {last_error}",
+    ))
+    return f"(task failed after {MAX_ATTEMPTS} attempts: {last_error})", []
 
 
 def _make_node(
@@ -149,27 +179,7 @@ def _make_node(
         _emit(event_queue, DAGEvent(kind="subagent_started", task_id=task.id, persona=task.persona))
 
         async with semaphore:
-            try:
-                final_text, tool_names = await _run_subagent_once(task, task.tier, content)
-            except Exception as first_error:
-                # TODO.md Phase 20: one real retry, at the next tier up
-                # — a genuinely different (usually stronger) model
-                # attempting the same task, not just repeating the
-                # identical call and hoping for a different result.
-                escalated_tier = _TIER_ESCALATION[task.tier]
-                _emit(event_queue, DAGEvent(
-                    kind="subagent_retrying", task_id=task.id, persona=task.persona,
-                    text=f"{type(first_error).__name__}: {first_error}",
-                ))
-                try:
-                    final_text, tool_names = await _run_subagent_once(task, escalated_tier, content)
-                except Exception as second_error:
-                    _emit(event_queue, DAGEvent(
-                        kind="subagent_error", task_id=task.id, persona=task.persona,
-                        text=f"{type(second_error).__name__}: {second_error}",
-                    ))
-                    final_text = f"(task failed after retry: {second_error})"
-                    tool_names = []
+            final_text, tool_names = await _attempt_task(task, content, event_queue)
 
         _emit(event_queue, DAGEvent(kind="subagent_finished", task_id=task.id, persona=task.persona, text=final_text))
         return {"results": {task.id: final_text}, "tool_calls": {task.id: tool_names}}

@@ -61,7 +61,7 @@ from hi.models import get_tier_model, get_tier_model_fast
 from hi.orchestrator.complexity import classify_with_plan
 from hi.router import collapse, fast_route, remember_route
 from hi.speaker import Speaker
-from hi import journal, memory, reflection_agent, transcript
+from hi import attachments, journal, memory, reflection_agent, transcript
 from hi.orchestrator.graph import latest_run_trace
 from hi.orchestrator.pending_http import try_handle_pending_get, try_handle_pending_post
 from hi.personas import PERSONAS, get_agent_builder
@@ -127,19 +127,19 @@ def _context_used(text: str) -> dict | None:
     return {"memory": len(lines), "notes": notes} if lines or notes else None
 
 
-def stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bool = False):
+def stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bool = False, context: str = ""):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
     (no OpenRouter key, unreachable Ollama, missing model) reaches the client
     as a RUN_ERROR event instead of a silently dropped connection."""
     try:
-        yield from _stream_query_as_agui(text, forced_persona, fresh)
+        yield from _stream_query_as_agui(text, forced_persona, fresh, context)
     except Exception as e:
         journal.record_event("error", f"{text[:120]} — {llm.friendly_error(e)}")
         transcript.record_turn(forced_persona or "", "", text, "", [], 0.0, error=repr(e))
         yield ag.RunErrorEvent(message=llm.friendly_error(e))
 
 
-def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bool = False):
+def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bool = False, context: str = ""):
     """Yields AG-UI events for one query — a `persona_selected` CUSTOM
     event first (this project's own extension; AG-UI has no built-in
     field for "which persona/tier answered"), then either
@@ -173,13 +173,13 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: b
 
     thread_id = uuid.uuid4().hex
     if needs_plan:
-        events = stream_orchestrated_as_agui_sync(text, thread_id)
+        events = stream_orchestrated_as_agui_sync(text + context, thread_id)
         log_persona = "orchestrator"
     else:
         agent = _get_agent(persona_name, tier)
         if fresh and hasattr(agent, "reset"):
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
-        events = stream_agent_as_agui(agent, text, thread_id, [] if fresh else transcript.history())
+        events = stream_agent_as_agui(agent, text + context, thread_id, [] if fresh else transcript.history())
         log_persona = persona_name
 
     final_answer = ""
@@ -302,6 +302,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._handle_post_capture()
             return
 
+        if self.path.split("?")[0] == "/context":
+            self._handle_post_context()
+            return
+
         if self.path == "/tts":
             self._handle_post_tts()
             return
@@ -352,6 +356,8 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_error(400, "Missing 'text'")
             return
         forced_persona = body.get("persona") or None
+        ids = body.get("attachments")
+        context = attachments.render([str(i) for i in ids]) if isinstance(ids, list) else ""
         fresh = bool(body.get("fresh"))  # the menu bar prompt: start from a clean conversation
 
         encoder = EventEncoder()
@@ -366,7 +372,7 @@ class _Handler(BaseHTTPRequestHandler):
         # since both are still real completed requests.
         start = time.monotonic()
         try:
-            for event in stream_query_as_agui(text, forced_persona=forced_persona, fresh=fresh):
+            for event in stream_query_as_agui(text, forced_persona=forced_persona, fresh=fresh, context=context):
                 self.wfile.write(encoder.encode(event).encode("utf-8"))
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
@@ -406,14 +412,15 @@ class _Handler(BaseHTTPRequestHandler):
         from hi.vault import plots_dir
 
         path = plots_dir() / name
-        kind = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}.get(path.suffix.lower())
-        if not re.fullmatch(r"[\w-]+\.(png|jpg|webp)", name) or not kind or not path.is_file():
+        kind = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml"}.get(path.suffix.lower())
+        if not re.fullmatch(r"[\w-]+\.(png|jpg|webp|svg)", name) or not kind or not path.is_file():
             self.send_error(404, "No such plot")
             return
         data = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
         self.send_header("Cache-Control", "max-age=31536000, immutable")
         self.end_headers()
         self.wfile.write(data)
@@ -555,8 +562,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         try:
             from hi.tts_engine import synthesize_wav
+            from hi.voices import voice_for
 
-            wav_bytes = synthesize_wav(text, (body.get("voice") or "").strip() or None)
+            wav_bytes = synthesize_wav(text, (body.get("voice") or "").strip() or voice_for((body.get("persona") or "").strip()))
         except Exception as ollama_error:
             try:  # native installs may still have Kokoro (desktop group)
                 from hi.tts_kokoro import synthesize_wav as kokoro_wav
@@ -586,6 +594,24 @@ class _Handler(BaseHTTPRequestHandler):
         from hi.rambler import structure
 
         self._send_json({"text": structure(original), "original": original})
+
+    def _handle_post_context(self) -> None:
+        """POST /context?name=<file>[&kind=audio] with the raw file as the body -> the saved
+        attachment's {id, name, size, chars}. Never starts a reply: the file is attached to
+        the next /query that lists its id."""
+        query = parse_qs(self.path.partition("?")[2])
+        name = (query.get("name") or ["file"])[0]
+        length = int(self.headers.get("Content-Length", 0))
+        if length <= 0:
+            self.send_error(400, "Missing file body")
+            return
+        if length > attachments.MAX_UPLOAD_BYTES:
+            self.send_error(413, "File too large (1 GB limit)")
+            return
+        try:
+            self._send_json(attachments.save(name, self.rfile, length, (query.get("kind") or [""])[0]))
+        except Exception as e:
+            self._send_json({"error": str(e)}, status=500)
 
     def _handle_post_stt(self) -> None:
         """POST /stt with a 16 kHz mono WAV body -> {"text": ...}, via the

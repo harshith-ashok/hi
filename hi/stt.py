@@ -30,7 +30,7 @@ def _multipart(wav: bytes) -> tuple[bytes, str]:
     return b"".join(parts), boundary
 
 
-def transcribe_wav(wav: bytes) -> str:
+def transcribe_wav(wav: bytes, timeout: float = 30) -> str:
     """16 kHz mono WAV bytes in, transcript out. Raises RuntimeError with a
     readable message if the whisper.cpp server isn't reachable."""
     body, boundary = _multipart(wav)
@@ -40,7 +40,7 @@ def transcribe_wav(wav: bytes) -> str:
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read()).get("text", "").strip()
     except OSError as e:
         raise RuntimeError(

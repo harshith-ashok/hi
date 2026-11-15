@@ -19,7 +19,6 @@ Run with: hi --suggest-daemon
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -223,8 +222,11 @@ def _save_notified(keys: set[str]) -> None:
 
 
 def _notify(message: str) -> None:
-    script = f"display notification {json.dumps(message)} with title \"hi\""
-    subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    """Show `message` as an answerable toast in the menu bar app (hi/context/inbox.py). With the app closed
+    nothing is shown: closing it stops all notifications."""
+    from hi.context import inbox
+
+    inbox.deliver(message)
 
 
 MAX_NOTIFICATIONS_PER_HOUR = 3

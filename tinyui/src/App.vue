@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { BASE_URL, fetchConfig, fetchPending, getJson, ping, resolvePending, type Pending } from './backend'
+import { useAttachments } from './attachments'
 import { useChat } from './chat'
 import History from './History.vue'
 import Markdown from './Markdown.vue'
@@ -38,6 +39,22 @@ const activeTasks = ref(0)
 const nextPersona = () => (persona.value = PERSONAS[(PERSONAS.findIndex((p) => p[0] === persona.value) + 1) % PERSONAS.length][0])
 
 const { entries, busy, add, ask, cancel, clear } = useChat((text) => void reply(text))
+const attached = useAttachments()
+const dragging = ref(false)
+let dragDepth = 0
+const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files')
+const onDragEnter = (e: DragEvent) => { if (hasFiles(e)) { dragDepth++; dragging.value = true } }
+const onDragOver = (e: DragEvent) => { if (hasFiles(e)) e.preventDefault() } // required, or the drop is refused
+const onDragLeave = () => { if (--dragDepth <= 0) { dragDepth = 0; dragging.value = false } }
+function onDrop(e: DragEvent) {
+  dragDepth = 0
+  dragging.value = false
+  if (!e.dataTransfer || !hasFiles(e)) return
+  e.preventDefault()
+  view.value = 'chat'
+  attached.addFromTransfer(e.dataTransfer) // adds context only; nothing is sent, nothing replies
+}
+const onPaste = (e: ClipboardEvent) => { if (attached.addFromPaste(e.clipboardData)) e.preventDefault() }
 const mic = ref<'idle' | 'listening' | 'transcribing' | 'structuring'>('idle')
 const rambler = ref(true) // structure spoken transcripts before sending
 const voiceMode = ref(false) // full-screen, voice only
@@ -96,16 +113,19 @@ async function briefing() {
 }
 
 function submit(override?: string) {
-  const text = (override ?? input.value).trim()
-  input.value = ''
+  const files = attached.ready()
+  const text = (override ?? input.value).trim() || (files.length ? 'Look at the attached files.' : '')
   if (!text) return
+  if (attached.reading()) return note('still reading the attached files…')
+  input.value = ''
   view.value = 'chat'
   sent.push(text)
   sentPos = sent.length
   if (busy.value) return note('still replying — esc to cancel')
   const message = suggested && /^(y|yes|yeah|ok|okay|sure)$/i.test(text) ? suggested : text
   suggested = null
-  void ask(message, persona.value === 'auto' ? null : persona.value)
+  void ask(message, persona.value === 'auto' ? null : persona.value, files.map((f) => f.id!), files.map((f) => f.name))
+  attached.clear()
 }
 
 // send=false: dictation — the transcript lands in the input box to edit; send=true: hands-free.
@@ -182,6 +202,9 @@ function toggleWake() {
   else recording?.stop()
 }
 
+// The persona that answered this turn ("butler/haiku" -> "butler"), so it speaks in its own voice.
+const lastPersona = () => [...entries.value].reverse().find((e) => e.kind === 'route')?.text.split('/')[0] === 'butler' ? 'butler' : 'term'
+
 // Speak the short summary; the full answer stays on screen.
 async function reply(text: string) {
   if (!talk.value && !speakReplies.value) return
@@ -192,7 +215,7 @@ async function reply(text: string) {
     await speak(text, (why) => {
       if (!ttsWarned) note(`phonon tts failed (${why}) — using the browser voice`)
       ttsWarned = true
-    })
+    }, undefined, lastPersona())
   } catch (err) {
     return void add('error', (err as Error).message)
   } finally {
@@ -263,6 +286,11 @@ watch(
 
 onMounted(() => {
   window.addEventListener('keydown', onWindowKey)
+  window.addEventListener('dragenter', onDragEnter)
+  window.addEventListener('dragover', onDragOver)
+  window.addEventListener('dragleave', onDragLeave)
+  window.addEventListener('drop', onDrop)
+  window.addEventListener('paste', onPaste)
   window.addEventListener('pointerdown', unlockAudio, { once: true }) // lets later spoken replies play
   window.addEventListener('keydown', unlockAudio, { once: true })
   timers.push(window.setInterval(refreshStatus, 5000))
@@ -272,11 +300,16 @@ onMounted(() => {
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onWindowKey)
+  window.removeEventListener('dragenter', onDragEnter)
+  window.removeEventListener('dragover', onDragOver)
+  window.removeEventListener('dragleave', onDragLeave)
+  window.removeEventListener('drop', onDrop)
+  window.removeEventListener('paste', onPaste)
   timers.forEach(clearInterval)
 })
 
 // Charts made by run_python come back as /plots/<name>.png paths in the tool result.
-const plots = (result?: string) => [...new Set(result?.match(/\/plots\/[\w-]+\.(?:png|jpg|webp)/g) ?? [])].map((p) => BASE_URL + p)
+const plots = (result?: string) => [...new Set(result?.match(/\/plots\/[\w-]+\.(?:png|jpg|webp|svg)/g) ?? [])].map((p) => BASE_URL + p)
 
 // Files made by run_python (PDF, CSV, ...) come back as /files/<run>/<name> paths.
 const files = (result?: string) =>
@@ -414,6 +447,13 @@ const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) :
             </div>
 
             <form class="comp" autocomplete="off" @submit.prevent="submit()">
+              <ul v-if="attached.items.value.length" class="attached" aria-label="Attached context">
+                <li v-for="a in attached.items.value" :key="a.key" :class="a.status" :title="a.detail">
+                  <span class="aname">{{ a.name }}</span>
+                  <span class="astate">{{ a.status === 'reading' ? 'reading…' : a.status === 'failed' ? 'failed' : 'ready' }}</span>
+                  <button type="button" class="aremove" :aria-label="`Remove ${a.name}`" @click="attached.remove(a.key)">×</button>
+                </li>
+              </ul>
               <div class="row">
                 <span class="prompt" aria-hidden="true">&gt;</span>
                 <input
@@ -454,6 +494,8 @@ const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) :
       <Settings v-else-if="view === 'settings'" />
     </main>
 
+    <div v-if="dragging" class="dropveil" aria-hidden="true"><span>Drop to add as context</span><small>files, folders, PDFs, images, audio, zips · nothing is sent until you do</small></div>
+
     <section v-if="voiceMode" class="voice" role="dialog" aria-modal="true" aria-label="Voice mode">
       <div class="voice-top">
         <b>hi</b>
@@ -472,6 +514,17 @@ const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) :
 </template>
 
 <style scoped>
+.attached { list-style: none; margin: 0; padding: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+.attached li { display: inline-flex; align-items: baseline; gap: 8px; max-width: 100%; border-bottom: 1px solid var(--line); }
+.attached .aname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28ch; }
+.attached .astate { color: var(--dim); }
+.attached .failed .astate { color: var(--err); }
+.attached .aremove { min-width: 28px; min-height: 28px; color: var(--dim); }
+.attached .aremove:hover { color: var(--ink); }
+.dropveil { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; gap: 6px; text-align: center; pointer-events: none;
+  background: color-mix(in srgb, var(--bg, #fff) 88%, transparent); outline: 2px dashed var(--ink); outline-offset: -16px; }
+.dropveil span { font-size: 18px; font-weight: 600; }
+.dropveil small { color: var(--dim); font-size: 12px; }
 .shell { display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); height: 100%; position: relative; }
 
 /* header rail */

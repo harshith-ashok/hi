@@ -15,6 +15,8 @@ Available tools:
   request that names a website
 - adjust_brightness(direction, steps): raise or lower screen brightness
   ("up"/"down"), optionally by a number of steps
+- resize_window(app, width, height) / scale_window(app, percent): set an app's front window to an exact
+  pixel size, or scale it by a percentage (50 = half size)
 - lock_screen(): lock the screen immediately
 - add_task(text): add a new pending task to the TODO list
 - capture_note(raw_text): jot down a raw note and let it be classified into

@@ -25,8 +25,8 @@ export function useChat(onSpoken?: (text: string) => void, onDone?: () => void) 
     return entry
   }
 
-  async function ask(text: string, persona: string | null) {
-    add('user', text)
+  async function ask(text: string, persona: string | null, attachments: string[] = [], names: string[] = []) {
+    add('user', names.length ? `${text}\n📎 ${names.join(', ')}` : text)
     busy.value = true
     controller = new AbortController()
 
@@ -92,7 +92,7 @@ export function useChat(onSpoken?: (text: string) => void, onDone?: () => void) 
     }
 
     try {
-      for await (const event of streamQuery(text, persona, controller.signal)) apply(event)
+      for await (const event of streamQuery(text, persona, controller.signal, attachments)) apply(event)
     } catch (err) {
       if ((err as Error).name === 'AbortError') add('note', '(cancelled)')
       else add('error', (err as Error).message || 'lost connection to the backend')

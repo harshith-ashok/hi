@@ -45,7 +45,7 @@ from openwakeword.model import Model
 
 from hi.models import get_tier_model
 from hi.personas import get_agent_builder
-from hi.router import classify
+from hi.router import classify, collapse
 from hi.streaming import stream_and_print
 from hi.tts import SpeechQueue
 from hi.vault import log_conversation
@@ -88,6 +88,7 @@ def _listen_for_wake_word(wake_model: Model, key: str) -> None:
 
 def _handle_query(text: str, speech_queue: SpeechQueue) -> None:
     persona_name, tier = classify(text)
+    speech_queue.persona = collapse(persona_name)
     print(f"\n({persona_name}) heard: {text}")
     agent = _get_agent(persona_name, tier)
     final_messages = stream_and_print(

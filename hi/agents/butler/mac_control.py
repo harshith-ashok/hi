@@ -280,3 +280,51 @@ def lock_screen() -> str:
         return "Screen locked."
     except (FileNotFoundError, OSError) as e:
         return f"Failed to lock the screen: {e}"
+
+
+def _front_window_script(app: str, body: str) -> str:
+    return (
+        'tell application "Finder" to set b to bounds of window of desktop\n'
+        f'tell application "System Events" to tell process "{app}"\n'
+        "if (count of windows) is 0 then return \"no window\"\n"
+        f"{body}\nend tell"
+    )
+
+
+def _window_error(app: str, result: subprocess.CompletedProcess) -> str:
+    detail = result.stderr.strip() or result.stdout.strip()
+    if "not allowed" in detail or "assistive" in detail.lower():
+        return "Resizing windows needs Accessibility permission: System Settings > Privacy & Security > Accessibility."
+    return f"Couldn't resize {app}'s window: {detail or 'unknown error'}"
+
+
+@tool
+def resize_window(app: str, width: int, height: int) -> str:
+    """Set the size of an app's front window, in pixels (the top-left corner stays put).
+
+    Args:
+        app: The app's name, e.g. "Safari".
+        width: New window width in pixels.
+        height: New window height in pixels.
+    """
+    script = _front_window_script(app, f"set size of window 1 to {{{int(width)}, {int(height)}}}")
+    result = _run_osascript(script)
+    if result.returncode != 0 or "no window" in result.stdout:
+        return _window_error(app, result) if result.returncode else f"{app} has no open window."
+    return f"Resized {app}'s window to {int(width)}x{int(height)}."
+
+
+@tool
+def scale_window(app: str, percent: int) -> str:
+    """Scale an app's front window to a percentage of its current size (50 = half, 150 = one and a half times).
+
+    Args:
+        app: The app's name, e.g. "Safari".
+        percent: Scale factor as a percentage, 10-300.
+    """
+    factor = max(10, min(300, int(percent))) / 100
+    body = f"set {{w, h}} to size of window 1\nset size of window 1 to {{(w * {factor}) as integer, (h * {factor}) as integer}}"
+    result = _run_osascript(_front_window_script(app, body))
+    if result.returncode != 0 or "no window" in result.stdout:
+        return _window_error(app, result) if result.returncode else f"{app} has no open window."
+    return f"Scaled {app}'s window to {int(factor * 100)}%."
