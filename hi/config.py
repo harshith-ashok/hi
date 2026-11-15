@@ -134,7 +134,7 @@ USER_ADDRESS = _env.get("USER_ADDRESS", "sir").strip()
 TTS_VOICE = _env.get("TTS_VOICE") or "default"
 # Where the menu bar app's island appears: "notch" (hangs from the notch) or "cursor" (opens next to the mouse pointer).
 ISLAND_MODE = (_env.get("ISLAND_MODE") or "notch").lower()
-# whisper.cpp `whisper-server` (hi/stt.py), run natively so it can use Metal.
+# whisper.cpp `whisper-server` (hi/stt.py): the `whisper` compose service, or one run natively for Metal.
 # The Mac bridge (hi/host_bridge.py): the Dockerized backend's way to run Mac-only tools.
 HOST_BRIDGE_PORT = int(_env.get("HOST_BRIDGE_PORT") or 8766)
 HOST_BRIDGE_BIND = _env.get("HOST_BRIDGE_BIND") or "127.0.0.1"
