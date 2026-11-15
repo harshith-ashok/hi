@@ -21,14 +21,13 @@ from textual.widgets import Input, Label, OptionList, Static
 import hi.config as config
 
 MODE_FIELD = "AI_MODE"
-SECRET_FIELD = "OPENROUTER_API_KEY"
 ENDPOINT_FIELDS = {"local": "OLLAMA_HOST", "tailscale": "TAILSCALE_OLLAMA_URL"}
 MODEL_FIELDS = (
     "HAIKU_MODEL", "SONNET_MODEL", "OPUS_MODEL",
     "TERM_MODEL", "BUTLER_MODEL", "DOCS_MODEL", "WEB_MODEL", "VISION_MODEL",
 )
 OTHER_FIELDS = ("VAULT_PATH",)
-FIELDS = (MODE_FIELD, *ENDPOINT_FIELDS.values(), SECRET_FIELD, *MODEL_FIELDS, *OTHER_FIELDS)
+FIELDS = (MODE_FIELD, *ENDPOINT_FIELDS.values(), *MODEL_FIELDS, *OTHER_FIELDS)
 
 
 class SettingsScreen(ModalScreen[None]):
@@ -47,9 +46,8 @@ class SettingsScreen(ModalScreen[None]):
         with Horizontal(id="settings-body"):
             with VerticalScroll(id="fields"):
                 for key in FIELDS:
-                    yield Label(key + ("  (local | tailscale | openrouter)" if key == MODE_FIELD else ""))
-                    secret = key == SECRET_FIELD  # never shown; leave blank to keep the saved key
-                    yield Input("" if secret else str(getattr(config, key)), id=f"f-{key}", password=secret)
+                    yield Label(key + ("  (local | tailscale)" if key == MODE_FIELD else ""))
+                    yield Input(str(getattr(config, key)), id=f"f-{key}")
             with VerticalScroll(id="models"):
                 yield Label("models on host")
                 yield OptionList(id="model-list")

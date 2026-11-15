@@ -136,7 +136,7 @@ def backend_up() -> bool:
 
 
 # Credentials the container can't read from the host's ~/.hi/.env itself.
-FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "OPENROUTER_API_KEY", "TAILSCALE_OLLAMA_URL", "HF_TOKEN", "AI_MODE")
+FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "TAILSCALE_OLLAMA_URL", "HF_TOKEN", "AI_MODE")
 
 
 def _forwarded_settings() -> dict[str, str]:

@@ -23,3 +23,21 @@ def test_write_env_var_replaces_then_appends(tmp_path):
 def test_model_for_uses_the_mode_defaults():
     assert config.model_for("HAIKU_MODEL", "tailscale") == "gemma4:e4b"
     assert config.model_for("HAIKU_MODEL", "local").endswith("-cloud")
+
+
+def test_only_local_and_tailscale_modes_exist():
+    assert config.MODES == ("local", "tailscale")
+
+
+def test_a_saved_openrouter_mode_falls_back_to_local(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "AI_MODE": "openrouter", "HOME": str(tmp_path)}
+    out = subprocess.run(
+        [sys.executable, "-c", "import hi.config as c; print(c.AI_MODE, c.SONNET_MODEL)"],
+        env=env, capture_output=True, text=True, check=True,
+    )
+    assert out.stdout.split()[-2:] == ["local", config.model_for("SONNET_MODEL", "local")]
+    assert "no longer supported" in out.stdout

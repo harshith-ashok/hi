@@ -39,7 +39,7 @@ HOST_ENV_PATH = Path("/run/hi-host.env")
 # Only credentials come from the host file: paths and addresses in it (VAULT_PATH,
 # OLLAMA_HOST, ...) are right for the Mac and wrong inside the container.
 HOST_ENV_KEYS = (
-    "GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "OPENROUTER_API_KEY",
+    "GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN",
     "TAILSCALE_OLLAMA_URL", "HOST_BRIDGE_TOKEN", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
     "TTS_BACKEND", "AI_MODE",
 )
@@ -47,20 +47,20 @@ _host_env = {k: v for k, v in _parse_env(HOST_ENV_PATH).items() if k in HOST_ENV
 _env = {**os.environ, **_host_env, **_parse_env(ENV_PATH)}
 
 # --- AI layer -----------------------------------------------------------
-# Three ways to reach a model (see hi/llm.py for what each one does):
+# Two ways to reach a model (see hi/llm.py for what each one does):
 #   local       Ollama on this machine (OLLAMA_HOST)
 #   tailscale   Ollama on another machine over your tailnet (TAILSCALE_OLLAMA_URL)
-#   openrouter  OpenRouter's hosted API (OPENROUTER_API_KEY)
-MODES = ("local", "tailscale", "openrouter")
+MODES = ("local", "tailscale")
 AI_MODE = _env.get("AI_MODE") or "local"
 if AI_MODE not in MODES:
+    if AI_MODE == "openrouter":  # removed; an old saved setting must not break startup
+        print("[config] AI_MODE=openrouter is no longer supported; using local.", flush=True)
     AI_MODE = "local"
 
 OLLAMA_HOST = _env.get("OLLAMA_HOST") or "http://127.0.0.1:11434"
 TAILSCALE_OLLAMA_URL = _env.get("TAILSCALE_OLLAMA_URL") or ""
-OPENROUTER_API_KEY = _env.get("OPENROUTER_API_KEY") or ""
 
-# Model names differ per mode (Ollama tags vs OpenRouter slugs), so each mode
+# Model names differ per mode (each box has its own models), so each mode
 # keeps its own set in ~/.hi/.env under a prefix. The unprefixed names below
 # (SONNET_MODEL, ...) are always the *active* mode's values — everything else
 # in the codebase reads those and never needs to know about modes.
@@ -72,7 +72,7 @@ MODEL_ROLES = (
     "HAIKU_MODEL", "SONNET_MODEL", "OPUS_MODEL",
     "TERM_MODEL", "BUTLER_MODEL", "DOCS_MODEL", "WEB_MODEL", "VISION_MODEL",
 )
-_MODE_PREFIX = {"local": "", "tailscale": "TAILSCALE_", "openrouter": "OPENROUTER_"}
+_MODE_PREFIX = {"local": "", "tailscale": "TAILSCALE_"}
 _OLLAMA_DEFAULTS = {
     "HAIKU_MODEL": "gpt-oss:20b-cloud",
     "SONNET_MODEL": DEFAULT_MODEL,
@@ -83,18 +83,6 @@ _OLLAMA_DEFAULTS = {
     "WEB_MODEL": "gpt-oss:20b-cloud",
     "VISION_MODEL": "gemma4:31b-cloud",
 }
-_OPENROUTER_DEFAULTS = {
-    "HAIKU_MODEL": "openai/gpt-oss-20b",
-    "SONNET_MODEL": "openai/gpt-oss-120b",
-    "OPUS_MODEL": "anthropic/claude-sonnet-5.5",
-    "TERM_MODEL": "openai/gpt-oss-120b",
-    "BUTLER_MODEL": "openai/gpt-oss-120b",
-    "DOCS_MODEL": "openai/gpt-oss-120b",
-    "WEB_MODEL": "openai/gpt-oss-20b",
-    "VISION_MODEL": "google/gemini-2.5-flash",
-}
-
-
 # The tailscale box is the RTX PRO 4000 laptop (16GB VRAM): all local models, no cloud. Measured there:
 # gemma4:e4b (6.5GB, fits fully on the GPU) does ~250 tok/s and ~0.1s tool calls, so it serves every role and
 # stays resident. gpt-oss:20b (14GB) spills ~20% to CPU (~11 tok/s) and evicts gemma while loaded, so it is
@@ -118,7 +106,7 @@ def env_key(role: str, mode: str) -> str:
 def model_for(role: str, mode: str | None = None) -> str:
     """`role`'s model name under `mode` (default: the active mode)."""
     mode = mode or AI_MODE
-    defaults = {"openrouter": _OPENROUTER_DEFAULTS, "tailscale": _TAILSCALE_DEFAULTS}.get(mode, _OLLAMA_DEFAULTS)
+    defaults = _TAILSCALE_DEFAULTS if mode == "tailscale" else _OLLAMA_DEFAULTS
     return _env.get(env_key(role, mode)) or defaults[role]
 
 

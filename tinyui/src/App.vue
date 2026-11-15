@@ -101,7 +101,7 @@ async function refreshStatus() {
   activeTasks.value = ((await getJson<{ status: string }[]>('/background')) ?? []).filter((t) => t.status === 'running').length
   const config = await fetchConfig()
   const mode = String(config?.AI_MODE ?? '')
-  host.value = mode === 'openrouter' ? mode : `${mode} · ${config?.[mode === 'tailscale' ? 'TAILSCALE_OLLAMA_URL' : 'OLLAMA_HOST']}`
+  host.value = `${mode} · ${config?.[mode === 'tailscale' ? 'TAILSCALE_OLLAMA_URL' : 'OLLAMA_HOST']}`
   model.value = String(config?.SONNET_MODEL ?? '')
 }
 

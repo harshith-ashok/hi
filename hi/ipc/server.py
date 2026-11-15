@@ -80,7 +80,7 @@ _CONFIG_FIELDS = (
 )
 # Accepted on POST /config but never echoed back by GET (reported only as
 # `<NAME>_SET: bool`) — same rule as the MCP credentials.
-_WRITE_ONLY_FIELDS = ("OPENROUTER_API_KEY",)
+_WRITE_ONLY_FIELDS: tuple[str, ...] = ()
 
 # Tier used when the client forces a specific persona (the panel's tab
 # row) instead of letting classify_with_plan() pick one — "typical,
@@ -129,7 +129,7 @@ def _context_used(text: str) -> dict | None:
 
 def stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bool = False, context: str = ""):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
-    (no OpenRouter key, unreachable Ollama, missing model) reaches the client
+    (unreachable Ollama, missing model) reaches the client
     as a RUN_ERROR event instead of a silently dropped connection."""
     try:
         yield from _stream_query_as_agui(text, forced_persona, fresh, context)
@@ -490,7 +490,7 @@ class _Handler(BaseHTTPRequestHandler):
         # AI_MODE goes first: model names are stored per mode, so the rest of
         # the body must land in the mode being switched *to*.
         ordered = sorted(body.items(), key=lambda item: item[0] != "AI_MODE")
-        clearable = {"TAILSCALE_OLLAMA_URL", "OPENROUTER_API_KEY"}
+        clearable = {"TAILSCALE_OLLAMA_URL"}
         updated = []
         for field, value in ordered:
             value = str(value).strip()

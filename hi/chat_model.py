@@ -63,12 +63,8 @@ _load_cache()
 
 def make_chat_model(model_name: str, **kwargs) -> BaseChatModel:
     """Build a chat model for `model_name` on the active provider, with
-    streamed reasoning enabled if (and only if) it actually works. OpenRouter
-    ignores reasoning on models that lack it, so only Ollama needs a probe.
+    streamed reasoning enabled if (and only if) it actually works.
     `**kwargs` are passed through as-is (e.g. temperature, keep_alive)."""
-    if llm.is_openrouter():
-        return llm.build_chat_model(model_name, thinking=True, **kwargs)
-
     supported = _reasoning_supported.get(model_name)
     if supported is None:
         supported = _probe_reasoning_support(model_name, kwargs)
