@@ -10,7 +10,7 @@ render a run without `hi` inventing its own wire format.
 **Correction to `BLOCKERS.md`'s own naming, confirmed live before
 writing this** (`ag_ui.core.events`'s real fields inspected directly,
 not assumed from documentation): the real network-facing streaming
-surface this belongs on is `hi/ipc/server.py`'s `POST /query` — not
+surface this belongs on is `hi/server/`'s `POST /query` — not
 `hi/streaming.py` (prints tokens to the *terminal's own stdout*, no
 network client to speak AG-UI to) or a `hi/server.py` that doesn't
 exist under that name.
@@ -18,7 +18,7 @@ exist under that name.
 Two entry points:
 
 - `stream_agent_as_agui()`: a normal, single-persona turn — the exact
-  case `hi/ipc/server.py`'s old `stream_events()` already drove,
+  case `hi/server/`'s old `stream_events()` already drove,
   reshaped onto AG-UI's real event types (with real token-level
   `TEXT_MESSAGE_CONTENT` deltas and real `TOOL_CALL_*` events) instead
   of a bespoke `{event: persona/token/done}` dict.
@@ -83,7 +83,7 @@ def _mcp_ui_widget(content: Any) -> dict | None:
 
 def stream_agent_as_agui(agent, text: str, thread_id: str, history: list[dict] | None = None) -> Iterator[ag.BaseEvent]:
     """Wraps a single (non-orchestrated) persona agent's own real
-    `.stream(...)` call — the same one `hi/ipc/server.py`'s old
+    `.stream(...)` call — the same one `hi/server/`'s old
     `stream_events()` already made — translating it into AG-UI events
     instead of a bespoke dict shape.
 
@@ -253,7 +253,7 @@ async def stream_orchestrated_as_agui(prompt: str, thread_id: str) -> AsyncItera
     finally:
         # Reached not just on a normal return above, but also when this
         # generator is abandoned early and Python closes it (a client
-        # disconnect mid-stream — hi/ipc/server.py's do_POST stops
+        # disconnect mid-stream — hi/server/'s do_POST stops
         # draining on BrokenPipeError/ConnectionResetError, which
         # abandons this generator without ever awaiting `task`). Without
         # this, `task` (run_orchestrated(), holding an open
@@ -327,7 +327,7 @@ def _pending_action_events(seen_pending: dict[str, str]) -> list[ag.BaseEvent]:
 
 def stream_orchestrated_as_agui_sync(prompt: str, thread_id: str) -> Iterator[ag.BaseEvent]:
     """Sync-generator bridge for `stream_orchestrated_as_agui()`, for a
-    caller with no event loop of its own — `hi/ipc/server.py`'s HTTP
+    caller with no event loop of its own — `hi/server/`'s HTTP
     handler runs on a plain `ThreadingHTTPServer` worker thread, not
     inside asyncio. A fresh event loop scoped to this one call (each
     HTTP request already gets its own OS thread, so a fresh loop per

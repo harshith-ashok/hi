@@ -98,7 +98,7 @@ def build_briefing() -> tuple[str, str, str] | None:
     tasks, no recent notes, no recent projects). Split into three pieces
     (rather than one pre-joined display string) so a caller with a
     compact single-line surface — the voice companion's briefing strip,
-    hi/ipc/server.py's new GET /briefing — can show just `suggestion`
+    hi/server/'s new GET /briefing — can show just `suggestion`
     without `context`'s full multi-line dump; hi/repl.py's terminal
     still joins them back into one block, unchanged in effect."""
     tasks = pending_tasks_greeting()

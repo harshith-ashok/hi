@@ -229,9 +229,9 @@ def main() -> None:
         return
 
     if mode == VOICE_DAEMON_MARKER:
-        from hi.ipc.server import run_ipc_daemon
+        from hi.server.app import main as run_backend
 
-        run_ipc_daemon()
+        run_backend()
         return
 
     if mode == WAKE_DAEMON_MARKER:

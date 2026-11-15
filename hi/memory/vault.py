@@ -21,7 +21,7 @@ from hi.memory.frontmatter import with_frontmatter as _build_frontmatter
 
 
 # Functions, not module-level constants, so a `POST /config` VAULT_PATH
-# change (hi/ipc/server.py) is picked up on the very next call instead
+# change (hi/server/) is picked up on the very next call instead
 # of needing a restart — reading `config.VAULT_PATH` live each time,
 # same `import hi.config as config` pattern hi/mcp_tools.py already uses
 # for the same reason.

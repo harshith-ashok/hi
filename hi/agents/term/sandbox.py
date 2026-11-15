@@ -1,6 +1,6 @@
 """Run Python the agent wrote in the sandbox container (sandbox/) and keep what it
 made: every chart is saved as a PNG under <vault>/hi/plots/ next to the code that
-produced it, and the UI shows it inline (GET /plots/<name>, hi/ipc/server.py).
+produced it, and the UI shows it inline (GET /plots/<name>, hi/server/).
 """
 
 import base64

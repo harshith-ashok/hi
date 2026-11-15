@@ -1,7 +1,7 @@
 """Shared read/write helper for `~/.hi/.env` — the same file
 `hi/config.py` parses at import time. Extracted out of
 `hi/mcp_install.py` (which needed a writer first) so the native app's
-Settings screen (`hi/ipc/server.py`'s `POST /config`) and any future
+Settings screen (`hi/server/`'s `POST /config`) and any future
 conversational config tool share one write path instead of two copies
 drifting apart.
 """
