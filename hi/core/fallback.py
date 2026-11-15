@@ -28,7 +28,7 @@ def first_available(chain: list[tuple[str, Callable[[], T]]]) -> T:
     failures: dict[str, str] = {}
     for dep, fn in chain:
         if not health.is_up(dep):
-            failures[dep] = "recently failed, skipped"
+            failures[dep] = f"skipped after a recent failure ({health.last_error(dep)})"
             continue
         try:
             result = fn()

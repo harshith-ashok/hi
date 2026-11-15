@@ -1,36 +1,44 @@
-"""Claude-tier-style model selection for the auto-router: haiku/sonnet/opus
-map to configured Ollama models (hi/config.py), pulled on demand if not
-already available, and cached so a tier isn't rebuilt (and re-warmed) on
-every turn.
+"""Maps a tier ("haiku" / "sonnet" / "opus") to a ready chat model, with fallbacks.
+
+Order tried for a tier: the active mode's model for that tier, then the lower tiers on the same
+host (a missing big model degrades to a smaller one), then the same chain on the other configured
+host (local <-> tailscale). A host that failed is skipped for a cooldown (hi/core/health.py).
+Built models are cached per (tier, mode, model, host), so a config change builds a fresh client.
 """
+
+from __future__ import annotations
+
+import logging
 
 from langchain_core.language_models import BaseChatModel
 
 import hi.config as config
 from hi import llm
+from hi.core.fallback import AllFailed, first_available
 from hi.llm.reasoning import make_chat_model
 
+log = logging.getLogger(__name__)
 
-def tier_models() -> dict[str, str]:
-    """Live tier -> model-name mapping, read fresh from `hi.config` on
-    every call rather than snapshotted once at import time — the
-    `import hi.config as config` module-attribute-read pattern
-    `hi/mcp_tools.py` already uses for the same reason (a `POST /config`
-    change to e.g. SONNET_MODEL needs to be visible here without a
-    restart). Kept as a function, not a module-level dict, specifically
-    so it can never go stale the way the old `TIER_MODELS` constant did."""
-    return {
-        "haiku": config.HAIKU_MODEL,
-        "sonnet": config.SONNET_MODEL,
-        "opus": config.OPUS_MODEL,
-    }
+TIERS = ("haiku", "sonnet", "opus")
+_ROLE = {"haiku": "HAIKU_MODEL", "sonnet": "SONNET_MODEL", "opus": "OPUS_MODEL"}
 
 
-# Keyed by (tier, model_name, llm.signature()), not just tier — so a config
-# change to a different model, mode, host or API key naturally misses the
-# cache and builds a fresh client instead of returning a stale one.
-_model_cache: dict[tuple[str, str, str], BaseChatModel] = {}
-_fast_model_cache: dict[tuple[str, str, str], BaseChatModel] = {}
+def tier_models(mode: str | None = None) -> dict[str, str]:
+    """Live tier -> model name for `mode` (default: the active one), read fresh on every call so a
+    `POST /config` change is visible without a restart."""
+    if mode is None or mode == config.AI_MODE:
+        return {"haiku": config.HAIKU_MODEL, "sonnet": config.SONNET_MODEL, "opus": config.OPUS_MODEL}
+    return {tier: config.model_for(role, mode) for tier, role in _ROLE.items()}
+
+
+def tier_chain(tier: str) -> list[str]:
+    """`tier` followed by the cheaper tiers: opus -> sonnet -> haiku."""
+    if tier not in TIERS:
+        raise ValueError(f"Unknown tier '{tier}'. Expected one of: {sorted(TIERS)}")
+    return list(reversed(TIERS[: TIERS.index(tier) + 1]))
+
+
+_cache: dict[tuple, BaseChatModel] = {}
 
 
 def available_models(host: str | None = None, mode: str | None = None) -> list[str]:
@@ -42,59 +50,52 @@ def ensure_pulled(model_name: str) -> None:
     llm.ensure_available(model_name)
 
 
+def _build(tier: str, mode: str, reasoning: bool) -> BaseChatModel:
+    """The first tier from `tier` downwards whose model is on `mode`'s host. Raises if none is."""
+    last: Exception | None = None
+    for candidate in tier_chain(tier):
+        name = tier_models(mode)[candidate]
+        key = (reasoning, candidate, mode, name, llm.signature(mode))
+        if key in _cache:
+            return _cache[key]
+        try:
+            llm.ensure_available(name, mode)
+        except llm.ModelUnavailable as e:
+            log.warning("%s (%s) unavailable, trying a lower tier: %s", candidate, name, e)
+            last = e
+            continue
+        build = make_chat_model if reasoning else llm.build_chat_model
+        _cache[key] = build(name, mode=mode, temperature=0, keep_alive=config.KEEP_ALIVE)
+        return _cache[key]
+    raise last or RuntimeError(f"No model available for tier '{tier}'")
+
+
+def _resolve(tier: str, reasoning: bool) -> BaseChatModel:
+    tier_chain(tier)  # validates the tier
+    chain = [(f"ollama:{mode}", lambda mode=mode: _build(tier, mode, reasoning)) for mode in llm.configured_modes()]
+    try:
+        return first_available(chain)
+    except AllFailed as e:
+        raise RuntimeError(f"No model reachable. {e}") from e
+
+
 def get_tier_model(tier: str) -> BaseChatModel:
-    """Resolve a tier ("haiku"/"sonnet"/"opus") to a cached ChatOllama
-    instance, pulling its model first if needed."""
-    models = tier_models()
-    if tier not in models:
-        raise ValueError(f"Unknown tier '{tier}'. Expected one of: {sorted(models)}")
-    model_name = models[tier]
-    key = (tier, model_name, llm.signature())
-    if key not in _model_cache:
-        ensure_pulled(model_name)
-        _model_cache[key] = make_chat_model(model_name, temperature=0, keep_alive=config.KEEP_ALIVE)
-    return _model_cache[key]
+    """The model for `tier`, with streamed reasoning where the model supports it."""
+    return _resolve(tier, reasoning=True)
 
 
 def get_tier_model_fast(tier: str) -> BaseChatModel:
-    """Same tier/model as `get_tier_model()`, but WITHOUT reasoning
-    enabled — a separate cached instance, not a mutation of the shared
-    one `get_tier_model()` returns.
-
-    Real, measured motive: `chat_model.py`'s `make_chat_model()` turns on
-    `reasoning=True` for any model that supports it (HAIKU_MODEL
-    `gpt-oss:20b-cloud` does), which makes the model "think" through
-    even a trivial classification/yes-no judgment before answering.
-    Measured directly (not assumed) against `hi/orchestrator/complexity.py`'s
-    `classify_with_plan()` — which runs on literally every single REPL
-    turn before the real answer even starts — a plain reasoning-off
-    call answering the identical prompt came back meaningfully faster
-    than the reasoning-on default. Use this for a quick, cheap
-    judgment call (classification, a one-line safety check) where the
-    answer doesn't need visible chain-of-thought; keep using
-    `get_tier_model()` for anything a user might actually want to see
-    the model's real reasoning on.
-    """
-    models = tier_models()
-    if tier not in models:
-        raise ValueError(f"Unknown tier '{tier}'. Expected one of: {sorted(models)}")
-    model_name = models[tier]
-    key = (tier, model_name, llm.signature())
-    if key not in _fast_model_cache:
-        ensure_pulled(model_name)
-        _fast_model_cache[key] = llm.build_chat_model(model_name, temperature=0, keep_alive=config.KEEP_ALIVE)
-    return _fast_model_cache[key]
+    """Same tier, but WITHOUT reasoning, for quick judgment calls (classification, yes/no checks)
+    where visible chain-of-thought only adds latency. A separate cached client."""
+    return _resolve(tier, reasoning=False)
 
 
 _fast_variant_cache: dict[tuple[str, str], BaseChatModel] = {}
 
 
 def fast_variant(model: BaseChatModel) -> BaseChatModel:
-    """A no-reasoning model for the exact same model `model` already
-    points at — for a caller that already has a resolved persona model
-    (not necessarily a haiku/sonnet/opus tier, so get_tier_model_fast()'s
-    tier-keyed cache doesn't apply) and needs one cheap judgment call
-    without paying reasoning's latency cost."""
+    """A no-reasoning client for the model `model` already points at, for a caller that has a
+    resolved persona model (not necessarily a tier) and needs one cheap judgment call."""
     name = llm.model_name(model)
     key = (name, llm.signature())
     if key not in _fast_variant_cache:

@@ -44,6 +44,13 @@ def is_up(dep: str) -> bool:
     return state is None or state.ok or time.time() >= state.retry_at
 
 
+def last_error(dep: str) -> str:
+    """The error that marked `dep` down, or "" if it is up."""
+    with _lock:
+        state = _states.get(dep)
+    return "" if state is None or state.ok else state.error
+
+
 def snapshot() -> dict[str, dict]:
     with _lock:
         items = list(_states.items())

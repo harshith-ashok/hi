@@ -24,7 +24,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage
 from langchain_core.language_models import BaseChatModel
 
-from hi import llm
+from hi.llm import providers
 
 _PROBE_MESSAGE = [HumanMessage("Hi")]
 _NOT_SUPPORTED_MARKER = "does not support thinking"
@@ -68,11 +68,11 @@ def make_chat_model(model_name: str, **kwargs) -> BaseChatModel:
     supported = _reasoning_supported.get(model_name)
     if supported is None:
         supported = _probe_reasoning_support(model_name, kwargs)
-    return llm.build_chat_model(model_name, thinking=supported, **kwargs)
+    return providers.build_chat_model(model_name, thinking=supported, **kwargs)
 
 
 def _probe_reasoning_support(model_name: str, kwargs: dict) -> bool:
-    probe = llm.build_chat_model(model_name, thinking=True, **kwargs)
+    probe = providers.build_chat_model(model_name, thinking=True, **kwargs)
     try:
         probe.invoke(_PROBE_MESSAGE)
     except Exception as e:

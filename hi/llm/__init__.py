@@ -7,7 +7,9 @@ and import `hi.llm.registry` / `hi.llm.resilience` / `hi.llm.reasoning` for the 
 
 from hi.llm.providers import (  # noqa: F401
     OLLAMA_PORT,
+    ModelUnavailable,
     build_chat_model,
+    configured_modes,
     describe,
     ensure_available,
     friendly_error,
