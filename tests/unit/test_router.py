@@ -14,8 +14,8 @@ def _reset_sticky_route(monkeypatch):
         ("turn the volume down", ("butler", "haiku")),
         ("set a timer for ten minutes", ("butler", "haiku")),
         ("what's on my screen", ("term", "sonnet")),
-        ("what did I write in my notes about kaapi", ("docs", "sonnet")),
-        ("find a picture of a red panda", ("web", "haiku")),
+        ("what did I write in my notes about kaapi", ("term", "sonnet")),
+        ("find a picture of a red panda", ("term", "haiku")),
         ("open a pull request for this branch", ("term", "sonnet")),
     ],
 )
@@ -44,3 +44,9 @@ def test_long_follow_up_does_not_stick():
 def test_collapse_keeps_only_butler_and_term():
     assert router.collapse("butler") == "butler"
     assert {router.collapse(p) for p in ("docs", "web", "term")} == {"term"}
+
+
+def test_the_classifier_only_offers_butler_and_term():
+    assert router.ROUTABLE == ("butler", "term")
+    assert set(router.PERSONA_DESCRIPTIONS) == {"butler", "term"}
+    assert all(persona in router.ROUTABLE for persona, _tier in (router.fast_route(p) for p in ("turn the volume down", "my notes on x", "wikipedia on y")))

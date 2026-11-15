@@ -26,9 +26,8 @@ from langchain_core.messages import HumanMessage
 
 from hi.llm.resilience import invoke_with_retry
 from hi.llm.registry import get_tier_model_fast
-from hi.personas import PERSONAS
 from hi import router
-from hi.router import PERSONA_DESCRIPTIONS, TIER_DESCRIPTIONS, TIERS
+from hi.router import PERSONA_DESCRIPTIONS, ROUTABLE, TIER_DESCRIPTIONS, TIERS
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +77,7 @@ def classify_with_plan(prompt: str) -> tuple[str, str, bool]:
     )
     reply = invoke_with_retry(model, [HumanMessage(selection_prompt)]).lower()
 
-    persona = next((p for p in PERSONAS if p in reply), "term")
+    persona = next((p for p in ROUTABLE if p in reply), "term")
     tier = next((t for t in TIERS if t in reply), "sonnet")
     needs_plan = "yes" in reply.split()
     return persona, tier, needs_plan
