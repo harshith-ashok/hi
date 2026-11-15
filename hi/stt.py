@@ -45,5 +45,5 @@ def transcribe_wav(wav: bytes, timeout: float = 30) -> str:
     except OSError as e:
         raise RuntimeError(
             f"whisper.cpp server not reachable at {config.WHISPER_CPP_URL} — "
-            "start `whisper-server` (brew install whisper-cpp)"
+            "start the `whisper` container (docker compose up -d whisper)"
         ) from e
