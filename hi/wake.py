@@ -48,7 +48,7 @@ from hi.personas import get_agent_builder
 from hi.router import classify, collapse
 from hi.streaming import stream_and_print
 from hi.tts import SpeechQueue
-from hi.memory.vault import log_conversation
+from hi.memory.records import TurnRecord, record_turn
 from hi.voice import listen_and_transcribe
 
 SAMPLE_RATE = 16_000
@@ -95,7 +95,7 @@ def _handle_query(text: str, speech_queue: SpeechQueue) -> None:
         agent, [{"role": "user", "content": text}], speech_queue=speech_queue
     )
     speech_queue.finish()
-    log_conversation(persona_name, text, final_messages[-1].content)
+    record_turn(TurnRecord(persona_name, tier, text, final_messages[-1].content))
 
 
 def run_wake_daemon() -> None:

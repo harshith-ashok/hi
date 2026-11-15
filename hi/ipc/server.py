@@ -62,11 +62,11 @@ from hi.orchestrator.complexity import classify_or_default
 from hi.router import collapse, fast_route, remember_route
 from hi.speaker import Speaker
 from hi import attachments
-from hi.memory import extraction as memory, journal, reflection as reflection_agent, transcript
+from hi.memory import extraction as memory, journal, records, reflection as reflection_agent, transcript
 from hi.orchestrator.graph import latest_run_trace
 from hi.orchestrator.pending_http import try_handle_pending_get, try_handle_pending_post
 from hi.personas import PERSONAS, get_agent_builder
-from hi.memory.vault import list_conversations, log_conversation, read_conversation
+from hi.memory.vault import list_conversations, read_conversation
 
 # Settings the native app's Settings screen can read/write (TODO.md's
 # "proper native app" ask) — plain model-name/path fields only, not the
@@ -135,8 +135,7 @@ def stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bo
     try:
         yield from _stream_query_as_agui(text, forced_persona, fresh, context)
     except Exception as e:
-        journal.record_event("error", f"{text[:120]} — {llm.friendly_error(e)}")
-        transcript.record_turn(forced_persona or "", "", text, "", [], 0.0, error=repr(e))
+        records.record_turn(records.TurnRecord(forced_persona or "", "", text, error=llm.friendly_error(e), detail=repr(e)))
         yield ag.RunErrorEvent(message=llm.friendly_error(e))
 
 
@@ -229,13 +228,11 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: b
         },
     )
 
-    transcript.record_turn(
-        log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started, needs_plan, run_error,
-    )
+    records.record_turn(records.TurnRecord(
+        log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started, needs_plan,
+        error="" if final_answer else run_error, detail=run_error,
+    ))
     if final_answer:
-        log_conversation(log_persona, text, final_answer)
-        journal.record_turn(log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started)
-        memory.extract_async(text, final_answer, [t["name"] for t in journal_tools.values()])
         if not speaker.has_spoken:  # nothing sayable streamed (tool-only answer, one-liner): summarize
             yield ag.CustomEvent(name="spoken_summary", value={"text": make_spoken_summary(final_answer)})
 
