@@ -35,7 +35,7 @@ Work through it top to bottom. Each phase leaves the app working and can ship on
 | P1 | **The `hi/` package is flat.** About 60 top-level modules sit next to 14 subpackages, and core, providers, interfaces, daemons and platform code are all mixed together. | `ls hi/`: `tts_ollama.py` next to `router.py` next to `dashboard.py` |
 | P2 | **One concern is split across many modules, and some names collide.** | The model layer is 5 files (`llm`, `chat_model`, `models`, `model_warmup`, `retry`). TTS is 6 files (`tts`, `tts_engine`, `tts_ollama`, `tts_hf`, `tts_kokoro`, `voices`). STT is split across `voice.py` (faster-whisper) and `stt.py` (whisper.cpp). There are two `inbox.py` files (`capture/`, `context/`), two `hotkey.py` files (`capture/` uses pynput, `menubar/` uses Carbon), two `browser.py` files (`hi/` opens URLs, `perception/` reads the current tab), and two reflections (`reflection_agent.py`, `synthesis/reflection.py`). |
 | P3 | **There are four write paths for "what happened".** Each one formats and stores its own data. | `vault.log_conversation`, `journal.py`, `transcript.py`, `memory.py`, plus `widget_store.py` and orchestrator run traces |
-| P4 | **Config is mutable module globals.** Some modules snapshot values at import, so a settings change doesn't reach them. | `config.set_value` mutates `globals()`. Nine modules do `from hi.config import TERM_MODEL, KEEP_ALIVE`, so after a model is changed in the UI, `agents/term/term.py` still holds the old value. |
+| P4 | **Config is mutable module globals.** Some modules snapshot values at import, so a settings change doesn't reach them. | `config.set_value` mutates `globals()`. The agent modules do `from hi.config import TERM_MODEL, KEEP_ALIVE` and build their default model at import. The server builds per-turn agents from live config, so this mostly affects the default instances (and was real for the suggestion flags and the Whisper model). |
 | P5 | **Imports have side effects.** | Agents build their model when imported (`from hi.agents.term.term import agent, model`). `chat_model.py` reads its cache at import. `personas.get_persona()` starts three background threads (triage, retro, warm-up) as a side effect of building a persona. |
 | P6 | **There are three hand-written HTTP servers.** One of them is a 961-line chain of `if self.path == ...` branches. | `ipc/server.py`, `host_bridge.py`, `orchestrator/pending_server.py` (which exists only because the REPL and the IPC server are separate processes) |
 | P7 | **Fallbacks are ad hoc and uneven.** | Model calls are retried, but there is no provider or tier fallback. TODO.md says TTS falls back to Kokoro, but `tts.py` says it never falls back and `tts_engine.py` has no chain. There are 40 `except Exception` blocks with mixed behaviour. Nothing records whether a dependency is up or down. `ensure_available()` can start a multi-GB `ollama pull` inside a request and report progress with `print`. |
@@ -253,7 +253,7 @@ def on_change(fn)                 # e.g. llm.registry clears its client cache
 ```
 
 - Keep `env_file.py` and the layering (real env → host credentials → `~/.hi/.env`). It is correct.
-- **Fix P4 first:** replace the nine `from hi.config import X` with `config.X`. That is a one-line fix in each file, and the bug exists today.
+- **Fix P4 first:** replace the `from hi.config import X` copies with `config.X`. Correction to the first draft: for the four agent modules (`term`, `butler`, `docs`, `web`) this changes nothing by itself, because they also build their model at import. That is fixed by removing import-time construction in phase 5. The runtime flags (`DIFF_WATCH_ENABLED`, `SMART_SUGGESTIONS_ENABLED`, `WHISPER_MODEL`) were fixed in phase 1.
 - Keep the per-mode defaults tables, but move them to `hi/core/defaults.py` (or a TOML file) so `settings.py` holds logic only.
 
 ### 5.2 Process model and startup
@@ -355,7 +355,18 @@ Phases 1–3 deliver most of the value: the config bug is fixed, failures are vi
 
 ---
 
-## 8. Open questions
+## 8. Progress
+
+Branch `restructure/make-plan`. Done:
+
+- Phase 0: root clutter removed; Swift app archived under tag `archive/voice-companion`; `Details.pdf` moved to `docs/`. Not done: merging the TODO files, and `ggml-base.en.bin` is still in the repo root (gitignored; `hi/stt.py` expects `~/.hi/models/`).
+- Phase 0b: OpenRouter removed (D4); REPL, TUI, tmux and persona flags removed (D1).
+- Phase 1: pytest and unit tests for vault, router, config, CLI, fallbacks, probes and routing fallback. The layering and full-import tests are not written yet.
+- Phase 3 (part): `hi/core/health.py`, `hi/core/fallback.py`, `GET /health`, and a routing fallback with an 8 s budget (`classify_or_default`).
+
+Not started: the package moves (core/llm/memory/agents/voice/proactive), `TurnRecord`, Starlette, voice chains, `core/jobs.py`, repo layout, ADRs and the CLAUDE.md rewrite.
+
+## 9. Open questions
 
 D1–D6 are decided; see the table at the top. Still open:
 

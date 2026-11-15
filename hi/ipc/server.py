@@ -58,7 +58,7 @@ from hi.mcp_install import _CATALOG as MCP_CATALOG
 from hi.mcp_install import _bust_mcp_tools_cache
 from hi.mcp_tools import get_mcp_tools_by_server
 from hi.models import get_tier_model, get_tier_model_fast
-from hi.orchestrator.complexity import classify_with_plan
+from hi.orchestrator.complexity import classify_or_default
 from hi.router import collapse, fast_route, remember_route
 from hi.speaker import Speaker
 from hi import attachments, journal, memory, reflection_agent, transcript
@@ -161,7 +161,7 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: b
         persona_name, tier, needs_plan = forced_persona, _FORCED_PERSONA_TIER, False
     else:
         routed = fast_route(text)
-        persona_name, tier, needs_plan = (*routed, False) if routed else classify_with_plan(text)
+        persona_name, tier, needs_plan = (*routed, False) if routed else classify_or_default(text)
         persona_name = collapse(persona_name)
     remember_route(persona_name, tier)
     route_s = time.monotonic() - started

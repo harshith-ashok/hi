@@ -121,6 +121,13 @@ def fast_route(prompt: str) -> tuple[str, str] | None:
     return None
 
 
+def recent_route() -> tuple[str, str] | None:
+    """The last (persona, tier) if it was used within STICKY_SECONDS, else None."""
+    if _last_route and time.monotonic() - _last_route[2] < STICKY_SECONDS:
+        return _last_route[0], _last_route[1]
+    return None
+
+
 def remember_route(persona: str, tier: str) -> None:
     global _last_route
     _last_route = (persona, tier, time.monotonic())
