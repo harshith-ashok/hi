@@ -23,7 +23,7 @@ from langchain_core.tools import tool
 from hi.action_tiers import confirm_destructive
 from hi.agents.term.danger import looks_destructive
 from hi.host import call as call_host
-from hi.vault import launch_cwd
+from hi.memory.vault import launch_cwd
 
 TIMEOUT_SECONDS = 120
 CONTAINER_HOME = "/host"  # where the container sees the Mac's home folders (docker-compose.yml)

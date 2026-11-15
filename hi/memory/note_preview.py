@@ -16,7 +16,7 @@ content-aware instead of title-only, at near-zero added cost.
 
 from __future__ import annotations
 
-from hi.frontmatter import parse_frontmatter
+from hi.memory.frontmatter import parse_frontmatter
 
 PREVIEW_CHARS = 220
 

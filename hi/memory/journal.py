@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import hi.config as config
-from hi.frontmatter import with_frontmatter
+from hi.memory.frontmatter import with_frontmatter
 
 SNIP = 160
 # tool name -> (argument holding a note path, wikilink prefix inside the vault)

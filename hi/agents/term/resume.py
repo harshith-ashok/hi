@@ -14,7 +14,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from hi.agents.term.dev_flow_tool import _current_project_directory, _load_flows
-from hi.vault import conversations_dir, knowledge_dir
+from hi.memory.vault import conversations_dir, knowledge_dir
 
 
 def matching_dev_flow_name(directory: str) -> str | None:

@@ -21,10 +21,10 @@ from langgraph.graph.state import CompiledStateGraph
 import hi.config as config
 from hi.llm.resilience import invoke_with_retry
 from hi.llm.registry import fast_variant
-from hi.note_preview import note_preview
-from hi.tree_cache import read_tree_cache, refresh_tree_cache
-from hi.vault import conversations_dir
-from hi.vault_context import find_notes
+from hi.memory.note_preview import note_preview
+from hi.memory.tree_cache import read_tree_cache, refresh_tree_cache
+from hi.memory.vault import conversations_dir
+from hi.memory.context import find_notes
 
 NO_NOTES_MESSAGE = "No notes exist in the vault yet."
 KEYWORD_NOTES = 6  # best word-match notes always included, even if the model picks none

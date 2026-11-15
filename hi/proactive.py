@@ -50,7 +50,7 @@ def _recent() -> list[str]:
 
 
 def _loops() -> str:
-    from hi import reflection_agent
+    from hi.memory import reflection as reflection_agent
     from hi.agents.butler.todo import pending_tasks_greeting
 
     parts = [reflection_agent.latest_open_loops() or "", pending_tasks_greeting() or ""]

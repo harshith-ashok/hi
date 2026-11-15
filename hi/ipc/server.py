@@ -61,11 +61,12 @@ from hi.llm.registry import get_tier_model, get_tier_model_fast
 from hi.orchestrator.complexity import classify_or_default
 from hi.router import collapse, fast_route, remember_route
 from hi.speaker import Speaker
-from hi import attachments, journal, memory, reflection_agent, transcript
+from hi import attachments
+from hi.memory import extraction as memory, journal, reflection as reflection_agent, transcript
 from hi.orchestrator.graph import latest_run_trace
 from hi.orchestrator.pending_http import try_handle_pending_get, try_handle_pending_post
 from hi.personas import PERSONAS, get_agent_builder
-from hi.vault import list_conversations, log_conversation, read_conversation
+from hi.memory.vault import list_conversations, log_conversation, read_conversation
 
 # Settings the native app's Settings screen can read/write (TODO.md's
 # "proper native app" ask) — plain model-name/path fields only, not the
@@ -120,7 +121,7 @@ def _get_agent(persona_name: str, tier: str):
 
 def _context_used(text: str) -> dict | None:
     """What memory the agent is given for this message, so the UI can show it."""
-    from hi.vault_context import find_notes
+    from hi.memory.context import find_notes
 
     lines = [l for l in memory.read_memory().splitlines() if l.lstrip().startswith("- ")]
     notes = [path for path, _ in find_notes(text, limit=5)]
@@ -391,7 +392,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _send_file(self, relative: str) -> None:
         """A file saved by run_python. Downloads, not pages: agent-written HTML must never
         run on this origin, which can call the rest of this API."""
-        from hi.vault import files_dir
+        from hi.memory.vault import files_dir
 
         path = files_dir() / relative
         if not re.fullmatch(r"[\w.-]+/[\w.-]+", relative) or not path.is_file():
@@ -409,7 +410,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _send_plot(self, name: str) -> None:
         """A chart saved by run_python (hi/agents/term/sandbox.py)."""
-        from hi.vault import plots_dir
+        from hi.memory.vault import plots_dir
 
         path = plots_dir() / name
         kind = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml"}.get(path.suffix.lower())
@@ -750,7 +751,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/memory":
-            from hi.reflection_agent import latest_reflection
+            from hi.memory.reflection import latest_reflection
 
             self._send_json({"memory": memory.read_memory(), "reflection": latest_reflection()})
             return

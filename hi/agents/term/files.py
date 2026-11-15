@@ -47,7 +47,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from hi.vault import launch_cwd
+from hi.memory.vault import launch_cwd
 
 
 LAUNCH_CWD_ENV_VAR = "HI_LAUNCH_CWD"

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Literal
 
-from hi.frontmatter import dump_frontmatter, parse_frontmatter
+from hi.memory.frontmatter import dump_frontmatter, parse_frontmatter
 
 Status = Literal["pending", "done"]
 

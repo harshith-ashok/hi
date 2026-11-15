@@ -12,7 +12,7 @@ import httpx
 from langchain_core.tools import tool
 
 import hi.config as config
-from hi.vault import files_dir, plots_dir
+from hi.memory.vault import files_dir, plots_dir
 
 PLOT_URL_PREFIX = "/plots/"
 FILE_URL_PREFIX = "/files/"

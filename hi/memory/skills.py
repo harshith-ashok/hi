@@ -13,8 +13,8 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 import hi.config as config
-from hi.frontmatter import parse_frontmatter
-from hi.vault_context import _words
+from hi.memory.frontmatter import parse_frontmatter
+from hi.memory.context import _words
 
 MAX_BODY_CHARS = 12000
 INDEX_DESCRIPTION_CHARS = 110

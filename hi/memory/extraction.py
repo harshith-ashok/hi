@@ -22,8 +22,8 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage
 
 import hi.config as config
-from hi import journal
-from hi.frontmatter import with_frontmatter
+from hi.memory import journal
+from hi.memory.frontmatter import with_frontmatter
 from hi.llm.resilience import invoke_with_retry
 from hi.llm.registry import get_tier_model_fast
 

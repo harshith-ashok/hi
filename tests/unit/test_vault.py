@@ -1,6 +1,6 @@
 import pytest
 
-from hi import vault
+from hi.memory import vault
 
 
 def test_create_then_read_note(tmp_vault):

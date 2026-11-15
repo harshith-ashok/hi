@@ -44,8 +44,8 @@ from hi.toolkit import ToolSelector, filter_prompt
 from hi.context.tools import current_context, pause_screen_context, resume_screen_context
 from hi.context.now import describe as screen_context
 from hi.agents.term.host_git import git_on_mac, git_push
-from hi.skills import hint_for, index as skills_index, use_skill
-from hi.vault_context import build_context, search_vault
+from hi.memory.skills import hint_for, index as skills_index, use_skill
+from hi.memory.context import build_context, search_vault
 from hi.agents.docs.vault_rag import read_vault_note
 from hi.orchestrator.graph import latest_run_trace
 from hi.perception.browser import observe_current_tab
@@ -71,7 +71,7 @@ from hi.tracking.team_ops import (
     team_status_draft,
 )
 from hi.watchdogs.dev_servers import check_dev_servers
-from hi.vault import (
+from hi.memory.vault import (
     launch_cwd,
     append_note,
     knowledge_dir,

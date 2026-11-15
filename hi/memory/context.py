@@ -14,8 +14,8 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 import hi.config as config
-from hi import journal, memory, reflection_agent
-from hi.frontmatter import parse_frontmatter
+from hi.memory import extraction as memory, journal, reflection as reflection_agent
+from hi.memory.frontmatter import parse_frontmatter
 
 MAX_CONTEXT_CHARS = 8000
 CONTEXT_NOTES = 5

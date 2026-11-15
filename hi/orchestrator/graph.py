@@ -57,7 +57,7 @@ from hi.orchestrator.pending_actions import mark_orchestrated_active, mark_orche
 from hi.orchestrator.planner import TaskSpec, plan_tasks
 from hi.orchestrator.subagent import build_shell_subagent, build_subagent
 from hi.llm.resilience import MAX_ATTEMPTS
-from hi.vault import conversations_dir, with_frontmatter
+from hi.memory.vault import conversations_dir, with_frontmatter
 
 def _runs_dir():
     return conversations_dir() / "runs"

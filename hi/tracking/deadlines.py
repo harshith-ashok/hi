@@ -15,7 +15,7 @@ from langchain_core.tools import tool
 from hi.capture.schema import Event, Task
 from hi.capture.store import list_items, tasks_dir
 import hi.config as config
-from hi.frontmatter import parse_frontmatter
+from hi.memory.frontmatter import parse_frontmatter
 
 _DATE_FORMATS = ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d")
 

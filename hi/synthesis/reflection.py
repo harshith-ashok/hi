@@ -29,7 +29,7 @@ from langchain_core.tools import tool
 
 from hi.llm.resilience import invoke_with_retry
 from hi.llm.registry import get_tier_model
-from hi.vault import conversations_dir, knowledge_dir, with_frontmatter
+from hi.memory.vault import conversations_dir, knowledge_dir, with_frontmatter
 
 
 def _preferences_path():
@@ -124,7 +124,7 @@ def reflect_on_week() -> str:
     a summary, decisions, open loops and lessons to hi/reflections/, and tidies
     the long-term memory file. Runs by itself for yesterday each day; use this
     to get a weekly view on demand."""
-    from hi import reflection_agent
+    from hi.memory import reflection as reflection_agent
 
     path = reflection_agent.reflect(days=7, end=date.today())
     if path is None:

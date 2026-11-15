@@ -26,7 +26,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from hi.vault import knowledge_dir, with_frontmatter
+from hi.memory.vault import knowledge_dir, with_frontmatter
 
 def _widgets_dir():
     return knowledge_dir() / "widgets"

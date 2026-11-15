@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from hi.vault import knowledge_dir
+from hi.memory.vault import knowledge_dir
 
 def _weekdays_dir():
     return knowledge_dir() / "weekdays"

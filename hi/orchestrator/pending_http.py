@@ -51,7 +51,7 @@ def try_handle_pending_post(handler: BaseHTTPRequestHandler) -> bool:
     parts = handler.path.strip("/").split("/")
     if len(parts) != 3 or parts[0] != "pending" or parts[2] not in ("approve", "deny"):
         return False
-    from hi import journal  # late: pending_http is imported very early
+    from hi.memory import journal  # late: pending_http is imported very early
 
     described = next((a.description for a in list_pending() if a.id == parts[1]), parts[1])
     ok = resolve(parts[1], approved=(parts[2] == "approve"))

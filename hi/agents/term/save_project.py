@@ -23,7 +23,7 @@ from langchain_core.tools import tool
 from hi.agents.term.files import _SKIP_DIRS, _base_dir, _resolve
 from hi.llm.resilience import invoke_with_retry
 from hi.llm.registry import get_tier_model
-from hi.vault import knowledge_dir, with_frontmatter
+from hi.memory.vault import knowledge_dir, with_frontmatter
 
 def _projects_dir():
     return knowledge_dir() / "projects"

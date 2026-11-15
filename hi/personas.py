@@ -11,7 +11,7 @@ from hi.capture.triage import triage_inbox
 from hi.llm.resilience import warm_up
 from hi.synthesis.reflection import run_weekly_reflection
 from hi.synthesis.retro import generate_weekly_retro, this_weeks_retro_exists
-from hi.vault import log_conversation
+from hi.memory.vault import log_conversation
 
 PERSONAS = ("butler", "docs", "web", "term")
 LAUNCH_CWD_ENV_VAR = "HI_LAUNCH_CWD"

@@ -157,7 +157,7 @@ def stream_agent_as_agui(agent, text: str, thread_id: str, history: list[dict] |
                     # becoming a CUSTOM event. Deduped by uri, so a
                     # recalled widget re-saves over itself, not a
                     # growing pile of duplicates.
-                    from hi.widget_store import save_widget
+                    from hi.memory.widgets import save_widget
 
                     save_widget(widget["uri"], widget["mimeType"], widget["text"])
                     yield ag.CustomEvent(name="mcp_ui_widget", value={"tool_call_id": chunk.tool_call_id, **widget})

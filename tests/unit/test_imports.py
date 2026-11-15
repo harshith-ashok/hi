@@ -7,7 +7,7 @@ import pytest
 
 # Modules that are expected to stay quiet on import. Agent modules build models at import
 # today; they join this list when MAKE.md phase 5 removes that.
-QUIET = ["hi.config", "hi.router", "hi.vault", "hi.llm", "hi.env_file", "hi.toolkit", "hi.llm.resilience"]
+QUIET = ["hi.config", "hi.router", "hi.memory.vault", "hi.llm", "hi.env_file", "hi.toolkit", "hi.llm.resilience"]
 
 
 @pytest.mark.parametrize("name", QUIET)
