@@ -334,7 +334,7 @@ A server that isn't configured is simply absent — no crash, `term` works the s
 
 ### The patent behind the memory system
 
-`hi`'s router/memory/synthesis stack is a scoped-down implementation of a five-stage pipeline described in [Details.pdf](Details.pdf), IN Patent Application 202641052767 ("Agentic System for Contextual Digital Memory Reconstruction Using Multi-Source Activity Correlation," filed 25-04-2026, inventors Harshith Ashok, R Krishnan, Dr. M.S. Bennet Praba). The filing's own Figure 1 lays out the flow the patent claims:
+`hi`'s router/memory/synthesis stack is a scoped-down implementation of a five-stage pipeline described in [Details.pdf](docs/Details.pdf), IN Patent Application 202641052767 ("Agentic System for Contextual Digital Memory Reconstruction Using Multi-Source Activity Correlation," filed 25-04-2026, inventors Harshith Ashok, R Krishnan, Dr. M.S. Bennet Praba). The filing's own Figure 1 lays out the flow the patent claims:
 
 ```mermaid
 flowchart TD
@@ -686,4 +686,4 @@ A separate native shell in [voice_companion/](voice_companion/) — a docked, ho
 - [CLAUDE.md](CLAUDE.md) — memory system implementation notes
 - [docs/TODO.md](docs/TODO.md) — implementation progress
 - [voice_companion/README.md](voice_companion/README.md) — native macOS voice companion app
-- [Details.pdf](Details.pdf) — the patent filing behind the memory/recall architecture (see [Architecture](#architecture))
+- [Details.pdf](docs/Details.pdf) — the patent filing behind the memory/recall architecture (see [Architecture](#architecture))
