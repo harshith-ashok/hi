@@ -836,6 +836,13 @@ class _Handler(BaseHTTPRequestHandler):
         # docstring for what's real vs. deliberately not exposed (no
         # calendar integration, no Focus/DND read — neither has a real
         # data source, so neither gets a fabricated one here).
+        if self.path == "/health":
+            from hi import probes
+
+            report = probes.run()
+            self._send_json(report, 200 if report["ok"] else 503)
+            return
+
         if self.path == "/vitals":
             self._send_json(get_vitals(active_model=config.SONNET_MODEL))
             return
