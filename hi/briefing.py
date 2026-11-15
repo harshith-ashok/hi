@@ -13,8 +13,8 @@ from langchain_core.messages import HumanMessage
 
 from hi.agents.butler.todo import pending_tasks_greeting
 import hi.config as config
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model
 from hi.tracking.applications import due_follow_ups
 from hi.tracking.deadlines import get_deadlines
 from hi.tracking.leetcode import todays_log

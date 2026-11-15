@@ -7,8 +7,8 @@ from langchain_core.language_models import BaseChatModel
 from hi.agents.web.tools import find_image, search_wikipedia
 from hi.agents.persona_voice import voiced_prompt
 from hi.mcp_tools import get_mcp_tools_by_server
-from hi.chat_model import make_chat_model
-from hi.retry import retry_middleware
+from hi.llm.reasoning import make_chat_model
+from hi.llm.resilience import retry_middleware
 from hi.config import KEEP_ALIVE, WEB_MODEL
 
 PROMPT_PATH = Path(__file__).parent / "web_prompt.md"

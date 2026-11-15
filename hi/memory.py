@@ -24,8 +24,8 @@ from langchain_core.messages import HumanMessage
 import hi.config as config
 from hi import journal
 from hi.frontmatter import with_frontmatter
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model_fast
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model_fast
 
 KINDS = ("Preferences", "Facts", "Projects", "People", "Decisions")
 MIN_ASK_WORDS = 4

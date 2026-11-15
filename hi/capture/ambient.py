@@ -15,8 +15,8 @@ from langchain_core.messages import HumanMessage
 
 from hi.capture.schema import Event, Task
 from hi.capture.store import save
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model
 
 _PROMPT = """Classify the following raw note into either a task (something \
 to do, with no fixed time) or an event (something happening at a specific \

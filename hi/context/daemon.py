@@ -79,7 +79,7 @@ def local_model_ok() -> bool:
 def summarize(app: str, title: str, screen: str) -> str:
     from langchain_core.messages import HumanMessage
 
-    from hi.models import get_tier_model_fast
+    from hi.llm.registry import get_tier_model_fast
 
     prompt = (
         "In ONE short sentence (max 20 words), say what the user is doing right now, from this. "

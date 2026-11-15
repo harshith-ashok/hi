@@ -19,8 +19,8 @@ from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 
 import hi.config as config
-from hi.model_warmup import invoke_with_retry
-from hi.models import fast_variant
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import fast_variant
 from hi.note_preview import note_preview
 from hi.tree_cache import read_tree_cache, refresh_tree_cache
 from hi.vault import conversations_dir

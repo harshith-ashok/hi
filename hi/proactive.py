@@ -62,7 +62,7 @@ def compose(include_screen: bool = True) -> str | None:
     from langchain_core.messages import HumanMessage
 
     from hi.context.daemon import local_model_ok
-    from hi.models import get_tier_model_fast
+    from hi.llm.registry import get_tier_model_fast
 
     context = now.describe(include_screen)
     if not context or not local_model_ok():

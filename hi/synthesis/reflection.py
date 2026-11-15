@@ -27,8 +27,8 @@ from datetime import date, timedelta
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model
 from hi.vault import conversations_dir, knowledge_dir, with_frontmatter
 
 

@@ -25,8 +25,8 @@ from langchain_core.messages import HumanMessage
 import hi.config as config
 from hi import journal, memory
 from hi.frontmatter import with_frontmatter
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model
 
 MAX_JOURNAL_CHARS = 30_000
 CONSOLIDATE_AT_LINES = 25

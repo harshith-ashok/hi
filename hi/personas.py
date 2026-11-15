@@ -8,7 +8,7 @@ from functools import partial
 from typing import Callable, Optional
 
 from hi.capture.triage import triage_inbox
-from hi.model_warmup import warm_up
+from hi.llm.resilience import warm_up
 from hi.synthesis.reflection import run_weekly_reflection
 from hi.synthesis.retro import generate_weekly_retro, this_weeks_retro_exists
 from hi.vault import log_conversation

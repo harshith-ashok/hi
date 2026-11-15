@@ -11,8 +11,8 @@ import re
 
 from langchain_core.messages import HumanMessage
 
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model_fast
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model_fast
 
 SKIP_BELOW_WORDS = 8
 

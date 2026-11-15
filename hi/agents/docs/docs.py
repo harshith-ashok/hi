@@ -4,8 +4,8 @@ from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from hi.agents.docs.vault_rag import build_vault_rag_graph, list_vault_notes, read_vault_note
 from hi.agents.persona_voice import voiced_prompt
-from hi.chat_model import make_chat_model
-from hi.retry import retry_middleware
+from hi.llm.reasoning import make_chat_model
+from hi.llm.resilience import retry_middleware
 from hi.config import KEEP_ALIVE, DOCS_MODEL
 from hi.vault import append_note, create_note, list_notes, read_note
 from hi.widget_store import recall_widget

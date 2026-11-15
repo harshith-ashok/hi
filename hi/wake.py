@@ -43,7 +43,7 @@ import openwakeword
 import sounddevice as sd
 from openwakeword.model import Model
 
-from hi.models import get_tier_model
+from hi.llm.registry import get_tier_model
 from hi.personas import get_agent_builder
 from hi.router import classify, collapse
 from hi.streaming import stream_and_print

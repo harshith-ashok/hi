@@ -24,8 +24,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 from langchain_core.messages import HumanMessage
 
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model_fast
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model_fast
 from hi.personas import PERSONAS
 from hi import router
 from hi.router import PERSONA_DESCRIPTIONS, TIER_DESCRIPTIONS, TIERS

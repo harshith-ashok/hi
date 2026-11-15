@@ -57,7 +57,7 @@ from hi.ipc.spoken_summary import make_spoken_summary
 from hi.mcp_install import _CATALOG as MCP_CATALOG
 from hi.mcp_install import _bust_mcp_tools_cache
 from hi.mcp_tools import get_mcp_tools_by_server
-from hi.models import get_tier_model, get_tier_model_fast
+from hi.llm.registry import get_tier_model, get_tier_model_fast
 from hi.orchestrator.complexity import classify_or_default
 from hi.router import collapse, fast_route, remember_route
 from hi.speaker import Speaker
@@ -939,7 +939,7 @@ def _warm_up() -> None:
     on the model server, and build the agents (MCP connections, tool lists, prompts) that turns will use.
     Best-effort, in the background; the server answers requests meanwhile."""
     from hi import config
-    from hi.model_warmup import preload_models
+    from hi.llm.resilience import preload_models
 
     try:
         if config.AI_MODE == "tailscale":

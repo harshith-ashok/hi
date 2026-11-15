@@ -8,7 +8,7 @@ from langchain_core.language_models import BaseChatModel
 
 import hi.config as config
 from hi import llm
-from hi.chat_model import make_chat_model
+from hi.llm.reasoning import make_chat_model
 
 
 def tier_models() -> dict[str, str]:

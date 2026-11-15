@@ -30,8 +30,8 @@ import re
 
 from langchain_core.messages import HumanMessage
 
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model_fast
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model_fast
 
 _CODE_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)

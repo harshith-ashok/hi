@@ -67,7 +67,7 @@ def _docx_text(data: bytes) -> str:
 
 def _describe_image(data: bytes, mime: str) -> str:
     try:
-        from hi.models import ensure_pulled
+        from hi.llm.registry import ensure_pulled
 
         ensure_pulled(config.VISION_MODEL)
         model = llm.build_chat_model(config.VISION_MODEL)

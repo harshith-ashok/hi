@@ -35,11 +35,11 @@ from hi.agents.term.people import add_person_info, delete_person, get_person_inf
 from hi.agents.term.save_project import save_project_to_vault
 from hi.agents.term.resume import resume_context
 from hi.browser import open_url_in_browser
-from hi.chat_model import make_chat_model
+from hi.llm.reasoning import make_chat_model
 from hi.config import KEEP_ALIVE, TERM_MODEL
 from hi.host import passthrough
 from hi.mcp_tools import get_mcp_tools, tool_servers
-from hi.retry import retry_middleware
+from hi.llm.resilience import retry_middleware
 from hi.toolkit import ToolSelector, filter_prompt
 from hi.context.tools import current_context, pause_screen_context, resume_screen_context
 from hi.context.now import describe as screen_context

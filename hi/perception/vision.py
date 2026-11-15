@@ -27,7 +27,7 @@ from langchain_core.tools import tool
 
 import hi.config as config
 from hi import llm
-from hi.models import ensure_pulled
+from hi.llm.registry import ensure_pulled
 from hi.perception.privacy import sensitive_context_reason
 
 DEFAULT_QUESTION = "Describe what's on the screen."
