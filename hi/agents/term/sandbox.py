@@ -1,6 +1,6 @@
 """Run Python the agent wrote in the sandbox container (sandbox/) and keep what it
 made: every chart is saved as a PNG under <vault>/hi/plots/ next to the code that
-produced it, and the UI shows it inline (GET /plots/<name>, hi/ipc/server.py).
+produced it, and the UI shows it inline (GET /plots/<name>, hi/server/).
 """
 
 import base64
@@ -12,7 +12,8 @@ import httpx
 from langchain_core.tools import tool
 
 import hi.config as config
-from hi.vault import files_dir, plots_dir
+from hi.core import health
+from hi.memory.vault import files_dir, plots_dir
 
 PLOT_URL_PREFIX = "/plots/"
 FILE_URL_PREFIX = "/files/"
@@ -69,8 +70,10 @@ def run_python(code: str) -> str:
         response.raise_for_status()
         result = response.json()
     except httpx.HTTPError as e:
+        health.mark_down("sandbox", e)
         return f"Sandbox unavailable at {config.SANDBOX_URL} ({e}). It runs as the `sandbox` service in docker-compose."
 
+    health.mark_ok("sandbox")
     plots = _save_plots(code, result["images"])
     files = _save_files(result.get("files", []))
     parts = [f"Exit code: {result['exit_code']}"]

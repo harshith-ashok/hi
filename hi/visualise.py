@@ -8,7 +8,7 @@ from datetime import datetime
 
 from langchain_core.tools import tool
 
-from hi.vault import plots_dir
+from hi.memory.vault import plots_dir
 
 MAX_SVG_BYTES = 200_000
 _ACTIVE = re.compile(r"<(script|foreignObject|iframe|object|embed)\b.*?(</\1\s*>|/>)", re.IGNORECASE | re.DOTALL)

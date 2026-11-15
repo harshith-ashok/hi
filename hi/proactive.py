@@ -50,7 +50,7 @@ def _recent() -> list[str]:
 
 
 def _loops() -> str:
-    from hi import reflection_agent
+    from hi.memory import reflection as reflection_agent
     from hi.agents.butler.todo import pending_tasks_greeting
 
     parts = [reflection_agent.latest_open_loops() or "", pending_tasks_greeting() or ""]
@@ -62,7 +62,7 @@ def compose(include_screen: bool = True) -> str | None:
     from langchain_core.messages import HumanMessage
 
     from hi.context.daemon import local_model_ok
-    from hi.models import get_tier_model_fast
+    from hi.llm.registry import get_tier_model_fast
 
     context = now.describe(include_screen)
     if not context or not local_model_ok():

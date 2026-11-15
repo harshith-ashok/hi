@@ -31,13 +31,13 @@ from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
 
-from hi.frontmatter import with_frontmatter as _build_frontmatter
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model, get_tier_model_fast
+from hi.memory.frontmatter import with_frontmatter as _build_frontmatter
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model, get_tier_model_fast
 from hi.orchestrator.pending_actions import mark_orchestrated_active, mark_orchestrated_done
 from hi.orchestrator.subagent import build_subagent
 from hi.router import classify
-from hi.vault import knowledge_dir
+from hi.memory.vault import knowledge_dir
 
 MAX_CLARIFICATION_ROUNDS = 2
 MAX_QUESTIONS_PER_ROUND = 3

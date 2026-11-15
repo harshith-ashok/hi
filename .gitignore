@@ -20,3 +20,6 @@ voice_companion/.build/
 
 # local compose settings (vault path)
 .env
+
+# Local model weights (see hi/stt.py)
+models/

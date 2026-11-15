@@ -37,9 +37,9 @@ hi                            # starts the stack if needed and opens the web UI
 docker compose up --build     # backend + web UI, then open http://localhost:5173
 ```
 
-`hi` with no flag is the main entry point: it runs `docker compose up -d --build` when the backend isn't already answering, then opens tinyui in your browser. `hi --tui` is the terminal UI, `hi --tmux` the old auto-routing tmux pane, and `hi --code`/`--butler`/`--docs`/`--web`/`--term` the single-persona panes.
+`hi` with no flag is the main entry point: it runs `docker compose up -d --build` when the backend isn't already answering, then opens tinyui in your browser. The terminal UI, tmux panes and per-persona flags (`--tui`, `--tmux`, `--term`, ...) were removed; tinyui is the one interface.
 
-The AI layer has three modes, switched in the UI's settings view (or `AI_MODE` in a `.env` next to `docker-compose.yml`): **local** (Ollama on your machine — from the container via `host.docker.internal`), **tailscale** (Ollama on another machine over your tailnet, `TAILSCALE_OLLAMA_URL`), and **openrouter** (`OPENROUTER_API_KEY`). Each mode remembers its own model names. Set `HI_VAULT=/path/to/your/vault` in that `.env` to use your real notes — otherwise the container keeps its own empty vault in a Docker volume. If port 5173 is taken, set `HI_WEB_PORT`.
+The AI layer has two modes, switched in the UI's settings view (or `AI_MODE` in a `.env` next to `docker-compose.yml`): **local** (Ollama on your machine — from the container via `host.docker.internal`), **tailscale** (Ollama on another machine over your tailnet, `TAILSCALE_OLLAMA_URL`). Each mode remembers its own model names. Set `HI_VAULT=/path/to/your/vault` in that `.env` to use your real notes — otherwise the container keeps its own empty vault in a Docker volume. If port 5173 is taken, set `HI_WEB_PORT`.
 
 On Windows, install Docker Desktop and Git, then from PowerShell in this folder run `uv sync` and `uv run hi` (or just `docker compose up -d --build`, then open http://localhost:5173). `hi` sets everything up itself; with plain `docker compose` first create `%USERPROFILE%\.hi\.env` and `%USERPROFILE%\.gitconfig` (empty files are fine). Your Windows `Dev`, `Documents`, `Desktop` and `Downloads` folders appear in the container under `/host`. Mac-only tools (music, volume, screen) and the tmux layouts (`--tmux`, `--code`, ...) don't work on Windows.
 
@@ -168,7 +168,7 @@ Running `hi` with no flag starts it as `(hi) >` instead of a fixed persona. Each
 
 Every turn is classified independently — it's not "locked in" to one persona for the rest of the session, so a short follow-up with no persona-specific wording can occasionally route somewhere unexpected (a known trade-off of per-turn classification, not a bug). `term`'s own conversation memory is unaffected either way — it picks back up correctly once a later turn routes back to it.
 
-`--butler`/`--docs`/`--web`/`--term` still work exactly as shown above, for when you want to force a specific persona and skip routing/tiering entirely.
+The per-persona flags (`--butler`/`--docs`/`--web`/`--term`) were removed along with the terminal front-ends; tinyui's persona tabs force a persona instead.
 
 Auto-routing mode also opens with a one-line briefing — pending TODO items, the most recently edited vault note, and the most recently opened project, distilled into one actionable suggestion:
 
@@ -250,7 +250,7 @@ All actual memory — knowledge notes and conversation logs, from every persona 
 
 Every note, conversation log, task, and event carries Obsidian-compatible YAML frontmatter (`tags: [hi, ...]`), so the vault's own tag search finds them like any other note. Any note can also carry a `due:` field to declare a deadline (`hi/frontmatter.py`) — tasks use it as their canonical example, but it isn't limited to them. `docs` can additionally _read_ any note anywhere in the vault (not just `hi/knowledge/`) to answer questions, but only ever _writes_ inside `hi/knowledge/` — your own notes are never edited or overwritten.
 
-Changing `VAULT_PATH` or the haiku/sonnet/opus/vision models via the voice companion's Settings screen (`POST /config`, `hi/ipc/server.py`) takes effect immediately — no restart of the voice daemon needed. `BUTLER_MODEL`/`DOCS_MODEL`/`WEB_MODEL`/`TERM_MODEL` are the one exception: they're only read by a CLI session forcing that persona (`hi --butler`, etc.), so a change there takes effect the next time you start one, not retroactively for one already running.
+Changing `VAULT_PATH` or the haiku/sonnet/opus/vision models via the voice companion's Settings screen (`POST /config`, `hi/server/routes/config.py`) takes effect immediately — no restart of the voice daemon needed. `BUTLER_MODEL`/`DOCS_MODEL`/`WEB_MODEL`/`TERM_MODEL` are the one exception: they're only read by a CLI session forcing that persona (`hi --butler`, etc.), so a change there takes effect the next time you start one, not retroactively for one already running.
 
 ### Dev Flows
 
@@ -334,7 +334,7 @@ A server that isn't configured is simply absent — no crash, `term` works the s
 
 ### The patent behind the memory system
 
-`hi`'s router/memory/synthesis stack is a scoped-down implementation of a five-stage pipeline described in [Details.pdf](Details.pdf), IN Patent Application 202641052767 ("Agentic System for Contextual Digital Memory Reconstruction Using Multi-Source Activity Correlation," filed 25-04-2026, inventors Harshith Ashok, R Krishnan, Dr. M.S. Bennet Praba). The filing's own Figure 1 lays out the flow the patent claims:
+`hi`'s router/memory/synthesis stack is a scoped-down implementation of a five-stage pipeline described in [Details.pdf](docs/Details.pdf), IN Patent Application 202641052767 ("Agentic System for Contextual Digital Memory Reconstruction Using Multi-Source Activity Correlation," filed 25-04-2026, inventors Harshith Ashok, R Krishnan, Dr. M.S. Bennet Praba). The filing's own Figure 1 lays out the flow the patent claims:
 
 ```mermaid
 flowchart TD
@@ -390,7 +390,7 @@ Implemented by [`hi/synthesis/retro.py`](hi/synthesis/retro.py), [`hi/synthesis/
 
 Patent claim language: _"presented... via an interactive recall interface that allows user inspection, refinement, and adaptive query expansion."_
 
-Implemented by [`hi/repl.py`](hi/repl.py) + [`hi/streaming.py`](hi/streaming.py), [`hi/synthesis/negotiation.py`](hi/synthesis/negotiation.py), `voice_companion/`, and `frontend/` — the CLI, the voice companion, and the web frontend are three renderings of the same recall interface. Multi-turn arbiter negotiation ("no, something else" excluding the last recommendation and re-scoring) is the concrete version of the patent's "adaptive query expansion" claim — a follow-up narrows or redirects the same underlying context instead of starting over.
+Implemented by [`hi/streaming.py`](hi/streaming.py), [`hi/synthesis/negotiation.py`](hi/synthesis/negotiation.py), `voice_companion/`, and `frontend/` — the CLI, the voice companion, and the web frontend are three renderings of the same recall interface. Multi-turn arbiter negotiation ("no, something else" excluding the last recommendation and re-scoring) is the concrete version of the patent's "adaptive query expansion" claim — a follow-up narrows or redirects the same underlying context instead of starting over.
 
 </details>
 
@@ -398,268 +398,7 @@ The correlation gap in Phase 3 is the honest boundary of the analogy: the patent
 
 ### Module map
 
-<details>
-<summary>File map</summary>
-
-```text
-hi/cli.py                  argparse + tmux launcher, dispatches to a persona or router
-hi/personas.py              registry: persona name -> agent, on-turn hook, build_agent
-hi/repl.py                   generic input loop + auto-routing loop, shared prompt_toolkit setup;
-                                 also checks hi/fast_commands.py before classification, and starts
-                                 the haiku-tier keep-alive ping (hi/model_warmup.py)
-hi/fast_commands.py            latency fix: zero-network-call exact/narrow-regex matches for
-                                 common requests (greetings, "show my tasks", mute/volume/wifi/
-                                 quit-app, "add task...") that call the real underlying tool
-                                 directly, skipping both classification and agent generation
-hi/router.py                  classifies each router-mode turn into (persona, tier)
-hi/models.py                   haiku/sonnet/opus tier -> ChatOllama, pulls on demand;
-                                 get_tier_model_fast() is a separate reasoning-off cache for
-                                 latency-sensitive judgment calls (classification, safety checks).
-                                 tier_models() reads hi.config live per call (mcp_tools.py's
-                                 pattern, above) and the ChatOllama cache is keyed by the
-                                 resolved model name, not just the tier label — so a `POST
-                                 /config` change to SONNET_MODEL etc. takes effect on the very
-                                 next call, no restart (BLOCKERS.md's "built once at import
-                                 time" caveat, closed this session)
-hi/chat_model.py                per-model reasoning=True probe/cache, shared by
-                                 models.py and every persona's own default model
-hi/briefing.py                  pre-session tasks/notes/projects -> one suggested action
-hi/streaming.py                 streams any agent's response token-by-token,
-                                 cancellable mid-stream via Ctrl-J
-hi/cancellation.py               shared Ctrl-J interrupt primitive — one
-                                 mechanism for shell-wait and generation-streaming alike
-hi/tmux_util.py              shared tmux new-session/new-window helper
-hi/config.py                 reads ~/.hi/.env: VAULT_PATH + per-persona + tier models
-hi/vault.py                   shared Markdown memory tools, backed by the vault.
-                                 knowledge_dir()/conversations_dir() read hi.config.VAULT_PATH
-                                 live (functions, not module-level constants) — every module
-                                 built on them (widget_store.py, term/people.py,
-                                 term/save_project.py, context/weekday.py,
-                                 orchestrator/graph.py, synthesis/*, capture/store.py's
-                                 tasks_dir(), tracking/*) follows the same pattern, so a vault-
-                                 path change via `POST /config` applies without a restart too.
-                                 **Regression caught and fixed later the same session**: the
-                                 automated script that did this conversion across 6 of those
-                                 files (widget_store.py, term/people.py, term/save_project.py,
-                                 context/weekday.py, orchestrator/graph.py, synthesis/retro.py)
-                                 renamed each import correctly but left the OLD uppercase name
-                                 inside the new function body (e.g. `_people_dir()` returning
-                                 `KNOWLEDGE_DIR / "people"` — undefined once the import became
-                                 lowercase `knowledge_dir`) — a real `NameError` waiting on the
-                                 first actual call, invisible to an import-only smoke test since
-                                 Python doesn't evaluate a function body until it's called. Found
-                                 by actually reading one of the files, not by a test catching it;
-                                 fixed in all 6 (plus two more direct `KNOWLEDGE_DIR.parent`
-                                 references in retro.py the same script never touched at all) and
-                                 re-verified by calling every one of them for real, not just
-                                 re-importing the modules.
-hi/frontmatter.py              shared YAML-subset frontmatter parse/dump, used by
-                                 vault.py and capture/schema.py alike
-hi/capture/schema.py            Task/Event dataclasses <-> frontmatter mapping
-hi/capture/store.py             one Markdown file per task/event under
-                                 <VAULT_PATH>/hi/tasks/, + one-time legacy
-                                 todo.md migration
-hi/capture/ambient.py            classifies raw text into a Task or Event
-                                 (haiku tier) and saves it via store.py
-hi/capture/inbox.py              untriaged raw captures from the global hotkey
-hi/capture/triage.py             classifies inbox items into real tasks/events,
-                                 run once at the start of every `hi` session
-hi/capture/hotkey.py             standalone global-hotkey daemon (`hi --capture-daemon`)
-hi/memory_graph.py            shared grounding graph: select notes -> load -> agent
-                                 (note-selection call uses HumanMessage, not SystemMessage —
-                                 the latter got an empty done_reason='load' response from the
-                                 cloud model every single time, silently making relevant_notes/
-                                 relevant_logs always empty; hi/agents/docs/vault_rag.py had the
-                                 identical bug, fixed the same way — both live-verified after).
-                                 **Reported live as "always searches the vault and returns NONE
-                                 before doing anything else"**: this note-selection call ran with
-                                 reasoning on for every single term/docs turn, adding several
-                                 seconds before the real agent even started — the same latency
-                                 class Phase 6/11 already fixed elsewhere (router.py's classify(),
-                                 the scope guard) but this call had never gotten it. Both this file
-                                 and vault_rag.py now use hi/models.py's new fast_variant(model)
-                                 (reasoning off, cached by resolved model name) for this call only
-hi/tree_cache.py               `tree -L 4` snapshot of the vault, for grounding
-hi/model_warmup.py             background warm-up + retry around Ollama Cloud's
-                                 occasional empty done_reason='load' response;
-                                 start_keepalive() periodically pings the always-in-use
-                                 haiku model so it doesn't go cold between user turns
-hi/voice.py                     Ctrl-V mic capture + faster-whisper transcription
-hi/tts.py                       local TTS via macOS `say`, sentence-chunked as a
-                                 streamed response arrives, with barge-in support —
-                                 used by the terminal REPL's voice mode and
-                                 hi/wake.py; NOT what the voice companion app speaks
-                                 with (see hi/tts_kokoro.py, below)
-hi/tts_kokoro.py                real neural TTS (Kokoro-82M, local, one-time HF
-                                 download) for the voice companion app — per explicit
-                                 request ("sounds actually like a human, maybe even
-                                 use kokoro"), replacing AVSpeechSynthesizer. One
-                                 cached KPipeline; synthesize_wav() returns real WAV
-                                 bytes. Exposed via `POST /tts` (hi/ipc/server.py);
-                                 SpeechOutput.swift fetches + plays via AVAudioPlayer
-                                 instead of asking the OS to speak the text. ~0.5s
-                                 warm for a short sentence, live-measured
-hi/ipc/spoken_summary.py         rewrites the full answer into one short spoken
-                                 sentence before TTS, via get_tier_model_fast(). Used
-                                 to skip the rewrite entirely under 220 chars — the
-                                 exact case that let a mechanical answer like "I opened
-                                 www.youtube.com in Safari" reach TTS completely
-                                 literally, URL read dot by dot (reported live). Now
-                                 always rewrites, and the prompt explicitly asks for
-                                 what happened in plain words, never a literal reading
-                                 of a URL/path/raw string ("YouTube is now open," not
-                                 the sentence above)
-hi/wake.py                      standalone wake-word daemon (`hi --wake-daemon`):
-                                 openWakeWord "Hey Jarvis" -> voice.py transcription ->
-                                 router.py classify() -> streaming.py + tts.py
-hi/mcp_tools.py                 MCP client layer: configured servers -> sync-callable tools
-                                 (reads hi.config's values fresh per call, not snapshotted at
-                                 import, so mcp_install.py's writes take effect without a restart)
-hi/env_file.py                  shared ~/.hi/.env writer (write_env_var) — used by
-                                 mcp_install.py and hi/ipc/server.py's POST /config alike
-hi/mcp_install.py              conversational MCP server setup (butler): browse the known
-                                 catalog (playwright/github/obsidian), configure one by writing
-                                 its credential into ~/.hi/.env instead of hand-editing it
-hi/widget_store.py              MCP-UI widget recall (docs): persists every widget
-                                 agui_adapter.py detects, recall_widget() re-serves one in the
-                                 same shape so it re-renders via the existing CUSTOM passthrough
-hi/watchdogs/idle_repos.py       flags known projects idle N+ days with open tasks,
-                                 surfaced in the daily briefing
-hi/watchdogs/dev_servers.py      on-demand dev-server health check (`term` tool)
-hi/watchdogs/context_shift.py    polls frontmost-app state every 45s (name only,
-                                 never content) -> gated Suggestion via suggest/engine.py
-hi/tracking/deadlines.py         vault-wide due:/when: aggregation (`term` tool)
-hi/tracking/leetcode.py           daily problem picker + attempt log + streak/topic stats
-hi/tracking/applications.py       job/internship application tracker + follow-up nudges
-hi/tracking/team_ops.py           task ownership + team status drafts + deadline pings
-hi/tracking/pipeline.py           generic named-pipeline tracker (custom stages, any
-                                 recruitment/event-shaped tracking)
-hi/context/weekday.py             optional per-weekday vault note, read by the arbiter
-hi/synthesis/arbiter.py           "what should I work on" — one deterministic
-                                 recommendation + rationale, never a ranked list;
-                                 what_next_smart() opt-in narrative variant;
-                                 exclude_ids support for multi-turn negotiation
-hi/synthesis/retro.py             weekly retro note generation (tasks/git/deadlines/
-                                 LeetCode), auto-runs on Sunday; generate_retro_smart()
-                                 opt-in narrative reflection appended on top
-hi/synthesis/reflection.py        weekly pass over conversation logs proposing durable
-                                 preferences, rides along with the Sunday retro trigger
-hi/synthesis/longcontext.py       synthesize_vault(): reads the ENTIRE vault (not a
-                                 relevance-selected subset) for "summarize/find
-                                 patterns across everything" questions
-hi/synthesis/negotiation.py       multi-turn "no, something else" pushback detection
-                                 for the arbiter — session-scoped, not a new daemon
-hi/orchestrator/complexity.py      one haiku-tier call extending classify() with a
-                                 plan/no-plan signal — supersedes the old planner.py
-                                 heuristic (retired) rather than running both
-hi/orchestrator/planner.py         opus-tier call decomposing a complex turn into a
-                                 real task DAG (ids, personas/tiers, tool_scope,
-                                 depends_on) — JSON, with cycle detection/breaking
-hi/orchestrator/subagent.py        builds one scoped, stateless agent per DAG task —
-                                 least-privilege tool subset, not a persona's full list;
-                                 also holds Phase 20's ARCHETYPES (Researcher/Coder/
-                                 Reviewer/Fixer) — a role-framing overlay on any
-                                 persona's own prompt, orthogonal to tool access
-hi/orchestrator/graph.py           the DAG executor: a real LangGraph StateGraph (one
-                                 node per task, edges per depends_on) so independent
-                                 tasks run concurrently under .ainvoke(), bounded by
-                                 an asyncio.Semaphore; threads each task's real
-                                 upstream results into its own prompt, not just order;
-                                 also creates/tears down a per-run scratch directory
-                                 (~/.hi/scratch/<run_id>/, Phase 20) and pushes
-                                 DAGEvent milestones to an optional queue two
-                                 different consumers drain (Phase 18's agui_adapter.py,
-                                 Phase 19's repl.py status line) — see latest_run_trace()
-hi/orchestrator/budget.py          Phase 20's user-settable quick/thorough budget
-                                 (REPL commands: budget / budget quick / budget
-                                 thorough) — caps planner.py's task count and
-                                 suggests a default tier; a soft steer, not a hard rule
-hi/orchestrator/reviewer.py        Phase 20's Reviewer-verifies-Coder check: one
-                                 haiku-tier call flags a destructive shell command's
-                                 own concerning details before term.py's confirm gate
-                                 ever shows it to a human/pending-approval queue
-hi/orchestrator/blackboard.py      LangGraph's own AsyncSqliteSaver checkpointer —
-                                 an orchestrated run's state survives a crash mid-DAG
-hi/orchestrator/aggregator.py      synthesizes one final answer from a completed
-                                 DAG's per-task results
-hi/orchestrator/pending_actions.py  in-process queue for destructive actions an
-                                 orchestrated subagent needs human approval for —
-                                 async-safe (threading.Event), never input();
-                                 resolution_of() tracks the approve/deny outcome
-                                 separately from _pending's own pop timing, so a
-                                 concurrent poller (agui_adapter.py) can't race it
-hi/orchestrator/pending_http.py    shared /pending route logic used by both
-                                 hi/ipc/server.py and pending_server.py below
-hi/orchestrator/pending_server.py  dedicated HTTP server (port 8766) for the
-                                 pending queue, started with the terminal REPL —
-                                 one of two processes an orchestrated run can now
-                                 occur in (hi/ipc/server.py's /query is the other,
-                                 since Phase 18)
-hi/agui_adapter.py                 Phase 18: translates a persona turn or an
-                                 orchestrated DAG run into AG-UI's typed SSE event
-                                 stream (ag-ui-protocol SDK) for hi/ipc/server.py's
-                                 /query — real RUN_*/TEXT_MESSAGE_*/TOOL_CALL_*/
-                                 SUBAGENT_* events, not a bespoke wire format;
-                                 Phase 20: also emits CUSTOM pending_action/
-                                 pending_action_resolved events for the voice
-                                 companion's inline approve/deny cards, and saves
-                                 every detected MCP-UI widget via widget_store.py.
-                                 **Real crash fixed**: an orchestrated run's SSE
-                                 stream abandoned mid-flight (a client disconnect,
-                                 or any exception) used to strand
-                                 run_orchestrated()'s asyncio Task and its open
-                                 AsyncSqliteSaver connection — garbage-collected
-                                 later with no event loop backing them at all
-                                 ("Exception ignored while closing generator ...
-                                 no current event loop in thread"), and the client
-                                 got nothing back: no RUN_ERROR, no RUN_FINISHED,
-                                 just a dead connection — indistinguishable from
-                                 "chat is completely broken" from the outside.
-                                 stream_orchestrated_as_agui() now cancels+awaits
-                                 its task in a finally block on every exit path;
-                                 stream_orchestrated_as_agui_sync() now
-                                 set_event_loop()s the loop it creates and
-                                 properly aclose()s the async generator before
-                                 tearing it down. Reproduced live (a curl timeout
-                                 abandoning an orchestrated query mid-stream) both
-                                 before (crash logged) and after (clean, no
-                                 traceback, daemon stayed responsive) the fix.
-hi/suggest/engine.py              continuous background suggestion loop with
-                                 confidence gating + per-day dedup (`hi --suggest-daemon`);
-                                 optional SMART_SUGGESTIONS_ENABLED model-judgment pass
-hi/action_tiers.py                shared destructive-action confirm gate, reused
-                                 across personas (not just term's shell commands)
-hi/perception/privacy.py          shared best-effort sensitive-context refusal for
-                                 browser/screen perception (no separate enable step)
-hi/perception/browser.py          on-demand current-tab (title/URL only) read via AppleScript
-hi/perception/screen.py           on-demand screenshot -> on-device Vision OCR -> text,
-                                 image discarded immediately, never saved
-hi/perception/vision.py           on-demand screenshot -> real vision model (gemma4:31b-cloud)
-                                 for scene understanding, not just OCR text; same discipline
-hi/perception/diff_watch.py       opt-in (DIFF_WATCH_ENABLED) screenshot-hash change
-                                 detector, ~2min interval -> gated Suggestion; never OCR'd,
-                                 never stored, gated by privacy.py first, same as every
-                                 other perception tool
-hi/note_preview.py                shared content-preview generator for vault grounding
-                                 (used by both memory_graph.py and vault_rag.py)
-hi/browser.py                     open_url_in_browser — a real tab in the user's actual
-                                 default browser, not Playwright's automation instance
-
-hi/agents/butler/  (butler.py + todo.py + mac_control.py)          the `butler` persona
-hi/agents/docs/    (docs.py + vault_rag.py)                         the `docs` persona
-hi/agents/web/     (web.py)                                          the `web` persona
-hi/agents/term/    (term.py + background_tasks.py + danger.py +       the `term` persona:
-                    dev_flow_tool.py + people.py + resume.py +        shell +
-                    files.py + save_project.py)                       background tasks + memory +
-                                                                       people + dev flows +
-                                                                       resume-context + real
-                                                                       project file access/edits +
-                                                                       real coding-agent loop + MCP
-```
-
-Every persona module exposes both a `model`/`agent` pair built at import time (used by `--flag` launches) and a `build_agent(model)` factory (used by the router to build the same persona bound to a different, tier-selected model) — the direct-flag path is unaffected by the router's dynamic model selection.
-
-</details>
+The package layout, the dependency rules between layers, and where each kind of file lives are in [docs/architecture.md](docs/architecture.md). The restructuring plan and its progress are in [MAKE.md](MAKE.md).
 
 ## By the Numbers
 
@@ -678,12 +417,13 @@ Every persona module exposes both a `model`/`agent` pair built at import time (u
 
 ## Voice Companion (native macOS app)
 
-A separate native shell in [voice_companion/](voice_companion/) — a docked, hover-activated `NSPanel` that talks voice in, gets a real answer from the exact same router-mode backend this README describes (persona/tier classification, per-persona memory, every tool), and speaks back a short summary rather than reading a full answer verbatim. Swift/AppKit/SwiftUI, not Python; a real, compiling, launchable first pass — see [voice_companion/README.md](voice_companion/README.md) for what's live-verified versus what still needs an interactive first run (permission prompts a human has to click through) to confirm end to end.
+The native Swift app was archived: it is kept under the git tag `archive/voice-companion` and removed from `main`. tinyui is the supported interface; the Python menu bar helper (`hi --menubar`) adds the global hotkey and the island.
 
 ## Further Documentation
 
 - [docs/assistants.md](docs/assistants.md) — interface specification
-- [CLAUDE.md](CLAUDE.md) — memory system implementation notes
+- [docs/architecture.md](docs/architecture.md) — package layout and dependency rules
+- [MAKE.md](MAKE.md) — architecture plan and progress
+- [CLAUDE.md](CLAUDE.md) — working rules for this repo
 - [docs/TODO.md](docs/TODO.md) — implementation progress
-- [voice_companion/README.md](voice_companion/README.md) — native macOS voice companion app
-- [Details.pdf](Details.pdf) — the patent filing behind the memory/recall architecture (see [Architecture](#architecture))
+- [Details.pdf](docs/Details.pdf) — the patent filing behind the memory/recall architecture (see [Architecture](#architecture))

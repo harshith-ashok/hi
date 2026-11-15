@@ -21,7 +21,7 @@ from hi.capture.store import list_items
 import hi.config as config
 from hi.tracking.deadlines import get_deadlines
 
-# Updated by hi/ipc/server.py after every real /query response completes
+# Updated by hi/server/ after every real /query response completes
 # — the only way to report a genuine "last latency" number instead of a
 # fabricated one; None until at least one real query has happened this
 # process.

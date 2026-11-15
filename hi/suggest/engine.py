@@ -29,9 +29,9 @@ from langchain_core.tools import tool
 
 from hi.capture.schema import Task
 from hi.capture.store import list_items
-from hi.config import DIFF_WATCH_ENABLED, SMART_SUGGESTIONS_ENABLED
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model
+import hi.config as config
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model
 from hi.perception import diff_watch
 from hi.tracking.applications import due_follow_ups
 from hi.tracking.deadlines import get_deadlines
@@ -126,12 +126,12 @@ def _context_shift_suggestions() -> list[Suggestion]:
 def _diff_watch_suggestions() -> list[Suggestion]:
     """hi/perception/diff_watch.py's unchanged-screen state -> a gated
     Suggestion — only when the user has explicitly opted in
-    (DIFF_WATCH_ENABLED), since this is the one signal here with a
+    (config.DIFF_WATCH_ENABLED), since this is the one signal here with a
     genuinely different privacy posture (an interval screen watcher, not
     on-demand). Disabled means simply not surfaced, same as if nothing
     were detected — the watcher itself is never polled at all in that
     case (see run_suggest_daemon())."""
-    if not DIFF_WATCH_ENABLED:
+    if not config.DIFF_WATCH_ENABLED:
         return []
     minutes = diff_watch.unchanged_suggestion()
     if minutes is None:
@@ -157,7 +157,7 @@ def _smart_suggestions(deterministic: list[Suggestion]) -> list[Suggestion]:
     ANY failure here — a model error, a timeout, anything — degrades to
     "nothing extra to add" rather than breaking the unattended daemon
     loop that calls gather_suggestions() every cycle."""
-    if not SMART_SUGGESTIONS_ENABLED:
+    if not config.SMART_SUGGESTIONS_ENABLED:
         return []
     try:
         tasks = [t for t in list_items(kind="task") if isinstance(t, Task) and t.status == "pending"]

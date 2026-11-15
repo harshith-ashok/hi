@@ -26,7 +26,26 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool, tool
 
+from hi.core import health
+
 MAX_VISIBLE = 50
+
+# Tools that only work while an outside dependency is up. While it is marked down (hi/core/health.py)
+# the model isn't offered them, instead of calling a tool that is known to fail.
+SANDBOX_TOOLS = frozenset({"run_python", "run_python_file"})
+
+
+def required_dependency(tool_name: str) -> str | None:
+    from hi.host import HOST_TOOLS
+
+    if tool_name in SANDBOX_TOOLS:
+        return "sandbox"
+    return "host_bridge" if tool_name in HOST_TOOLS else None
+
+
+def dependency_is_up(tool_name: str) -> bool:
+    dep = required_dependency(tool_name)
+    return dep is None or health.is_up(dep)
 
 
 @dataclass(frozen=True)
@@ -213,7 +232,10 @@ class ToolSelector(AgentMiddleware):
 
     def wrap_model_call(self, request: ModelRequest, handler):
         active = self.active_groups(request.messages)
-        shown = [t for t in request.tools if t.name == "more_tools" or (t.name in self._tool_group and self._tool_group[t.name].name in active)]
+        shown = [
+            t for t in request.tools
+            if t.name == "more_tools" or (t.name in self._tool_group and self._tool_group[t.name].name in active and dependency_is_up(t.name))
+        ]
         # priority first, then the order tools are listed in their group, so a cap cuts the least important
         shown.sort(key=lambda t: self._rank(t.name))
         return handler(request.override(tools=shown[: MAX_VISIBLE + 1]))

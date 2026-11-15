@@ -1,0 +1,83 @@
+"""Condenses a full agent response into one short, speakable sentence for
+the voice companion app's TTS output (TODO.md Phase 5's "selective TTS":
+don't read code blocks/tables/tool logs aloud, and never read a long
+answer verbatim — reading out entire code blocks or long lists aloud is
+what makes voice assistants unusable in practice).
+
+Hard skip rules run first and unconditionally, before any model call:
+code fences and pipe-table rows are stripped from what could be spoken at
+all. If nothing speakable is left, no spoken summary is produced — the
+app should show text silently rather than force something misleading to
+be read aloud.
+
+**Always rewritten, not just condensed when long** (reported live: a
+mechanical action confirmation like "I opened www.youtube.com in Safari"
+was read completely literally — including the URL, dot by dot — because
+it was short enough to skip the old length-gated model call entirely).
+`SHORT_ANSWER_MAX_CHARS` used to mean "skip rewriting under this length";
+it's now only a fallback truncation if the rewrite call itself fails, and
+the rewrite always runs through get_tier_model_fast() (no reasoning) —
+this is a plain rewrite, not a judgment call that benefits from visible
+chain-of-thought, and reasoning-on here would add several seconds of
+dead air before TTS starts speaking, same latency cost this project has
+already found and fixed for other single-purpose classification/rewrite
+calls (hi/memory_graph.py, hi/router.py's classify()).
+"""
+
+from __future__ import annotations
+
+import re
+
+from langchain_core.messages import HumanMessage
+
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model_fast
+
+_CODE_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
+_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
+_WHITESPACE_RE = re.compile(r"\s+")
+
+# Fallback truncation length if the rewrite call fails outright — not a
+# "skip rewriting" threshold anymore (see module docstring).
+SHORT_ANSWER_MAX_CHARS = 220
+
+
+def _strip_unspeakable(text: str) -> str:
+    text = _CODE_FENCE_RE.sub(" ", text)
+    text = _TABLE_ROW_RE.sub(" ", text)
+    return _WHITESPACE_RE.sub(" ", text).strip()
+
+
+def _address_clause() -> str:
+    from hi import config
+
+    if not config.USER_ADDRESS:
+        return ""
+    return f' Address the listener as "{config.USER_ADDRESS}" once, naturally, like a butler.'
+
+
+def make_spoken_summary(full_text: str) -> str | None:
+    """Returns a short sentence to speak aloud, or None if there's
+    nothing safely speakable left (pure code/table, or an empty answer)."""
+    cleaned = _strip_unspeakable(full_text)
+    if not cleaned:
+        return None
+
+    model = get_tier_model_fast("haiku")
+    prompt = (
+        "Rewrite the following into what a voice assistant would say out "
+        "loud: ONE short sentence, two at most. Plain spoken English in "
+        "your own words, not a literal reading. State the outcome or "
+        "answer only — never narrate steps or tools (not \"I called "
+        "toggle_wifi\"). Round numbers and durations (\"about three "
+        "hours\", not \"2 hours 51 minutes\"); use first names or short "
+        "names. No markdown, code, lists, URLs or file paths — say what "
+        "they mean instead (\"YouTube is now open\", \"Wi-Fi is off\"). "
+        "If the text asks the user a question, say that question. If the "
+        "answer is long or detailed, say only the gist and add \"the "
+        "details are on screen\". Reply with only what is said, nothing "
+        "else." + _address_clause() + "\n\n"
+        f"{cleaned[:2000]}"
+    )
+    summary = invoke_with_retry(model, [HumanMessage(prompt)]).strip()
+    return summary or cleaned[:SHORT_ANSWER_MAX_CHARS]

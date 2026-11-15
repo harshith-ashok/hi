@@ -20,8 +20,8 @@ import threading
 
 from langchain_core.messages import HumanMessage
 
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model_fast
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model_fast
 
 MIN_CHARS = 12
 REWRITE_TIMEOUT_S = 2.0

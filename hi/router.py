@@ -5,11 +5,13 @@ and model without the user specifying a persona flag.
 
 from langchain_core.messages import HumanMessage
 
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model
-from hi.personas import PERSONAS
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model
 
 TIERS = ("haiku", "sonnet", "opus")
+# What the classifier chooses between. docs and web are narrower agents (forced from the UI or used by
+# the orchestrator), not routing targets: term already has their tools.
+ROUTABLE = ("butler", "term")
 
 PERSONA_DESCRIPTIONS = {
     "butler": (
@@ -20,20 +22,11 @@ PERSONA_DESCRIPTIONS = {
         "what's visually displayed on screen or in the browser right now "
         "— that's term."
     ),
-    "docs": (
-        "Strict, read-only search over the user's own Obsidian vault "
-        "notes — never answers from general knowledge. Questions about "
-        "what's written in the user's notes."
-    ),
-    "web": (
-        "Wikipedia search and summarization. General-knowledge lookup "
-        "questions not about the user's own data."
-    ),
     "term": (
         "Runs real shell commands in the user's terminal (filesystem/shell "
         "questions, running commands), and is also the general-purpose "
         "assistant with persistent memory (notes, people, dev-flow "
-        "launcher, remembering facts) and coding/project questions — the "
+        "launcher, remembering facts), searching the user's own notes, Wikipedia and general-knowledge lookups, and coding/project questions — the "
         "default choice when nothing else fits better. Also the ONLY "
         "persona that can visually read/describe what's actually "
         "displayed on screen right now or in the browser's current tab — "
@@ -81,7 +74,7 @@ def classify(prompt: str) -> tuple[str, str]:
     # this codebase.
     reply = invoke_with_retry(model, [HumanMessage(selection_prompt)]).lower()
 
-    persona = next((p for p in PERSONAS if p in reply), "term")
+    persona = next((p for p in ROUTABLE if p in reply), "term")
     tier = next((t for t in TIERS if t in reply), "sonnet")
     return persona, tier
 
@@ -97,8 +90,8 @@ _RULES: tuple[tuple[re.Pattern[str], str, str], ...] = tuple(
     for pattern, persona, tier in (
         (r"\b(on|in|from) my (screen|display|browser)\b|\b(my|this|the) screen\b|this error|current tab|\bwhat am i looking at\b", "term", "sonnet"),
         (r"\b(volume|wi-?fi|bluetooth|timers?|alarm|do not disturb|dnd|clipboard|brightness|apple music|playlist|now playing)\b|\b(pause|skip|resume)\b.*\b(music|song|track)\b|\bplay\b.*\b(song|album|music)\b|\b(resize|scale|shrink|enlarge|maximi[sz]e)\b.*\bwindow\b|\bwindow\b.*\b(size|width|height)\b", "butler", "haiku"),
-        (r"\b(my notes?|my vault|in my obsidian|what did i (write|note))\b", "docs", "sonnet"),
-        (r"\bwikipedia\b|\b(picture|photo|image|pic)s? of\b", "web", "haiku"),
+        (r"\b(my notes?|my vault|in my obsidian|what did i (write|note))\b", "term", "sonnet"),
+        (r"\bwikipedia\b|\b(picture|photo|image|pic)s? of\b", "term", "haiku"),
         (r"\b(python|plot|visuali[sz]e|matplotlib|regression|scikit|sklearn)\b", "term", "sonnet"),
         (r"\bgithub\b|\bpull requests?\b|\brepos?\b|\b(make|set)\b.*\b(private|public)\b", "term", "sonnet"),
     )
@@ -117,6 +110,13 @@ def fast_route(prompt: str) -> tuple[str, str] | None:
         if pattern.search(prompt):
             return persona, tier
     if _last_route and time.monotonic() - _last_route[2] < STICKY_SECONDS and len(prompt.split()) <= STICKY_MAX_WORDS:
+        return _last_route[0], _last_route[1]
+    return None
+
+
+def recent_route() -> tuple[str, str] | None:
+    """The last (persona, tier) if it was used within STICKY_SECONDS, else None."""
+    if _last_route and time.monotonic() - _last_route[2] < STICKY_SECONDS:
         return _last_route[0], _last_route[1]
     return None
 

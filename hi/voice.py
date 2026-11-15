@@ -8,7 +8,7 @@ personas that never touch voice input don't pay its load cost.
 import numpy as np
 import sounddevice as sd
 
-from hi.config import WHISPER_MODEL
+import hi.config as config
 
 SAMPLE_RATE = 16_000
 CHUNK_SECONDS = 0.1
@@ -26,7 +26,7 @@ def _get_model():
     if _model is None:
         from faster_whisper import WhisperModel
 
-        _model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
+        _model = WhisperModel(config.WHISPER_MODEL, device="cpu", compute_type="int8")
     return _model
 
 

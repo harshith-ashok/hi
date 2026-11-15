@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from hi.agents.persona_voice import voiced_prompt
 from hi.toolkit import ToolSelector
@@ -28,9 +27,7 @@ from hi.agents.butler.music import list_playlists, music_control, now_playing, p
 from hi.agents.butler.timers import cancel_timer, list_timers, set_timer
 from hi.agents.butler.todo import add_task, capture_note, complete_task, list_tasks, remove_task
 from hi.browser import open_url_in_browser
-from hi.chat_model import make_chat_model
-from hi.retry import retry_middleware
-from hi.config import KEEP_ALIVE, BUTLER_MODEL
+from hi.agents.base import make_agent
 from hi.host import passthrough
 from hi.mcp_install import configure_mcp_server, configure_n8n_server, list_available_mcp_servers
 
@@ -72,14 +69,7 @@ TOOLS = passthrough([
 
 
 def build_agent(model: BaseChatModel):
-    """Build a fresh butler agent bound to `model` — used directly below
-    for the default BUTLER_MODEL instance, and by hi/router.py to build one
-    on a router-selected tier instead."""
+    """Build a fresh butler agent bound to `model`."""
     selector = ToolSelector(TOOLS, persona_groups={"mac", "tasks", "mcp_setup"})
-    return create_agent(
-        model=model, tools=TOOLS + [selector.more_tools], system_prompt=voiced_prompt(PROMPT_PATH), middleware=[selector, retry_middleware()]
-    )
+    return make_agent(model, TOOLS, system_prompt=voiced_prompt(PROMPT_PATH), selector=selector)
 
-
-model = make_chat_model(BUTLER_MODEL, temperature=0, keep_alive=KEEP_ALIVE)
-agent = build_agent(model)

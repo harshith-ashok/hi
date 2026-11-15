@@ -22,7 +22,7 @@ from langchain_core.messages import HumanMessage
 
 import hi.config as config
 from hi import llm
-from hi.vault import context_dir
+from hi.memory.vault import context_dir
 
 MAX_UPLOAD_BYTES = 1_000_000_000  # 1 GB; streamed to disk, never held whole in memory
 MAX_TEXT_READ_BYTES = 5_000_000  # how much of a plain file is read as text
@@ -67,7 +67,7 @@ def _docx_text(data: bytes) -> str:
 
 def _describe_image(data: bytes, mime: str) -> str:
     try:
-        from hi.models import ensure_pulled
+        from hi.llm.registry import ensure_pulled
 
         ensure_pulled(config.VISION_MODEL)
         model = llm.build_chat_model(config.VISION_MODEL)

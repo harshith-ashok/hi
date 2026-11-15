@@ -50,14 +50,14 @@ from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 
-from hi.models import get_tier_model
+from hi.llm.registry import get_tier_model
 from hi.orchestrator import aggregator
 from hi.orchestrator.blackboard import checkpointer
 from hi.orchestrator.pending_actions import mark_orchestrated_active, mark_orchestrated_done
 from hi.orchestrator.planner import TaskSpec, plan_tasks
 from hi.orchestrator.subagent import build_shell_subagent, build_subagent
-from hi.retry import MAX_ATTEMPTS
-from hi.vault import conversations_dir, with_frontmatter
+from hi.llm.resilience import MAX_ATTEMPTS
+from hi.memory.vault import conversations_dir, with_frontmatter
 
 def _runs_dir():
     return conversations_dir() / "runs"

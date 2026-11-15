@@ -3,10 +3,9 @@
 # Optional settings go in a `.env` file next to this one:
 #   HI_VAULT=/path/to/your/obsidian/vault   (`hi` sets this from VAULT_PATH in ~/.hi/.env;
 #                                            without it the stack uses an empty Docker volume)
-#   AI_MODE=local|tailscale|openrouter   (also switchable in the UI's settings view)
+#   AI_MODE=local|tailscale   (also switchable in the UI's settings view)
 #   OLLAMA_HOST=http://host.docker.internal:11434
 #   TAILSCALE_OLLAMA_URL=http://my-desktop:11434
-#   OPENROUTER_API_KEY=sk-or-...
 #   GITHUB_PERSONAL_ACCESS_TOKEN=ghp_...   (`hi` copies it from ~/.hi/.env for you)
 #   HI_WEB_PORT=5173
 #   HI_HOST_ROOT=C:/Users/your-name   (your home folder; `hi` sets it, else USERPROFILE/HOME is used)
@@ -21,7 +20,6 @@ services:
       AI_MODE: ${AI_MODE:-local}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       TAILSCALE_OLLAMA_URL: ${TAILSCALE_OLLAMA_URL:-}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       VAULT_PATH: /vault
       USER_ADDRESS: ${USER_ADDRESS:-sir}            # how replies and speech address you ("" = off)
       MEMORY_EXTRACTION: ${MEMORY_EXTRACTION:-on}   # off = stop learning from turns

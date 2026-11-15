@@ -88,7 +88,7 @@ def find_image(query: str) -> str:
     Args:
         query: What to show, by full name, e.g. "Shah Rukh Khan" (not an abbreviation).
     """
-    from hi.vault import plots_dir
+    from hi.memory.vault import plots_dir
 
     try:
         title = json.loads(_get(f"{SEARCH_URL}?" + urllib.parse.urlencode(

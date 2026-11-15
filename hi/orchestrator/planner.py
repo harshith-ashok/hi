@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 
 from langchain_core.messages import HumanMessage
 
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model
 from hi.orchestrator.budget import default_tier, max_tasks
 from hi.orchestrator.subagent import ARCHETYPES, persona_tool_names
 from hi.personas import PERSONAS

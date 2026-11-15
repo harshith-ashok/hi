@@ -28,7 +28,7 @@ from langchain_core.tools import tool
 
 from hi.browser import open_url
 import hi.config as config
-from hi.frontmatter import dump_frontmatter, parse_frontmatter
+from hi.memory.frontmatter import dump_frontmatter, parse_frontmatter
 
 def _leetcode_dir():
     return config.VAULT_PATH / "hi" / "tasks" / "leetcode"

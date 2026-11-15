@@ -32,7 +32,7 @@ import importlib
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 
-from hi.retry import retry_middleware
+from hi.llm.resilience import retry_middleware
 
 _PERSONA_MODULES = {
     "term": "hi.agents.term.term",

@@ -22,8 +22,8 @@ from langchain_core.tools import tool
 from hi.capture.schema import Task
 from hi.capture.store import list_items
 from hi.context.weekday import todays_context_note
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model
 from hi.watchdogs.idle_repos import find_idle_repos
 
 _MAX_TASKS_FOR_SMART = 20  # cap what goes into the prompt — a real ceiling, not a guess

@@ -101,7 +101,7 @@ async function refreshStatus() {
   activeTasks.value = ((await getJson<{ status: string }[]>('/background')) ?? []).filter((t) => t.status === 'running').length
   const config = await fetchConfig()
   const mode = String(config?.AI_MODE ?? '')
-  host.value = mode === 'openrouter' ? mode : `${mode} · ${config?.[mode === 'tailscale' ? 'TAILSCALE_OLLAMA_URL' : 'OLLAMA_HOST']}`
+  host.value = `${mode} · ${config?.[mode === 'tailscale' ? 'TAILSCALE_OLLAMA_URL' : 'OLLAMA_HOST']}`
   model.value = String(config?.SONNET_MODEL ?? '')
 }
 
@@ -213,7 +213,7 @@ async function reply(text: string) {
   if (wake.value && mic.value === 'idle') recording?.stop() // don't transcribe our own voice
   try {
     await speak(text, (why) => {
-      if (!ttsWarned) note(`phonon tts failed (${why}) — using the browser voice`)
+      if (!ttsWarned) note(`voice offline (${why}) — showing text only`)
       ttsWarned = true
     }, undefined, lastPersona())
   } catch (err) {

@@ -9,7 +9,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from hi.action_tiers import confirm_destructive
-from hi.vault import knowledge_dir, with_frontmatter
+from hi.memory.vault import knowledge_dir, with_frontmatter
 
 def _people_dir():
     return knowledge_dir() / "people"

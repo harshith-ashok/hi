@@ -19,12 +19,20 @@ and why).
 
 from __future__ import annotations
 
+import logging
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+
 from langchain_core.messages import HumanMessage
 
-from hi.model_warmup import invoke_with_retry
-from hi.models import get_tier_model_fast
-from hi.personas import PERSONAS
-from hi.router import PERSONA_DESCRIPTIONS, TIER_DESCRIPTIONS, TIERS
+from hi.llm.resilience import invoke_with_retry
+from hi.llm.registry import get_tier_model_fast
+from hi import router
+from hi.router import PERSONA_DESCRIPTIONS, ROUTABLE, TIER_DESCRIPTIONS, TIERS
+
+log = logging.getLogger(__name__)
+
+CLASSIFY_TIMEOUT_S = 8.0  # the routing call must never hold up a turn for longer than this
+DEFAULT_ROUTE = ("term", "sonnet", False)
 
 
 def classify_with_plan(prompt: str) -> tuple[str, str, bool]:
@@ -69,7 +77,27 @@ def classify_with_plan(prompt: str) -> tuple[str, str, bool]:
     )
     reply = invoke_with_retry(model, [HumanMessage(selection_prompt)]).lower()
 
-    persona = next((p for p in PERSONAS if p in reply), "term")
+    persona = next((p for p in ROUTABLE if p in reply), "term")
     tier = next((t for t in TIERS if t in reply), "sonnet")
     needs_plan = "yes" in reply.split()
     return persona, tier, needs_plan
+
+
+def classify_or_default(prompt: str) -> tuple[str, str, bool]:
+    """`classify_with_plan`, but a slow or failing classification never blocks the turn.
+
+    Falls back to the last route if it is still fresh (so a short follow-up stays with the same
+    agent), else to term on the sonnet tier. If the model really is unreachable, the answer call
+    that follows reports the real error.
+    """
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="classify")
+    future = pool.submit(classify_with_plan, prompt)
+    pool.shutdown(wait=False)  # an abandoned slow call finishes on its own thread
+    try:
+        return future.result(timeout=CLASSIFY_TIMEOUT_S)
+    except FutureTimeout:
+        log.warning("routing took more than %.0fs; using the default route", CLASSIFY_TIMEOUT_S)
+    except Exception as e:  # boundary: routing is an optimisation, not a requirement
+        log.warning("routing failed (%s); using the default route", e)
+    last = router.recent_route()
+    return (*last, False) if last else DEFAULT_ROUTE
