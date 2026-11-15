@@ -32,9 +32,16 @@ desktop = [
     "pyobjc-framework-vision>=12.2",
     "sounddevice>=0.5.5",
 ]
+dev = [
+    "pytest>=8",
+]
 
 [tool.uv]
-default-groups = ["desktop"]
+default-groups = ["desktop", "dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::UserWarning:langchain_core.*"]
 
 [project.scripts]
 hi = "hi.cli:main"
