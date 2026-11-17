@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 CONCISE_STYLE = (
-    "\n\n(Answer in at most three short sentences of plain text: no headings, no lists, no preamble.)"
+    "\n\n(Answer in at most three short sentences of plain text: no headings, no lists, no preamble. Do not use the ask_user tool here: if you must ask, ask in one sentence.)"
 )
 REPORT_STYLE = (
     "\n\n(This is a background task and nobody is chatting with you. Write a report in Markdown. Start with a "

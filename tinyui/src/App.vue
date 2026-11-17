@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { BASE_URL, fetchConfig, fetchPending, fileAttachment, getJson, ping, resolvePending, type Pending } from './backend'
 import { useAttachments } from './attachments'
 import { useChat } from './chat'
@@ -361,6 +361,26 @@ const routeLine = computed(() => {
 })
 const [personaName, personaTier] = [(t: string) => t.split('/')[0], (t: string) => t.split('/')[1] ?? '']
 const zoomed = ref(new Set<number>())
+// ask_user: the assistant's clarifying questions arrive as a tool call; show them as a form, send the answers as the
+// next message (the conversation history keeps the original request in front of the assistant).
+const askAnswers = reactive<Record<number, string[]>>({})
+const asked = ref(new Set<number>())
+function questionsOf(e: { text: string }): string[] {
+  try {
+    const q = (JSON.parse(e.text) as { questions?: unknown }).questions
+    return Array.isArray(q) ? q.map(String).filter((s) => s.trim()) : []
+  } catch {
+    return [] // arguments still streaming, or not JSON: no form yet
+  }
+}
+function sendAnswers(e: { id: number; text: string }) {
+  const questions = questionsOf(e)
+  const answers = askAnswers[e.id] ?? []
+  const lines = questions.map((q, i) => `${i + 1}. ${q} ${(answers[i] ?? '').trim() || '(no answer, use your judgment)'}`)
+  asked.value.add(e.id)
+  submit(`Here are my answers:\n${lines.join('\n')}`)
+}
+
 async function fileIt(a: { id?: string; name: string }) {
   if (!a.id) return
   const out = await fileAttachment(a.id)
@@ -407,6 +427,15 @@ const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) :
               <div v-if="e.kind === 'user'" class="turn-user"><span class="who dim">you</span><p class="say">{{ e.text }}</p></div>
               <div v-else-if="e.kind === 'route'" class="who">
                 <b>{{ personaName(e.text) }}</b><span class="dim">{{ personaTier(e.text) }}</span>
+              </div>
+              <div v-else-if="e.kind === 'tool' && e.name === 'ask_user' && questionsOf(e).length" class="askform" role="group" aria-label="Questions from the assistant">
+                <span class="lbl">needs your answer</span>
+                <label v-for="(q, i) in questionsOf(e)" :key="i">
+                  <p>{{ q }}</p>
+                  <input v-model="(askAnswers[e.id] ??= [])[i]" class="field" :disabled="asked.has(e.id) || e.result === undefined" spellcheck="false" autocomplete="off"
+                    @keydown.enter.prevent="!asked.has(e.id) && sendAnswers(e)" />
+                </label>
+                <button class="btn primary" :disabled="asked.has(e.id) || busy" @click="sendAnswers(e)">{{ asked.has(e.id) ? 'Answered' : 'Answer' }}</button>
               </div>
               <div v-else-if="e.kind === 'tool'" class="step" :class="{ running: e.result === undefined, open: expanded.has(e.id) }">
                 <button class="stephead" :aria-expanded="expanded.has(e.id)" @click="toggle(expanded, e.id)">
@@ -531,6 +560,9 @@ const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) :
 .attached .aname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28ch; }
 .attached .astate { color: var(--dim); }
 .attached .failed .astate { color: var(--err); }
+.askform { border-left: 1px solid var(--ink); padding: 2px 0 2px 14px; margin: 8px 0; display: flex; flex-direction: column; gap: 10px; max-width: 64ch; }
+.askform label { display: grid; gap: 2px; }
+.askform p { font-weight: 600; }
 .attached .afile { color: var(--dim); text-decoration: underline; min-height: 28px; }
 .attached .afile:hover { color: var(--ink); }
 .attached .aremove { min-width: 28px; min-height: 28px; color: var(--dim); }

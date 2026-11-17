@@ -1,3 +1,4 @@
+from hi.agents.ask import ask_user
 from hi.agents.term.schedule_tools import SCHEDULE_TOOLS
 from hi.agents.web.search import web_search
 from hi.agents.web.tools import find_image, search_wikipedia
@@ -280,13 +281,14 @@ TOOLS = passthrough([
     run_python,
     run_python_file,
     *SCHEDULE_TOOLS,
+    ask_user,
 ])
 
 
 # Which tool groups (hi/toolkit.py) term offers; the rest belong to butler.
 TERM_GROUPS = {
     "core", "background", "devflow", "screen", "people", "history", "tracking", "insight",
-    "github", "github_admin", "browser", "browser_advanced", "obsidian", "sandbox", "web", "search", "fetch", "schedule",
+    "github", "github_admin", "browser", "browser_advanced", "obsidian", "sandbox", "web", "search", "fetch", "schedule", "ask",
 }
 
 # `## ` sections of term_prompt.md that only matter when a tool group is on offer.
