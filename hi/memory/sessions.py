@@ -111,10 +111,22 @@ def get(session_id: str) -> Session | None:
     return _load(_path(session_id)) if valid_id(session_id) else None
 
 
+EMPTY_GRACE_S = 600  # an untitled session with no turns is hidden once it is older than this
+
+
+def _abandoned(s: Session) -> bool:
+    """A chat that was created and never used: nothing in it and no name given."""
+    try:
+        age = (datetime.now() - datetime.fromisoformat(s.created)).total_seconds()
+    except ValueError:
+        return False
+    return s.turns == 0 and s.title_auto and age > EMPTY_GRACE_S
+
+
 def list_sessions(include_archived: bool = False) -> list[Session]:
-    """Pinned first, then most recently used."""
+    """Pinned first, then most recently used. Abandoned empty chats are left out."""
     folder = sessions_dir()
-    found = [s for p in folder.glob("*.md") if (s := _load(p)) and (include_archived or not s.archived)] if folder.exists() else []
+    found = [s for p in folder.glob("*.md") if (s := _load(p)) and (include_archived or not s.archived) and not _abandoned(s)] if folder.exists() else []
     found.sort(key=lambda s: s.updated, reverse=True)
     return sorted(found, key=lambda s: not s.pinned)  # a stable sort: pinned first, each group newest first
 

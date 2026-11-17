@@ -30,6 +30,13 @@ tinyui ──POST /query──▶ hi/server/routes/query.py
 | `hi/orchestrator` | plan -> DAG of scoped subagents, approval queue | agents, llm, memory |
 | `hi/server` | HTTP routes, the turn pipeline | everything below |
 
+## Chat sessions
+
+A chat is a session: a note in `hi/sessions/` plus the turns in the transcript tagged with its id (`hi/memory/sessions.py`,
+`hi/memory/transcript.py`). `POST /query` takes `session` and `visualize`; each session gets its own agent. With
+`visualize` a Mermaid diagram of the answer is drawn after it streams (`hi/visuals.py`). Routes: `/sessions`, `/visual`.
+Decisions: [adr/0003-tinyui-redesign.md](adr/0003-tinyui-redesign.md).
+
 ## Background work
 
 Runs nobody asked for (schedules, the heartbeat, the drop folder) go through `hi/server/headless.py`: the same turn

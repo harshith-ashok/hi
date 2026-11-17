@@ -161,38 +161,51 @@ def _stream_query_as_agui(
     tool_starts: dict[str, tuple[str, float]] = {}
     tool_times: list[dict] = []
     journal_tools: dict[str, dict] = {}  # call id -> {name, args, result}, for the journal
-    for event in events:
-        now = time.monotonic()
-        if first_token_s is None and isinstance(event, ag.TextMessageContentEvent):
-            first_token_s = now - started
-        if speaks and isinstance(event, ag.TextMessageContentEvent) and not event.subagent_run_id:
-            speaker.feed(event.delta)
-        if isinstance(event, ag.ToolCallStartEvent):
-            journal_tools[event.tool_call_id] = {"name": event.tool_call_name, "args": "", "result": ""}
-        elif isinstance(event, ag.ToolCallArgsEvent) and event.tool_call_id in journal_tools:
-            journal_tools[event.tool_call_id]["args"] += event.delta
-        elif isinstance(event, ag.ToolCallResultEvent) and event.tool_call_id in journal_tools:
-            journal_tools[event.tool_call_id]["result"] = str(event.content)
-        if isinstance(event, ag.ToolCallStartEvent):
-            speaker.block_ended_by_tool()
-            tool_starts[event.tool_call_id] = (event.tool_call_name, now)
-        elif isinstance(event, ag.ToolCallResultEvent) and event.tool_call_id in tool_starts:
-            name, began = tool_starts.pop(event.tool_call_id)
-            tool_times.append({"name": name, "s": round(now - began, 2)})
-        if isinstance(event, ag.RunFinishedEvent) and isinstance(event.result, str):
-            final_answer = event.result
-        elif isinstance(event, ag.RunErrorEvent):
-            run_error = event.message
-        yield event
-        for line in speaker.ready():
-            yield ag.CustomEvent(name="spoken_chunk", value={"text": line})
+    streamed: list[str] = []  # the answer so far, in case the client stops the reply
+    try:
+        for event in events:
+            now = time.monotonic()
+            if first_token_s is None and isinstance(event, ag.TextMessageContentEvent):
+                first_token_s = now - started
+            if isinstance(event, ag.TextMessageContentEvent) and not event.subagent_run_id:
+                streamed.append(event.delta)
+                if speaks:
+                    speaker.feed(event.delta)
+            if isinstance(event, ag.ToolCallStartEvent):
+                journal_tools[event.tool_call_id] = {"name": event.tool_call_name, "args": "", "result": ""}
+            elif isinstance(event, ag.ToolCallArgsEvent) and event.tool_call_id in journal_tools:
+                journal_tools[event.tool_call_id]["args"] += event.delta
+            elif isinstance(event, ag.ToolCallResultEvent) and event.tool_call_id in journal_tools:
+                journal_tools[event.tool_call_id]["result"] = str(event.content)
+            if isinstance(event, ag.ToolCallStartEvent):
+                speaker.block_ended_by_tool()
+                tool_starts[event.tool_call_id] = (event.tool_call_name, now)
+            elif isinstance(event, ag.ToolCallResultEvent) and event.tool_call_id in tool_starts:
+                name, began = tool_starts.pop(event.tool_call_id)
+                tool_times.append({"name": name, "s": round(now - began, 2)})
+            if isinstance(event, ag.RunFinishedEvent) and isinstance(event.result, str):
+                final_answer = event.result
+            elif isinstance(event, ag.RunErrorEvent):
+                run_error = event.message
+            yield event
+            for line in speaker.ready():
+                yield ag.CustomEvent(name="spoken_chunk", value={"text": line})
+
+    except GeneratorExit:
+        # The client pressed Stop (or went away). Keep what was said: a stopped turn stays in its chat session.
+        records.record_turn(records.TurnRecord(
+            log_persona, tier, text, "".join(streamed), list(journal_tools.values()), time.monotonic() - started,
+            needs_plan, error=records.STOPPED, origin=origin, session=session,
+        ))
+        raise
 
     for line in speaker.finish():
         yield ag.CustomEvent(name="spoken_chunk", value={"text": line})
 
     visual = ""
-    if visualize and final_answer and origin in ("ui", "voice"):
-        # Forced visualization: draw the answer after it has streamed. The chat shows "drawing" until this arrives.
+    if visualize and final_answer and origin in ("ui", "voice") and "```mermaid" not in final_answer:
+        # Forced visualization: draw the answer after it has streamed (unless the answer already has a diagram of its
+        # own). The chat shows "drawing" until this arrives.
         yield ag.CustomEvent(name="phase", value={"name": "visualizing", "state": "start"})
         visual = make_visual(text, final_answer) or ""
         yield ag.CustomEvent(name="visual", value={"mermaid": visual})

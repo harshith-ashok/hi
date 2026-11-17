@@ -1,7 +1,7 @@
 // Talks to `hi --voice-daemon` (hi/ipc/server.py). One POST per query,
 // streamed back as AG-UI SSE and parsed by hand (EventSource can't POST).
 
-export const BASE_URL = 'http://127.0.0.1:8765'
+export const BASE_URL: string = import.meta.env.VITE_HI_BACKEND ?? 'http://127.0.0.1:8765' // the override is for testing
 
 // Sent on every request that changes something. A browser only sends a custom header after a CORS preflight, which the
 // backend answers for tinyui's own origin only, so another web page cannot approve or delete anything.
@@ -65,6 +65,15 @@ export async function getHealth<T>(): Promise<T | null> {
   }
 }
 
+export async function patchJson<T>(path: string, body: unknown): Promise<T | null> {
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...CLIENT }, body: JSON.stringify(body) })
+    return res.ok ? ((await res.json()) as T) : null
+  } catch {
+    return null
+  }
+}
+
 export const fileAttachment = (id: string) => postJson<{ queued: string }>(`/context/${id}/file`)
 
 export type Config = Record<string, string | boolean | string[]>
@@ -112,11 +121,19 @@ export async function uploadContext(file: Blob, name: string, kind = ''): Promis
   return body
 }
 
-export async function* streamQuery(text: string, persona: string | null, signal: AbortSignal, attachments: string[] = []): AsyncGenerator<AguiEvent> {
+export interface QueryOptions { attachments?: string[]; session?: string; visualize?: boolean }
+
+export async function* streamQuery(text: string, persona: string | null, signal: AbortSignal, options: QueryOptions = {}): AsyncGenerator<AguiEvent> {
   const res = await fetch(`${BASE_URL}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, persona: persona ?? undefined, attachments: attachments.length ? attachments : undefined }),
+    body: JSON.stringify({
+      text,
+      persona: persona ?? undefined,
+      attachments: options.attachments?.length ? options.attachments : undefined,
+      session: options.session || undefined,
+      visualize: options.visualize || undefined,
+    }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`backend returned ${res.status} — is \`hi --voice-daemon\` running?`)
@@ -140,3 +157,7 @@ export async function* streamQuery(text: string, persona: string | null, signal:
     }
   }
 }
+
+/** A Mermaid diagram of an answer (null when there is nothing to draw). `error` asks for a fix of a diagram that failed to parse. */
+export const drawVisual = (question: string, answer: string, error = '') =>
+  postJson<{ mermaid: string | null }>('/visual', { question, answer, error })

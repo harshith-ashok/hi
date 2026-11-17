@@ -22,6 +22,8 @@ from hi.memory import extraction, journal, sessions, transcript, vault
 
 log = logging.getLogger(__name__)
 
+STOPPED = "stopped"  # the error text of a turn the user stopped; not a failure
+
 
 @dataclass
 class TurnRecord:
@@ -52,6 +54,8 @@ def _conversation(rec: TurnRecord) -> None:
 
 
 def _journal(rec: TurnRecord) -> None:
+    if rec.error == STOPPED:
+        return
     if rec.error:
         journal.record_event("error", f"{rec.ask[:120]} — {rec.error}")
     elif rec.answer:

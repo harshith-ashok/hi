@@ -315,3 +315,89 @@ def test_each_session_gets_its_own_agent_and_the_cache_is_bounded(monkeypatch):
         turn_module._get_agent("term", "sonnet", session=f"x{i}")
     assert len(turn_module._agent_cache) == turn_module.MAX_CACHED_AGENTS
     turn_module._agent_cache.clear()
+
+
+def test_an_answer_that_already_has_a_diagram_is_not_drawn_again(tmp_vault, monkeypatch):
+    from fakes import Scripted
+    from langchain_core.messages import AIMessage
+
+    from hi.agents.base import make_agent
+    from hi.server import turn as turn_module
+
+    answer = "Here is the flow:\n\n```mermaid\nflowchart TD\n A-->B\n```\n"
+    agent = make_agent(Scripted(messages=iter([AIMessage(answer)])), [])
+    monkeypatch.setattr(turn_module, "_get_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(turn_module, "fast_route", lambda text: ("term", "sonnet"))
+    monkeypatch.setattr(turn_module.reflection_agent, "maybe_reflect_yesterday", lambda: None)
+    monkeypatch.setattr(turn_module, "make_visual", lambda q, a: pytest.fail("drew a second diagram"))
+    monkeypatch.setattr(turn_module, "make_spoken_summary", lambda a: None)
+    events = list(turn_module.stream_query_as_agui("explain", visualize=True))
+    assert not any(e.type == "CUSTOM" and e.name in ("visual", "phase") for e in events)
+
+
+# --- stopping a reply ----------------------------------------------------------------------------------------------
+
+def _stream_stub(monkeypatch, deltas):
+    from ag_ui.core import events as ag
+
+    from hi.server import turn as turn_module
+
+    def fake_agent_stream(agent, text, thread_id, history=None):
+        yield ag.RunStartedEvent(thread_id="t", run_id="r")
+        yield ag.TextMessageStartEvent(message_id="m")
+        for d in deltas:
+            yield ag.TextMessageContentEvent(message_id="m", delta=d)
+        yield ag.RunFinishedEvent(thread_id="t", run_id="r", result="".join(deltas))
+
+    monkeypatch.setattr(turn_module, "stream_agent_as_agui", fake_agent_stream)
+    monkeypatch.setattr(turn_module, "_get_agent", lambda *a, **k: object())
+    monkeypatch.setattr(turn_module, "fast_route", lambda text: ("term", "sonnet"))
+    monkeypatch.setattr(turn_module.reflection_agent, "maybe_reflect_yesterday", lambda: None)
+    monkeypatch.setattr(turn_module, "make_spoken_summary", lambda a: None)
+    return turn_module
+
+
+def test_a_stopped_reply_is_kept_in_its_session_with_what_was_said(tmp_vault, monkeypatch):
+    turn_module = _stream_stub(monkeypatch, ["Hello ", "wor", "ld, this ", "is long"])
+    sid = sessions.create().id
+    stream = turn_module.stream_query_as_agui("say something long", session=sid)
+    for event in stream:  # read until two pieces of the answer have arrived, then press Stop
+        if event.type == "TEXT_MESSAGE_CONTENT" and event.delta == "wor":
+            break
+    stream.close()
+    (saved,) = transcript.session_turns(sid)
+    assert saved["ask"] == "say something long" and saved["answer"] == "Hello wor" and saved["error"] == "stopped"
+    assert sessions.get(sid).turns == 1 and sessions.get(sid).title == "say something long"
+
+
+def test_a_stopped_reply_is_not_journaled_as_a_failure_or_learned_from(tmp_vault, monkeypatch):
+    turn_module = _stream_stub(monkeypatch, ["a", "b", "c"])
+    sid = sessions.create().id
+    stream = turn_module.stream_query_as_agui("go", session=sid)
+    next(stream)
+    stream.close()
+    assert not (tmp_vault / "hi" / "journal").exists() or "error" not in next((tmp_vault / "hi" / "journal").glob("*.md")).read_text()
+
+
+def test_a_finished_reply_is_recorded_once(tmp_vault, monkeypatch):
+    turn_module = _stream_stub(monkeypatch, ["all ", "done"])
+    sid = sessions.create().id
+    list(turn_module.stream_query_as_agui("go", session=sid))
+    (saved,) = transcript.session_turns(sid)
+    assert saved["answer"] == "all done" and saved["error"] == ""
+
+
+def test_an_untitled_empty_chat_disappears_after_a_while_but_a_new_one_stays(tmp_vault):
+    from datetime import datetime, timedelta
+
+    fresh = sessions.create()
+    old = sessions.create()
+    s = sessions.get(old.id)
+    s.created = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
+    sessions._write(s)
+    named = sessions.create("Kept on purpose")
+    s = sessions.get(named.id)
+    s.created = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
+    sessions._write(s)
+    ids = {x.id for x in sessions.list_sessions()}
+    assert fresh.id in ids and named.id in ids and old.id not in ids
