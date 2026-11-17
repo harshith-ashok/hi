@@ -3,6 +3,7 @@
     core                     imports nothing else in hi
     llm                      core, config
     memory                   core, config, llm
+    automation               core, config, llm, memory, host (the Mac bridge client), context and the helpers it reads
     everything but cli/server  never imports hi.server
 """
 
@@ -17,6 +18,8 @@ ALLOWED = {
     "core": set(),
     "llm": {"core", "config"},
     "memory": {"core", "config", "llm"},
+    # Never `server`: the server hands automation its `run_turn` when jobs start (hi/startup.py).
+    "automation": {"core", "config", "llm", "memory", "host", "context", "capture", "tracking", "watchdogs", "perception", "attachments"},
 }
 
 

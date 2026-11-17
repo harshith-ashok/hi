@@ -1,7 +1,11 @@
 // Talks to `hi --voice-daemon` (hi/ipc/server.py). One POST per query,
 // streamed back as AG-UI SSE and parsed by hand (EventSource can't POST).
 
-export const BASE_URL = 'http://127.0.0.1:8765'
+export const BASE_URL: string = import.meta.env.VITE_HI_BACKEND ?? 'http://127.0.0.1:8765' // the override is for testing
+
+// Sent on every request that changes something. A browser only sends a custom header after a CORS preflight, which the
+// backend answers for tinyui's own origin only, so another web page cannot approve or delete anything.
+const CLIENT = { 'X-Hi-Client': 'tinyui' }
 
 export interface AguiEvent {
   type: string
@@ -33,7 +37,7 @@ export async function postJson<T>(path: string, body: unknown = {}): Promise<T |
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...CLIENT },
       body: JSON.stringify(body),
     })
     if (!res.ok) return null
@@ -44,9 +48,50 @@ export async function postJson<T>(path: string, body: unknown = {}): Promise<T |
   }
 }
 
+export async function deleteJson(path: string): Promise<boolean> {
+  try {
+    return (await fetch(`${BASE_URL}${path}`, { method: 'DELETE', headers: CLIENT })).ok
+  } catch {
+    return false
+  }
+}
+
+// /health answers 503 with a body when an essential is down; the body is what the strip shows.
+export async function getHealth<T>(): Promise<T | null> {
+  try {
+    return (await (await fetch(`${BASE_URL}/health`)).json()) as T
+  } catch {
+    return null
+  }
+}
+
+export async function patchJson<T>(path: string, body: unknown): Promise<T | null> {
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...CLIENT }, body: JSON.stringify(body) })
+    return res.ok ? ((await res.json()) as T) : null
+  } catch {
+    return null
+  }
+}
+
+export const fileAttachment = (id: string) => postJson<{ queued: string }>(`/context/${id}/file`)
+
 export type Config = Record<string, string | boolean | string[]>
 export const fetchConfig = (mode?: string) => getJson<Config>(`/config${mode ? `?mode=${mode}` : ''}`)
 export const saveConfig = (fields: Record<string, string>) => postJson<{ updated: string[]; note: string }>('/config', fields)
+// Like saveConfig, but says why a save was refused (for example a hosted vision model with screenshot watching).
+export async function saveConfigChecked(fields: Record<string, string>): Promise<{ ok: boolean; message: string }> {
+  try {
+    const res = await fetch(`${BASE_URL}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...CLIENT },
+      body: JSON.stringify(fields),
+    })
+    return { ok: res.ok, message: res.ok ? 'saved' : ((await res.text()) || `failed (${res.status})`) }
+  } catch {
+    return { ok: false, message: 'backend unreachable' }
+  }
+}
 export const fetchModels = (mode: string, host = '') =>
   getJson<Models>(`/models?mode=${mode}${host ? `&host=${encodeURIComponent(host)}` : ''}`)
 export const fetchVoices = () => getJson<{ voices: string[]; error: string }>('/tts/voices')
@@ -76,11 +121,20 @@ export async function uploadContext(file: Blob, name: string, kind = ''): Promis
   return body
 }
 
-export async function* streamQuery(text: string, persona: string | null, signal: AbortSignal, attachments: string[] = []): AsyncGenerator<AguiEvent> {
+export interface QueryOptions { attachments?: string[]; session?: string; visualize?: boolean; tier?: string }
+
+export async function* streamQuery(text: string, persona: string | null, signal: AbortSignal, options: QueryOptions = {}): AsyncGenerator<AguiEvent> {
   const res = await fetch(`${BASE_URL}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, persona: persona ?? undefined, attachments: attachments.length ? attachments : undefined }),
+    body: JSON.stringify({
+      text,
+      persona: persona ?? undefined,
+      attachments: options.attachments?.length ? options.attachments : undefined,
+      session: options.session || undefined,
+      visualize: options.visualize || undefined,
+      tier: options.tier && options.tier !== 'auto' ? options.tier : undefined, // fast, balanced or deep; omitted = the router chooses
+    }),
     signal,
   })
   if (!res.ok || !res.body) throw new Error(`backend returned ${res.status} — is \`hi --voice-daemon\` running?`)
@@ -104,3 +158,7 @@ export async function* streamQuery(text: string, persona: string | null, signal:
     }
   }
 }
+
+/** A Mermaid diagram of an answer (null when there is nothing to draw). `error` asks for a fix of a diagram that failed to parse. */
+export const drawVisual = (question: string, answer: string, error = '') =>
+  postJson<{ mermaid: string | null }>('/visual', { question, answer, error })

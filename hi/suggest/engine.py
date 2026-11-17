@@ -27,17 +27,15 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 
+from hi.automation import signals
 from hi.capture.schema import Task
 from hi.capture.store import list_items
 import hi.config as config
 from hi.llm.resilience import invoke_with_retry
 from hi.llm.registry import get_tier_model
 from hi.perception import diff_watch
-from hi.tracking.applications import due_follow_ups
-from hi.tracking.deadlines import get_deadlines
 from hi.tracking.leetcode import todays_log
 from hi.watchdogs import context_shift
-from hi.watchdogs.idle_repos import find_idle_repos
 
 DEFAULT_INTERVAL_SECONDS = 30 * 60
 DEADLINE_WINDOW_DAYS = 2
@@ -54,37 +52,16 @@ class Suggestion:
     message: str
 
 
-def _parse_date(value: str) -> datetime | None:
-    for fmt in _DATE_FORMATS:
-        try:
-            return datetime.strptime(value, fmt)
-        except ValueError:
-            continue
-    return None
+def _as_suggestions(found: list[signals.Signal]) -> list[Suggestion]:
+    return [Suggestion(key=sig.key, message=sig.text) for sig in found]
 
 
 def _idle_repo_suggestions() -> list[Suggestion]:
-    return [
-        Suggestion(
-            key=f"idle:{f.project}",
-            message=f"'{f.project}' has been idle {f.days_idle} days with {f.open_task_count} open task(s).",
-        )
-        for f in find_idle_repos()
-    ]
+    return _as_suggestions(signals.idle_repos())
 
 
 def _deadline_suggestions(window_days: int = DEADLINE_WINDOW_DAYS) -> list[Suggestion]:
-    suggestions = []
-    for d in get_deadlines():
-        parsed = _parse_date(d.due)
-        if parsed is None:
-            continue
-        days_until = (parsed.date() - date.today()).days
-        if 0 <= days_until <= window_days:
-            suggestions.append(
-                Suggestion(key=f"deadline:{d.source}", message=f"'{d.title}' is due {d.due} ({days_until}d).")
-            )
-    return suggestions
+    return _as_suggestions(signals.deadlines(window_days))
 
 
 def _leetcode_suggestion() -> list[Suggestion]:
@@ -99,10 +76,7 @@ def _leetcode_suggestion() -> list[Suggestion]:
 
 
 def _application_suggestions() -> list[Suggestion]:
-    return [
-        Suggestion(key=f"application:{a.slug}", message=f"Follow up on '{a.target}' — no update since {a.date_sent}.")
-        for a in due_follow_ups()
-    ]
+    return _as_suggestions(signals.applications())
 
 
 def _context_shift_suggestions() -> list[Suggestion]:
@@ -124,24 +98,9 @@ def _context_shift_suggestions() -> list[Suggestion]:
 
 
 def _diff_watch_suggestions() -> list[Suggestion]:
-    """hi/perception/diff_watch.py's unchanged-screen state -> a gated
-    Suggestion — only when the user has explicitly opted in
-    (config.DIFF_WATCH_ENABLED), since this is the one signal here with a
-    genuinely different privacy posture (an interval screen watcher, not
-    on-demand). Disabled means simply not surfaced, same as if nothing
-    were detected — the watcher itself is never polled at all in that
-    case (see run_suggest_daemon())."""
-    if not config.DIFF_WATCH_ENABLED:
-        return []
-    minutes = diff_watch.unchanged_suggestion()
-    if minutes is None:
-        return []
-    return [
-        Suggestion(
-            key=f"diff-watch:{date.today().isoformat()}",
-            message=f"Your screen has looked the same for {minutes}+ minutes — still stuck, or just reading?",
-        )
-    ]
+    """The screen-unchanged watcher's state as a gated Suggestion, only for users who opted in
+    (config.DIFF_WATCH_ENABLED): an interval screen watcher has a different privacy posture than on-demand tools."""
+    return _as_suggestions(signals.diff_watch())
 
 
 _NOTHING_MARKER = "NOTHING"
@@ -229,25 +188,11 @@ def _notify(message: str) -> None:
     inbox.deliver(message)
 
 
-MAX_NOTIFICATIONS_PER_HOUR = 3
-BUDGET_PATH = STATE_PATH.with_name("notify_times.json")
-
-
 def _budget_left() -> int:
-    """Notifications still allowed in the last hour (interruption budget)."""
-    try:
-        times = json.loads(BUDGET_PATH.read_text())
-    except (OSError, json.JSONDecodeError):
-        times = []
-    recent = [t for t in times if time.time() - t < 3600]
-    BUDGET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    BUDGET_PATH.write_text(json.dumps(recent))
-    return max(0, MAX_NOTIFICATIONS_PER_HOUR - len(recent))
+    """Notifications still allowed in the last hour: one budget shared by every sender (hi/context/inbox.py)."""
+    from hi.context import inbox
 
-
-def _record_notification() -> None:
-    times = json.loads(BUDGET_PATH.read_text()) if BUDGET_PATH.exists() else []
-    BUDGET_PATH.write_text(json.dumps(times + [time.time()]))
+    return inbox.budget_left()
 
 
 def run_once(notify: bool = True) -> list[Suggestion]:
@@ -262,8 +207,7 @@ def run_once(notify: bool = True) -> list[Suggestion]:
         # Over budget: leave the rest un-recorded so they surface later.
         fresh = fresh[: _budget_left()]
         for s in fresh:
-            _notify(s.message)
-            _record_notification()
+            _notify(s.message)  # the gate records it against the shared budget
     _save_notified(already_notified | {s.key for s in fresh})
     return fresh
 
@@ -282,6 +226,8 @@ def run_suggest_daemon(interval_seconds: int = DEFAULT_INTERVAL_SECONDS) -> None
         context_shift.POLL_INTERVAL_SECONDS,
         diff_watch.POLL_INTERVAL_SECONDS if DIFF_WATCH_ENABLED else context_shift.POLL_INTERVAL_SECONDS,
     )
+    print("[deprecated] the heartbeat (HEARTBEAT=on, hi/automation/heartbeat.py) now prepares work from the same "
+          "signals. This daemon will be removed.", flush=True)
     print(
         f"Suggestion engine running, checking every {interval_seconds}s "
         f"(context-shift polled every {context_shift.POLL_INTERVAL_SECONDS}s"

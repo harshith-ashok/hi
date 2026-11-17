@@ -72,8 +72,9 @@ def top_processes(n: int = 5) -> list[str]:
 
 def local_model_ok() -> bool:
     """Screen text may only reach a model running on the user's own hardware."""
-    models = [config.HAIKU_MODEL]
-    return not any("cloud" in m for m in models)
+    from hi.llm.registry import is_local
+
+    return is_local("haiku")
 
 
 def summarize(app: str, title: str, screen: str) -> str:

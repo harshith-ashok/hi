@@ -1,4 +1,10 @@
+from hi.agents.ask import ask_user
+from hi.agents.term.schedule_tools import SCHEDULE_TOOLS
+from hi.agents.web.search import web_search
 from hi.agents.web.tools import find_image, search_wikipedia
+from hi.imagegen import generate_image
+from hi.scene3d import render_3d
+from hi.ui_spec import show_ui
 from hi.visualise import visualise
 import os
 import subprocess
@@ -217,9 +223,12 @@ TOOLS = passthrough([
     current_context,
     pause_screen_context,
     resume_screen_context,
+    web_search,
     search_wikipedia,
     find_image,
     visualise,
+    render_3d,
+    generate_image,
     search_vault,
     read_vault_note,
     run_shell_command,
@@ -276,13 +285,16 @@ TOOLS = passthrough([
     set_repo_visibility,
     run_python,
     run_python_file,
+    *SCHEDULE_TOOLS,
+    ask_user,
+    show_ui,
 ])
 
 
 # Which tool groups (hi/toolkit.py) term offers; the rest belong to butler.
 TERM_GROUPS = {
     "core", "background", "devflow", "screen", "people", "history", "tracking", "insight",
-    "github", "github_admin", "browser", "browser_advanced", "obsidian", "sandbox", "web",
+    "github", "github_admin", "browser", "browser_advanced", "obsidian", "sandbox", "web", "search", "fetch", "schedule", "ask", "show_ui", "render3d", "imagegen",
 }
 
 # `## ` sections of term_prompt.md that only matter when a tool group is on offer.
@@ -290,7 +302,7 @@ PROMPT_SECTION_GROUPS = {
     "Dev flows": "devflow", "Resuming work": "devflow", "Dev-server health": "background",
     "Deadlines": "tracking", "LeetCode": "tracking", "Applications": "tracking", "Team ops": "tracking",
     "Pipelines": "tracking", "Code execution and ML": "sandbox", "What to work on": "insight", "GitHub": "github",
-    "Perception (browser tab / screen OCR / screen vision)": "screen", "People": "people", "Web lookups": "web",
+    "Perception (browser tab / screen OCR / screen vision)": "screen", "People": "people", "Web lookups": "search", "Scheduling": "schedule", "3D objects": "render3d", "Image generation": "imagegen", "Interactive UI": "show_ui",
 }
 
 PREFERENCES_PATH = "preferences.md"

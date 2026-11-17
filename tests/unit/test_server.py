@@ -91,7 +91,7 @@ def test_files_are_downloads_not_pages(client, tmp_vault):
 
 def test_pending_approvals(client):
     assert client.get("/pending").json() == []
-    assert client.post("/pending/nope/approve").status_code == 404
+    assert client.post("/pending/nope/approve", headers={"X-Hi-Client": "test"}).status_code == 404
 
 
 def test_agent_routes_are_not_shadowed_by_the_run_id_route(client, monkeypatch):
@@ -129,7 +129,7 @@ def test_upload_streams_the_body_to_attachments_save(client, monkeypatch):
     assert r.json()["id"] == "abc" and seen == {"name": "notes.txt", "data": b"hello", "size": 5, "kind": "audio"}
 
 
-def fake_events(text, forced_persona=None, fresh=False, context=""):
+def fake_events(text, forced_persona=None, fresh=False, context="", origin="ui", forced_tier=None, session="", visualize=False):
     yield ag.RunStartedEvent(thread_id="t", run_id="r")
     yield ag.CustomEvent(name="persona_selected", value={"name": "term", "tier": "sonnet", "plan": False, "echo": text})
     yield ag.RunFinishedEvent(thread_id="t", run_id="r", result="done")

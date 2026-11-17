@@ -41,7 +41,7 @@ HOST_ENV_PATH = Path("/run/hi-host.env")
 HOST_ENV_KEYS = (
     "GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN",
     "TAILSCALE_OLLAMA_URL", "HOST_BRIDGE_TOKEN", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
-    "TTS_BACKEND", "AI_MODE",
+    "TTS_BACKEND", "AI_MODE", "IMAGE_API_KEY",
 )
 _host_env = {k: v for k, v in _parse_env(HOST_ENV_PATH).items() if k in HOST_ENV_KEYS}
 _env = {**os.environ, **_host_env, **_parse_env(ENV_PATH)}
@@ -194,6 +194,121 @@ DIFF_WATCH_ENABLED = _env.get("DIFF_WATCH_ENABLED", "").strip().lower() in ("1",
 SMART_SUGGESTIONS_ENABLED = _env.get("SMART_SUGGESTIONS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
+# --- Automation (hi/automation/): web search, scheduled tasks, the heartbeat, the drop folder -----------------
+def _flag(name: str, default: bool) -> bool:
+    value = (_env.get(name) or "").strip().lower()
+    return default if not value else value in ("1", "true", "yes", "on")
+
+
+def _number(name: str, default: float) -> float:
+    try:
+        return float(_env.get(name) or default)
+    except ValueError:
+        return float(default)
+
+
+# Image generation (hi/imagegen.py): "service" = the `imagegen` service in this repo (Z-Image-Turbo or FLUX.2 klein), "openai" =
+# any OpenAI-compatible images endpoint (set IMAGE_API_KEY), "off" = no image generation.
+IMAGE_BACKEND = (_env.get("IMAGE_BACKEND") or "service").lower()
+IMAGE_URL = _env.get("IMAGE_URL") or ""  # blank: image_url() picks one
+IMAGE_PORT = 8790
+IMAGE_MODEL = _env.get("IMAGE_MODEL") or "Tongyi-MAI/Z-Image-Turbo"
+IMAGE_API_KEY = _env.get("IMAGE_API_KEY") or ""
+
+
+def image_url() -> str:
+    """Where the image service is: IMAGE_URL if set; in tailscale mode the Ollama box on port 8790 (the GPU is there);
+    else the compose `imagegen` service (IMAGE_URL_DEFAULT) or this machine."""
+    if IMAGE_URL:
+        return IMAGE_URL.rstrip("/")
+    if AI_MODE == "tailscale" and TAILSCALE_OLLAMA_URL:
+        from urllib.parse import urlsplit
+
+        host = urlsplit(TAILSCALE_OLLAMA_URL if "//" in TAILSCALE_OLLAMA_URL else f"//{TAILSCALE_OLLAMA_URL}").hostname
+        if host:
+            return f"http://{host}:{IMAGE_PORT}"
+    return (_env.get("IMAGE_URL_DEFAULT") or f"http://127.0.0.1:{IMAGE_PORT}").rstrip("/")
+# SearXNG, the private search engine (the `searxng` compose service; natively, publish it on 8888).
+SEARXNG_URL = _env.get("SEARXNG_URL") or "http://127.0.0.1:8888"
+SEARXNG_SECRET = _env.get("SEARXNG_SECRET") or ""
+# The heartbeat: every HEARTBEAT_EVERY seconds, between the hours in HEARTBEAT_HOURS ("08-22"), look for work to prepare.
+HEARTBEAT = _flag("HEARTBEAT", True)
+HEARTBEAT_EVERY = int(_number("HEARTBEAT_EVERY", 1800))
+HEARTBEAT_HOURS = _env.get("HEARTBEAT_HOURS") or "08-22"
+# The drop folder (default <vault>/hi/drop): anything saved there is read, filed as a note and its tasks added.
+DROP_PATH = _env.get("DROP_PATH") or ""
+SCREENSHOT_WATCH = _flag("SCREENSHOT_WATCH", False)
+# Unattended work: how long a proposal waits for you, and the limits on what runs by itself.
+PROPOSAL_TTL_DAYS = int(_number("PROPOSAL_TTL_DAYS", 7))
+MAX_BACKGROUND_RUNS_PER_HOUR = int(_number("MAX_BACKGROUND_RUNS_PER_HOUR", 6))
+MAX_HOSTED_CALLS_PER_DAY = int(_number("MAX_HOSTED_CALLS_PER_DAY", 50))
+MAX_NOTIFICATIONS_PER_HOUR = int(_number("MAX_NOTIFICATIONS_PER_HOUR", 3))
+MAX_BACKGROUND_TOOL_CALLS = int(_number("MAX_BACKGROUND_TOOL_CALLS", 15))
+
+def to_flag(value: object) -> bool:
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _to_hours(value: object) -> str:
+    text = str(value).strip()
+    if not re.fullmatch(r"\d{1,2}\s*-\s*\d{1,2}", text) or any(int(h) > 24 for h in re.findall(r"\d+", text)):
+        raise ValueError('use two hours like "08-22"')
+    return text
+
+
+def _positive_int(value: object) -> int:
+    number = int(str(value).strip())
+    if number < 0:
+        raise ValueError("must be zero or more")
+    return number
+
+
+def _image_backend(value: object) -> str:
+    text = str(value).strip().lower()
+    if text not in ("service", "openai", "off"):
+        raise ValueError("must be service, openai or off")
+    return text
+
+
+# How a setting saved from the UI is turned into the type the rest of the code reads (the .env file holds text).
+_COERCE = {
+    "HEARTBEAT": to_flag, "SCREENSHOT_WATCH": to_flag, "HEARTBEAT_HOURS": _to_hours,
+    "HEARTBEAT_EVERY": _positive_int, "PROPOSAL_TTL_DAYS": _positive_int, "MAX_BACKGROUND_RUNS_PER_HOUR": _positive_int,
+    "MAX_HOSTED_CALLS_PER_DAY": _positive_int, "MAX_NOTIFICATIONS_PER_HOUR": _positive_int,
+    "IMAGE_BACKEND": _image_backend,
+}
+
+
+def coerce(key: str, value: object) -> object:
+    """`value` as the setting `key` expects it. Raises ValueError with a message the user can act on."""
+    try:
+        return _COERCE[key](value) if key in _COERCE else value
+    except ValueError as e:
+        raise ValueError(f"{key}: {e}") from e
+
+
+_SECRET_SUFFIXES = ("_TOKEN", "_KEY", "_SECRET", "PASSWORD")
+MIN_SECRET_LENGTH = 8
+
+
+def secret_values() -> list[str]:
+    """The current value of every credential setting, read live. Used to keep them out of anything that leaves `hi`."""
+    found = {
+        str(value)
+        for source in (_env, globals())
+        for name, value in source.items()
+        if name.isupper() and name.endswith(_SECRET_SUFFIXES) and isinstance(value, str) and len(value) >= MIN_SECRET_LENGTH
+    }
+    return sorted(found)
+
+
+def state_dir() -> Path:
+    """Runtime counters (usage, limits). Not memory: the vault is where `hi` remembers things."""
+    path = Path.home() / ".hi" / "state"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def set_value(key: str, value: str) -> None:
     """Persist `key=value` to ~/.hi/.env and apply it to this process
     immediately (every consumer reads `config.<KEY>` live at call time).
@@ -204,8 +319,9 @@ def set_value(key: str, value: str) -> None:
     if key == "AI_MODE" and value not in MODES:
         raise ValueError(f"AI_MODE must be one of: {', '.join(MODES)}")
     stored_key = env_key(key, AI_MODE) if key in MODEL_ROLES else key
+    typed = coerce(key, value)
     write_env_var(stored_key, value, path=ENV_PATH)
     _env[stored_key] = value
-    globals()[key] = Path(value) if key == "VAULT_PATH" else value
+    globals()[key] = Path(value) if key == "VAULT_PATH" else typed
     if key == "AI_MODE":
         apply_mode()

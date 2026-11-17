@@ -87,7 +87,7 @@ def test_the_selector_does_not_offer_tools_whose_dependency_is_down(clean_health
         return ""
 
     selector = toolkit.ToolSelector([read_note, mute])
-    request = SimpleNamespace(tools=[read_note, mute, selector.more_tools], messages=[HumanMessage("mute it")])
+    request = SimpleNamespace(tools=[read_note, mute], messages=[HumanMessage("mute it")])
     request.override = lambda **kw: SimpleNamespace(**{**vars(request), **kw})
     offered = lambda: sorted(t.name for t in selector.wrap_model_call(request, lambda r: r).tools)
 

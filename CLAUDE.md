@@ -26,13 +26,14 @@ hi/llm/           providers (local + tailscale Ollama), tier registry with fallb
 hi/memory/        the vault: notes, conversation log, journal, transcript, extraction, reflection, context
 hi/agents/        agent factory (base.py) and the personas: term, butler, docs, web
 hi/orchestrator/  multi-step plans run as a DAG of scoped subagents
+hi/automation/    background work: scheduler, heartbeat, drop folder, delivery, limits (never imports hi.server)
 hi/server/        Starlette app: routes/ (one module per area), turn.py (one query end to end)
 hi/cli.py         `hi` launcher and daemon flags
 tinyui/           the web UI (Vue)
 tests/unit/       unit tests; no network, no real vault
 ```
 
-Layers: `server` / `cli` → `agents`, `orchestrator`, others → `memory`, `llm` → `core`. A lower layer never
+Layers: `server` / `cli` → `agents`, `orchestrator`, `automation`, others → `memory`, `llm` → `core`. A lower layer never
 imports a higher one; `tests/unit/test_layering.py` enforces the parts that are already clean.
 
 The restructuring plan and what is done are in `MAKE.md`. The package overview is `docs/architecture.md`.

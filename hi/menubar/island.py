@@ -402,7 +402,7 @@ class Delegate(NSObject):
     @objc.python_method
     def showNext(self) -> None:
         item = self.queue.pop(0)
-        self.present("nudge", item["message"], "", item, take_focus=False)  # never steals focus from your typing
+        self.present("nudge", item["message"], inbox.hint_for(item), item, take_focus=False)  # never steals focus
         sound = NSSound.soundNamed_("Pop")
         if sound is not None:
             sound.play()
@@ -473,6 +473,10 @@ class Delegate(NSObject):
         self.text.setString_("…")
         self.answered, self.opened_at = True, time.time()
         self.layout(True)
+        if self.mode == "nudge" and (verdict := inbox.answer_approval(self.item, text)) is not None:
+            self.text.setString_(verdict)  # "yes" / "no" to an approval goes to the backend, not to the model
+            self.layout(True)
+            return
         if self.mode == "nudge":
             now.PINNED.unlink(missing_ok=True)  # a reply is about the notification, not an earlier capture
             text = f'(You sent me this notification: "{self.item["message"]}")\n{text}'

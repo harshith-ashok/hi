@@ -64,6 +64,11 @@ export function useAttachments() {
     void collect.then((files) => files.slice(0, MAX_FILES).forEach((f) => void addFile(f)))
   }
 
+  /** Files chosen with the attach button. */
+  function addFiles(list: FileList | File[]) {
+    ;[...list].slice(0, MAX_FILES).forEach((f) => void addFile(f))
+  }
+
   function addFromPaste(data: DataTransfer | null): boolean {
     const files = [...(data?.files ?? [])]
     files.forEach((f) => void addFile(f))
@@ -75,5 +80,5 @@ export function useAttachments() {
   const reading = () => items.value.some((i) => i.status === 'reading')
   const ready = () => items.value.filter((i) => i.status === 'ready')
 
-  return { items, addFromTransfer, addFromPaste, remove, clear, reading, ready }
+  return { items, addFromTransfer, addFromPaste, addFiles, remove, clear, reading, ready }
 }

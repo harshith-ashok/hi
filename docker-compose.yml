@@ -34,12 +34,22 @@ services:
       TTS_BACKEND: ${TTS_BACKEND:-ollama}           # huggingface = the GPU `tts` service below
       TTS_URL: http://tts:8780
       WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://whisper:8080} # the `whisper` service below
+      SEARXNG_URL: http://searxng:8080              # the `searxng` service below
+      IMAGE_URL: ${IMAGE_URL:-}                      # image generation: blank = the tailscale box in tailscale mode, else the service below
+      IMAGE_URL_DEFAULT: http://imagegen:8790       # the `imagegen` service below (profile gpu)
+      TZ: ${TZ:-UTC}                                # schedules fire in this zone; `hi` sets it from your Mac
       HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-/host/Dev/Projects} # where shell commands start
       HI_HOST_HOME: /host
       GIT_CONFIG_GLOBAL: /host/.gitconfig
       HI_CORS_ORIGINS: http://localhost:${HI_WEB_PORT:-5173},http://127.0.0.1:${HI_WEB_PORT:-5173}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck: # Docker restarts a backend that is up but no longer answering (restart: unless-stopped)
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8765/livez', timeout=4)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 40s
     volumes:
       - ${HI_VAULT:-hi-vault}:/vault # HI_VAULT uses forward slashes (C:/Users/...); `hi` writes it that way
       - hi-home:/root/.hi # settings saved from the UI persist here
@@ -111,6 +121,31 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # Image generation for the agent (hi/imagegen.py): Z-Image-Turbo by default (Apache-2.0, fits 16 GB), or set
+  # IMAGE_MODEL=black-forest-labs/FLUX.2-klein-4B. Needs an NVIDIA GPU and the NVIDIA container toolkit:
+  # `docker compose --profile gpu up -d --build imagegen`. The first request downloads the weights (about 12 GB) into
+  # hi-image-models and loads them, which takes minutes. On a Mac run `python imagegen/server.py` natively instead
+  # (Apple GPU) and set IMAGE_URL=http://host.docker.internal:8790. In AI_MODE=tailscale, run this service on the
+  # tailscale box instead: hi then calls http://<that host>:8790 on its own (set IMAGE_API_KEY on both sides).
+  imagegen:
+    build: ./imagegen
+    profiles: [gpu]
+    environment:
+      IMAGE_MODEL: ${IMAGE_MODEL:-Tongyi-MAI/Z-Image-Turbo}
+      HF_TOKEN: ${HF_TOKEN:-}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8790:8790"
+    volumes:
+      - hi-image-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   # Speech-to-text: whisper.cpp's `whisper-server` on CPU (hi/stt.py). The model (WHISPER_MODEL,
   # default base.en) downloads on first start into hi-whisper-models. For Metal speed on a Mac, run
   # `whisper-server` natively instead and set WHISPER_CPP_URL=http://host.docker.internal:8080.
@@ -123,6 +158,23 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - hi-whisper-models:/models
+
+  # Web search for the agent (hi/agents/web/search.py): a private SearXNG that only the backend reaches, on the
+  # compose network (nothing published). Natively (`hi --voice-daemon`) publish it with a docker-compose.override.yml
+  # (ports: ["127.0.0.1:8888:8080"]) and the backend's default SEARXNG_URL finds it. Tag is pinned on purpose:
+  # bump it deliberately, never `latest`.
+  searxng:
+    image: searxng/searxng:2026.11.15-2d500cb6b
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-} # `hi` creates one in ~/.hi/.env on first start
+      SEARXNG_BASE_URL: http://searxng:8080/
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
 
   # Runs the Python the agent writes (charts, ML). It has outbound internet and nothing
   # else: it sits alone on its own network, so the code in it cannot reach the backend's
@@ -160,4 +212,5 @@ volumes:
   hi-home:
   hi-google:
   hi-tts-models:
+  hi-image-models:
   hi-whisper-models:

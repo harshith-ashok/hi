@@ -13,6 +13,8 @@ from starlette.routing import Route
 
 from hi import attachments
 from hi.memory.vault import files_dir, plots_dir
+from hi.scene3d import scenes_dir
+from hi.ui_spec import ui_dir
 
 PLOT_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml"}
 
@@ -52,6 +54,28 @@ async def plot(request: Request) -> Response:
     )
 
 
+async def scene(request: Request) -> Response:
+    """A 3D scene saved by render_3d (hi/scene3d.py): data only, drawn by the UI."""
+    name = request.path_params["name"]
+    path = scenes_dir() / name
+    if not re.fullmatch(r"[\w-]+\.json", name) or not path.is_file():
+        raise HTTPException(404, "No such scene")
+    return Response(path.read_bytes(), media_type="application/json", headers={
+        "Content-Security-Policy": "default-src 'none'", "X-Content-Type-Options": "nosniff", "Cache-Control": "max-age=31536000, immutable",
+    })
+
+
+async def ui_spec(request: Request) -> Response:
+    """A UI saved by show_ui (hi/ui_spec.py): data only, drawn by the chat."""
+    name = request.path_params["name"]
+    path = ui_dir() / name
+    if not re.fullmatch(r"[\w-]+\.json", name) or not path.is_file():
+        raise HTTPException(404, "No such UI")
+    return Response(path.read_bytes(), media_type="application/json", headers={
+        "Content-Security-Policy": "default-src 'none'", "X-Content-Type-Options": "nosniff", "Cache-Control": "max-age=31536000, immutable",
+    })
+
+
 async def upload(request: Request) -> JSONResponse:
     """POST /context?name=<file>[&kind=audio], the raw file as the body. Never starts a reply: the file
     is attached to the next /query that lists its id."""
@@ -79,5 +103,7 @@ async def upload(request: Request) -> JSONResponse:
 routes = [
     Route("/files/{relative:path}", download, methods=["GET"]),
     Route("/plots/{name}", plot, methods=["GET"]),
+    Route("/scenes/{name}", scene, methods=["GET"]),
+    Route("/ui/{name}", ui_spec, methods=["GET"]),
     Route("/context", upload, methods=["POST"]),
 ]

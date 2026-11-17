@@ -1,17 +1,9 @@
 """Tool registry + per-turn tool selection.
 
-A persona may own 130+ tools (native + MCP), but a model only reasons well
-over a handful. Every tool belongs to a *group*, and every group has a
-priority that decides when the model sees it:
-
-  P1  always offered              (the core of the persona)
-  P2  offered when the user's message matches the group's keywords
-  P3  offered only after the model asks for it with `more_tools(group)`
-  --  hidden: duplicates of a higher-priority tool, never offered
-
-The agent still *registers* every tool (so anything offered can run); the
-`ToolSelector` middleware only narrows what the model sees on each call.
-Selection is keyword rules over the latest user message: no extra model call.
+A persona may own 130+ tools (native + MCP). Every tool belongs to a *group*; the
+`ToolSelector` middleware offers the model every tool on every call, ordered by group
+priority (P1 core first), except tools hidden as duplicates of a higher-priority tool
+and tools whose outside dependency is down (see `dependency_is_up`).
 
 Tools not listed here are grouped by MCP server (P2, matched by server name),
 so a newly configured server is reachable instead of silently dropped.
@@ -28,8 +20,6 @@ from langchain_core.tools import BaseTool, tool
 
 from hi.core import health
 
-MAX_VISIBLE = 50
-
 # Tools that only work while an outside dependency is up. While it is marked down (hi/core/health.py)
 # the model isn't offered them, instead of calling a tool that is known to fail.
 SANDBOX_TOOLS = frozenset({"run_python", "run_python_file"})
@@ -40,12 +30,50 @@ def required_dependency(tool_name: str) -> str | None:
 
     if tool_name in SANDBOX_TOOLS:
         return "sandbox"
+    if tool_name == "web_search":
+        return "searxng"
+    if tool_name == "generate_image":
+        return "imagegen"
     return "host_bridge" if tool_name in HOST_TOOLS else None
 
 
 def dependency_is_up(tool_name: str) -> bool:
+    if tool_name == "generate_image":
+        import hi.config as config
+
+        if config.IMAGE_BACKEND == "off":  # switched off: never offered
+            return False
     dep = required_dependency(tool_name)
     return dep is None or health.is_up(dep)
+
+
+# Tools that only read: a background run may call these without asking. Anything not listed here (and not
+# marked readOnlyHint by its MCP server) is not read-only, so an unattended run turns it into a proposal.
+READ_ONLY = frozenset({
+    "search_vault", "read_vault_note", "read_project_file", "list_project_files", "search_files", "read_note", "list_notes",
+    "current_context", "use_skill", "get_person_info", "list_people", "list_conversations", "read_conversation",
+    "leetcode_stats", "list_applications", "list_pipeline_entries", "list_deadlines", "list_tasks",
+    "what_next", "check_suggestions", "show_last_run_trace",
+    "search_wikipedia", "find_image", "fetch", "web_search",
+    "get_me", "search_repositories", "search_code", "get_file_contents", "list_issues", "issue_read",
+    "list_pull_requests", "pull_request_read", "list_commits", "list_branches", "actions_list", "get_job_logs",
+    "get_commit", "actions_get", "get_label", "get_latest_release", "get_release_by_tag", "get_tag", "list_releases",
+    "list_tags", "search_commits", "search_issues", "search_pull_requests",
+    "list_running_apps", "now_playing", "list_timers", "list_playlists",
+    "list_background_tasks", "check_background_task", "check_dev_servers",
+    "list_schedules",
+})
+SCREEN_TOOLS = frozenset({"current_context", "read_screen", "ask_about_screen", "observe_current_tab", "take_screenshot"})
+WEB_TOOLS = frozenset({"web_search", "fetch", "search_wikipedia", "find_image"})
+
+
+def is_read_only(name: str, tool: BaseTool | None = None) -> bool:
+    """True if `name` is on the read-only list, or its MCP server marked it `readOnlyHint`."""
+    if name in READ_ONLY:
+        return True
+    meta = getattr(tool, "metadata", None) or {}
+    hint = meta.get("readOnlyHint", (meta.get("annotations") or {}).get("readOnlyHint"))
+    return hint is True
 
 
 @dataclass(frozen=True)
@@ -54,7 +82,7 @@ class Group:
     priority: int  # 1 always · 2 on keyword match · 3 on request only
     tools: tuple[str, ...]
     keywords: str = ""  # regex, case-insensitive (P2 only)
-    about: str = ""  # one line shown in more_tools()
+    about: str = ""
 
 
 GROUPS: tuple[Group, ...] = (
@@ -91,6 +119,12 @@ GROUPS: tuple[Group, ...] = (
     Group("visualise", 2, ("visualise",),
           r"explain|visuali[sz]e|diagram|illustrate|draw|how does .+ work|show me how|walk me through",
           "explain a topic by drawing a diagram shown in the UI"),
+    Group("render3d", 2, ("render_3d",),
+          r"\b3-?d\b|three[- ]?d|render|\bmodel (of|a)\b|\bshape|\bmesh|\bcube|\bsphere|\bmolecule|solar system|orbit|rotat|spin|sculpt|floor ?plan|prototype|blueprint",
+          "show 3D objects and scenes in an interactive viewer"),
+    Group("imagegen", 2, ("generate_image",),
+          r"\b(generate|create|make|draw|paint|design|sketch|illustrate|render)\b.*\b(image|picture|photo|illustration|logo|poster|wallpaper|artwork|icon|banner|thumbnail|portrait|painting|mockup|concept art)\b|\b(image|picture) of\b|\blogo\b|\bposter\b|\bwallpaper\b|\billustrat|concept art|midjourney|dall-?e|stable diffusion|\bflux\b",
+          "create a new image from a description"),
     Group("insight", 2, ("what_next", "generate_retro", "reflect_on_week", "synthesize_vault", "check_suggestions", "show_last_run_trace"),
           r"what (should|next)|what's next|retro|reflect|synthes|suggest|trace|summari[sz]e (my|the) (vault|week)", "what to do next, weekly retro/reflection, vault synthesis"),
     # ---- MCP: subsets by priority ----------------------------------------
@@ -123,6 +157,9 @@ GROUPS: tuple[Group, ...] = (
         "tag_list", "command_list", "command_execute", "open_file",
     ), about="Obsidian app (needs it running): search, tags, commands. Prefer read_note/list_notes."),
     Group("fetch", 1, ("fetch",), about="fetch a URL as markdown"),
+    Group("show_ui", 1, ("show_ui",), about="show forms, choices, tables and flows in the chat"),
+    Group("ask", 1, ("ask_user",), about="ask the user clarifying questions as a form"),
+    Group("search", 1, ("web_search",), about="search the web (SearXNG)"),
     # ---- butler ----------------------------------------------------------
     Group("mac", 1, (
         "set_volume", "mute", "unmute", "toggle_wifi", "toggle_bluetooth", "toggle_dnd", "adjust_brightness", "resize_window", "scale_window",
@@ -130,6 +167,9 @@ GROUPS: tuple[Group, ...] = (
         "open_url_in_browser", "play_music", "music_control", "now_playing", "list_playlists",
         "set_timer", "list_timers", "cancel_timer",
     )),
+    Group("schedule", 2, ("schedule_task", "list_schedules", "pause_schedule", "delete_schedule", "run_schedule_now"),
+          r"remind|every|each (day|week|morning|evening)|schedule|daily|weekly|monthly|at \d|tomorrow|cron|recurring|repeat",
+          "scheduled tasks and reminders"),
     Group("tasks", 2, ("add_task", "capture_note", "complete_task", "remove_task", "list_tasks"),
           r"task|todo|to-do|remind|capture|jot", "the TODO list and quick capture"),
     Group("mcp_setup", 3, ("list_available_mcp_servers", "configure_mcp_server", "configure_n8n_server"),
@@ -166,8 +206,8 @@ def service_group(server: str, tool_name: str) -> Group | None:
 
 
 class ToolSelector(AgentMiddleware):
-    """Narrows the tools the model sees on each call (see module docstring).
-    Create one per agent; `more_tools` is that agent's escape hatch.
+    """Orders the tools the model sees and drops unusable ones (see module docstring).
+    Create one per agent.
 
     `persona_groups` limits which curated groups apply to this persona (a tool
     listed in two groups resolves to the first one the persona has).
@@ -177,8 +217,6 @@ class ToolSelector(AgentMiddleware):
     def __init__(self, tools: list[BaseTool], persona_groups: set[str] | None = None,
                  server_groups: dict[str, str] | None = None) -> None:
         super().__init__()
-        self._unlocked: set[str] = set()
-        self._turn_text = ""
         self._tool_group: dict[str, Group] = {}
         self._groups: dict[str, Group] = {}
         for t in tools:
@@ -190,39 +228,10 @@ class ToolSelector(AgentMiddleware):
             if group and t.name not in HIDDEN:
                 self._tool_group[t.name] = group
                 self._groups.setdefault(group.name, group)
-        self.more_tools = self._make_more_tools()
-
-    def _make_more_tools(self) -> BaseTool:
-        selector = self
-
-        @tool
-        def more_tools(group: str) -> str:
-            """Make another group of tools available for the rest of this turn.
-            Call this when you need a capability none of your current tools provide."""
-            if group not in selector._groups:
-                return f"Unknown group '{group}'. Available: {', '.join(selector._groups)}"
-            selector._unlocked.add(group)
-            names = [n for n, g in selector._tool_group.items() if g.name == group]
-            return f"Unlocked '{group}'. You can now call: {', '.join(names)}"
-
-        menu = "\n".join(f"- {g.name}: {g.about}" for g in self._groups.values() if g.priority >= 2 and g.about)
-        more_tools.description += "\nGroups:\n" + menu
-        return more_tools
 
     def active_groups(self, messages: list) -> set[str]:
-        """Groups on offer for the turn these messages belong to."""
-        humans = [m for m in messages if isinstance(m, HumanMessage)]
-        text = str(humans[-1].content) if humans else ""
-        if text != self._turn_text:  # a new user message starts a new turn
-            self._turn_text, self._unlocked = text, set()
-        return self._active_groups(text)
-
-    def _active_groups(self, text: str) -> set[str]:
-        active = set(self._unlocked)
-        for g in self._groups.values():
-            if g.priority == 1 or (g.priority == 2 and g.keywords and re.search(g.keywords, text, re.IGNORECASE)):
-                active.add(g.name)
-        return active
+        """Every group is on offer on every turn."""
+        return set(self._groups)
 
     def _rank(self, name: str) -> tuple[int, int]:
         group = self._tool_group.get(name)
@@ -231,14 +240,9 @@ class ToolSelector(AgentMiddleware):
         return (group.priority, group.tools.index(name) if name in group.tools else 0)
 
     def wrap_model_call(self, request: ModelRequest, handler):
-        active = self.active_groups(request.messages)
-        shown = [
-            t for t in request.tools
-            if t.name == "more_tools" or (t.name in self._tool_group and self._tool_group[t.name].name in active and dependency_is_up(t.name))
-        ]
-        # priority first, then the order tools are listed in their group, so a cap cuts the least important
-        shown.sort(key=lambda t: self._rank(t.name))
-        return handler(request.override(tools=shown[: MAX_VISIBLE + 1]))
+        shown = [t for t in request.tools if t.name in self._tool_group and dependency_is_up(t.name)]
+        shown.sort(key=lambda t: self._rank(t.name))  # most important groups first
+        return handler(request.override(tools=shown))
 
 
 def filter_prompt(prompt: str, section_groups: dict[str, str], active: set[str]) -> str:

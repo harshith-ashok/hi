@@ -39,6 +39,44 @@ def recent_history(minutes: int = 60, limit: int = 8) -> list[dict]:
     return [i for i in items if i["ts"] >= cutoff][-limit:]
 
 
+def activity_summary(minutes: int = 30, now_ts: float | None = None) -> list[dict]:
+    """What the user spent the last `minutes` on, one item per stretch in the same window, newest last:
+    [{app, title, activity, seconds}]. A stretch lasts until the next one started (the last one until now)."""
+    now_ts = now_ts if now_ts is not None else time.time()
+    try:
+        lines = HISTORY.read_text().splitlines()[-400:]
+    except OSError:
+        return []
+    items = [json.loads(line) for line in lines if line.strip()]
+    items = [i for i in items if i["ts"] >= now_ts - minutes * 60]
+    stretches: list[dict] = []
+    for i, item in enumerate(items):
+        end = items[i + 1]["ts"] if i + 1 < len(items) else now_ts
+        seconds = max(0.0, end - item["ts"])
+        last = stretches[-1] if stretches else None
+        if last and (last["app"], last["title"]) == (item["app"], item.get("title", "")):
+            last["seconds"] += seconds
+            last["activity"] = item.get("activity") or last["activity"]
+        else:
+            stretches.append({"app": item["app"], "title": item.get("title", ""),
+                              "activity": item.get("activity", ""), "seconds": seconds})
+    return stretches
+
+
+def recent_activity(minutes: int = 30) -> str:
+    """`activity_summary` as text. In Docker it asks the Mac. '' when there is no history."""
+    if sys.platform != "darwin":
+        from hi import host
+
+        text = host.call("recent_activity", {"minutes": minutes})
+        return "" if text.startswith(("Can't reach", "The Mac bridge", "Mac bridge error")) else text
+    return "\n".join(
+        f"- {s['app']}" + (f" ({s['title']})" if s["title"] else "") + f", {_ago(s['seconds'])}"
+        + (f": {s['activity']}" if s["activity"] else "")
+        for s in activity_summary(minutes)
+    )
+
+
 def _ago(seconds: float) -> str:
     return f"{int(seconds // 60)} min" if seconds >= 90 else f"{int(seconds)} s"
 

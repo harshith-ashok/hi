@@ -1,0 +1,32 @@
+# SearXNG for `hi`: a private instance that only the backend talks to (docker-compose.yml, service `searxng`).
+use_default_settings: true
+
+general:
+  instance_name: "hi search"
+  enable_metrics: false
+
+search:
+  safe_search: 0
+  # `hi` reads results as JSON; SearXNG ships with only html enabled.
+  formats:
+    - html
+    - json
+
+server:
+  # The secret comes from the SEARXNG_SECRET environment variable (SearXNG reads it itself); `hi` creates one in
+  # ~/.hi/.env on first start.
+  limiter: false # a private instance: no bot limiter, so no Redis needed
+  image_proxy: false
+  public_instance: false
+
+ui:
+  static_use_hash: true
+
+# Keep the default engines; these three matter most for what `hi` looks up, so make sure they stay on.
+engines:
+  - name: wikipedia
+    disabled: false
+  - name: github
+    disabled: false
+  - name: stackoverflow
+    disabled: false

@@ -160,6 +160,12 @@ def _read(path: Path, kind: str) -> str:
         return f"(could not read {path.name}: {type(e).__name__}: {e})"
 
 
+def read_file(path: Path, kind: str = "") -> str:
+    """The text of a file: documents parsed, images described, audio transcribed. Never raises; a file that cannot
+    be read comes back as a parenthesised note."""
+    return _read(path, kind)
+
+
 def save(name: str, stream: BinaryIO, length: int, kind: str = "") -> dict:
     """Store one dropped file, copying `length` bytes from `stream` to disk in chunks."""
     if length > MAX_UPLOAD_BYTES:
@@ -179,6 +185,15 @@ def save(name: str, stream: BinaryIO, length: int, kind: str = "") -> dict:
     text = _read(path, kind)
     (folder / "extracted.md").write_text(text)
     return {"id": attachment_id, "name": path.name, "size": path.stat().st_size, "chars": len(text)}
+
+
+def original(attachment_id: str) -> Path | None:
+    """The file that was uploaded under `attachment_id`, or None."""
+    if not _ID.fullmatch(attachment_id):
+        return None
+    folder = context_dir() / attachment_id
+    files = [p for p in folder.glob("*") if p.is_file() and p.name != "extracted.md"] if folder.is_dir() else []
+    return files[0] if files else None
 
 
 def _entry(attachment_id: str) -> str | None:

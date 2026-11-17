@@ -9,9 +9,14 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Callable
 
+from hi.core import health
+
 log = logging.getLogger(__name__)
+
+last_run: dict[str, float] = {}  # job name -> when it last finished (shown by GET /health)
 
 
 def run_background(name: str, fn: Callable[[], object]) -> threading.Thread:
@@ -44,9 +49,13 @@ def every(
             try:
                 fn()
                 failures = 0
-            except Exception:
+                health.mark_ok(f"job:{name}")
+            except Exception as e:
                 failures += 1
                 log.exception("job %s failed (%d in a row)", name, failures)
+                health.mark_down(f"job:{name}", e, cooldown_s=0.0)
+            finally:
+                last_run[name] = time.time()
             wait = min(interval_s * (2**failures), max_backoff_s) if failures else interval_s
             if stop.wait(wait):
                 return

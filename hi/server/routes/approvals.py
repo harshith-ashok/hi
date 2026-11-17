@@ -9,6 +9,7 @@ from starlette.routing import Route
 
 from hi.memory import journal
 from hi.orchestrator.pending_actions import list_pending, resolve
+from hi.server.http import require_client
 
 
 async def list_actions(request: Request) -> JSONResponse:
@@ -17,6 +18,7 @@ async def list_actions(request: Request) -> JSONResponse:
 
 def _answer(approved: bool):
     async def answer(request: Request) -> Response:
+        require_client(request)
         action_id = request.path_params["action_id"]
         described = next((a.description for a in list_pending() if a.id == action_id), action_id)
         if not resolve(action_id, approved=approved):

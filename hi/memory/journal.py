@@ -67,9 +67,11 @@ def _links(tools: list[dict]) -> list[str]:
     return links
 
 
-def record_turn(persona: str, tier: str, ask: str, answer: str, tools: list[dict], seconds: float) -> None:
-    """tools: [{"name", "args" (JSON string), "result"}] in call order."""
-    lines = [f"## {datetime.now():%H:%M} · {persona}/{tier} · {seconds:.1f}s", f"**Asked:** {_snip(ask, 400)}"]
+def record_turn(persona: str, tier: str, ask: str, answer: str, tools: list[dict], seconds: float, origin: str = "") -> None:
+    """tools: [{"name", "args" (JSON string), "result"}] in call order. `origin` is shown for turns nobody typed
+    (a schedule, the heartbeat, a dropped file)."""
+    tag = f" · [{origin}]" if origin and origin not in ("ui", "voice") else ""
+    lines = [f"## {datetime.now():%H:%M} · {persona}/{tier} · {seconds:.1f}s{tag}", f"**Asked:** {_snip(ask, 400)}"]
     for t in tools:
         lines.append(f"- `{t['name']}` {_snip(t.get('args', ''), 100)} → {_snip(t.get('result', ''))}")
     lines.append(f"**Answered:** {_snip(answer, 500)}")

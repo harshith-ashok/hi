@@ -12,6 +12,17 @@ from starlette.requests import Request
 
 T = TypeVar("T")
 
+# State-changing routes that run something or delete something (approvals, schedules, filing) need this header.
+# A browser only sends a custom header after a CORS preflight, and the preflight is answered only for tinyui's own
+# origins (hi/server/cors.py). Without it, any web page open in your browser could POST an approval to this loopback
+# server: a request with no body and no custom header is "simple" and is sent without asking.
+CLIENT_HEADER = "X-Hi-Client"
+
+
+def require_client(request: Request) -> None:
+    if not request.headers.get(CLIENT_HEADER):
+        raise HTTPException(403, f"Send the {CLIENT_HEADER} header with this request (tinyui and the menu bar app do)")
+
 
 async def json_body(request: Request) -> dict:
     """The request's JSON object; 400 if it isn't valid JSON or isn't an object."""

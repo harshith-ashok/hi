@@ -1,0 +1,74 @@
+<script setup lang="ts">
+import { AlertCircle, Check, ChevronDown, Download, ImagePlus, Loader2, Wrench } from '@lucide/vue'
+import { ref } from 'vue'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import type { ToolBlock } from '@/composables/useChat'
+import ImageCard from '@/components/content/ImageCard.vue'
+import Viewer3D from '@/components/content/Viewer3D.vue'
+import { Skeleton } from '@/components/ui/skeleton'
+import { files, meshes, ms, plots, scenes, scope, short } from '@/lib/run'
+import { cn } from '@/lib/utils'
+
+const props = defineProps<{ block: ToolBlock; running: boolean; restored?: boolean }>()
+const emit = defineEmits<{ send: [text: string] }>()
+
+// generate_image: the prompt is in the arguments, the picture in the result
+const isImage = () => props.block.name === 'generate_image'
+const promptOf = () => {
+  try {
+    return String((JSON.parse(props.block.args) as { prompt?: unknown }).prompt ?? '')
+  } catch {
+    return ''
+  }
+}
+const open = ref(false)
+const pending = () => props.block.result === undefined
+const failed = () => pending() && !props.running
+const tone = () => ({ danger: 'border-destructive/40 text-destructive', warn: 'border-warning/50 text-warning', neutral: '' })[scope(props.block.name)?.tone ?? 'neutral']
+</script>
+
+<template>
+  <div class="rounded-lg border bg-card/50">
+    <Collapsible :open="open" @update:open="(v: boolean) => (open = v)">
+      <CollapsibleTrigger class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm">
+        <Loader2 v-if="pending() && running" class="size-4 shrink-0 animate-spin text-info" />
+        <AlertCircle v-else-if="failed()" class="size-4 shrink-0 text-destructive" />
+        <Check v-else class="size-4 shrink-0 text-success" />
+        <Wrench class="size-3.5 shrink-0 text-muted-foreground" />
+        <span class="font-mono text-[13px]">{{ block.name }}</span>
+        <Badge v-if="scope(block.name)" variant="outline" :class="cn('h-5 px-1.5 text-[10px] font-normal', tone())">{{ scope(block.name)!.label }}</Badge>
+        <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{{ pending() ? (running ? 'running…' : 'no result') : short(block.result ?? '', 120) }}</span>
+        <span v-if="block.t1 && !restored" class="font-mono text-xs tabular-nums text-muted-foreground">{{ ms(block.t1 - block.t0) }}</span>
+        <ChevronDown :class="cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div class="space-y-2 border-t p-3">
+          <div><div class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">Arguments</div><pre class="max-h-48 overflow-auto rounded bg-muted p-2 font-mono text-xs">{{ block.args || '(none)' }}</pre></div>
+          <div><div class="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">Result</div><pre class="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-xs">{{ block.result ?? '(waiting for result)' }}</pre></div>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+
+    <div v-if="isImage() && pending() && running" class="space-y-2 border-t p-3" role="status" aria-label="Making an image">
+      <div class="flex items-center gap-2 text-xs text-muted-foreground"><ImagePlus class="size-3.5 animate-pulse" /> Making an image. This can take up to a minute.</div>
+      <Skeleton class="aspect-square max-h-72 w-full max-w-72" />
+    </div>
+    <div v-if="isImage() && plots(block.result).length" class="border-t px-3">
+      <ImageCard v-for="src in plots(block.result)" :key="src" :src="src" :prompt="promptOf()" @another="emit('send', 'Make another version of that image with a different seed.')" />
+    </div>
+    <div v-else-if="plots(block.result).length" class="grid gap-2 border-t p-3 sm:grid-cols-2">
+      <a v-for="src in plots(block.result)" :key="src" :href="src" target="_blank" rel="noopener" class="block overflow-hidden rounded-md border bg-background">
+        <img :src="src" alt="Image made by the assistant" class="max-h-96 w-full object-contain" loading="lazy" />
+      </a>
+    </div>
+    <div v-if="scenes(block.result).length || meshes(block.result).length" class="border-t px-3">
+      <Viewer3D v-for="src in scenes(block.result)" :key="src" :src="src" />
+      <Viewer3D v-for="m in meshes(block.result)" :key="m.href" :src="m.href" :title="m.name" />
+    </div>
+    <div v-if="files(block.result).length" class="flex flex-wrap gap-2 border-t p-3">
+      <Button v-for="f in files(block.result)" :key="f.href" as="a" :href="f.href" target="_blank" rel="noopener" variant="outline" size="sm"><Download class="size-3.5" /> {{ f.name }}</Button>
+    </div>
+  </div>
+</template>

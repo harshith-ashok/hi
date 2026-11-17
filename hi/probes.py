@@ -3,7 +3,9 @@ timeout, and records its result in the health registry (hi/core/health.py)."""
 
 from __future__ import annotations
 
+import os
 import tempfile
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable
@@ -33,6 +35,30 @@ def _sandbox() -> None:
     _get(f"{config.SANDBOX_URL.rstrip('/')}/health")
 
 
+def _searxng() -> None:
+    _get(f"{config.SEARXNG_URL.rstrip('/')}/healthz")
+
+
+def _imagegen() -> None:
+    if config.IMAGE_BACKEND == "off":
+        health.mark_ok("imagegen")  # switched off on purpose is not an outage
+        return
+    path = "/health" if config.IMAGE_BACKEND == "service" else "/v1/models"
+    try:
+        _get(f"{config.image_url()}{path}")
+    except urllib.error.HTTPError:
+        pass  # it answered (a hosted API wants a key for /v1/models): reachable
+
+
+def _whisper() -> None:
+    _get(config.WHISPER_CPP_URL)
+
+
+def _vision() -> None:
+    if config.VISION_MODEL not in llm.list_models(timeout=TIMEOUT_S):
+        raise RuntimeError(f"{config.VISION_MODEL} is not on the model host")
+
+
 def _vault() -> None:
     config.VAULT_PATH.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryFile(dir=config.VAULT_PATH):
@@ -44,6 +70,10 @@ PROBES: dict[str, Callable[[], None]] = {
     "host_bridge": _host_bridge,
     "sandbox": _sandbox,
     "vault": _vault,
+    "searxng": _searxng,
+    "imagegen": _imagegen,
+    "whisper": _whisper,
+    "vision": _vision,
 }
 
 
@@ -71,3 +101,20 @@ def run(probes: dict[str, Callable[[], None]] | None = None) -> dict:
     deps = health.snapshot()
     essentials = ("ollama", "vault")
     return {"ok": all(deps.get(name, {}).get("ok", True) for name in essentials), "deps": deps}
+
+
+def automation_status() -> dict:
+    """What GET /health adds about background work: when each job last ran, the zone schedules fire in, how many
+    actions wait for approval, and how fast each kind of turn has been."""
+    import time
+
+    from hi.automation import limits
+    from hi.core import jobs
+    from hi.memory import proposals
+
+    return {
+        "jobs": {name: {"last_run": round(ts)} for name, ts in sorted(jobs.last_run.items())},
+        "timezone": os.environ.get("TZ") or time.tzname[time.localtime().tm_isdst > 0 and time.daylight > 0],
+        "pending_proposals": len(proposals.pending()),
+        "latency": limits.latency_by_origin(),
+    }

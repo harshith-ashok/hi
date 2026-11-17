@@ -26,6 +26,8 @@ import hi.config as config
 log = logging.getLogger(__name__)
 
 OLLAMA_PORT = 11434
+# Labels our requests in a LlamaTop-style gateway dashboard; a plain Ollama ignores it.
+APP_HEADERS = {"X-LlamaTop-App": "hi"}
 
 
 def normalize_url(url: str) -> str:
@@ -87,7 +89,7 @@ def build_chat_model(name: str, *, thinking: bool = False, mode: str | None = No
         raise RuntimeError("Tailscale Ollama URL not set — add it in settings.")
     if thinking:
         kwargs["reasoning"] = True
-    return ChatOllama(model=name, base_url=host, **kwargs)
+    return ChatOllama(model=name, base_url=host, client_kwargs={"headers": APP_HEADERS}, **kwargs)
 
 
 def list_models(mode: str | None = None, host: str | None = None, timeout: float = 5.0) -> list[str]:
@@ -113,7 +115,7 @@ _pull_lock = threading.Lock()
 
 def _pull(name: str, mode: str, host: str) -> None:
     try:
-        for progress in ollama.Client(host=host).pull(name, stream=True):
+        for progress in ollama.Client(host=host, headers=APP_HEADERS).pull(name, stream=True):
             log.debug("pull %s: %s %s/%s", name, progress.status, progress.completed or "", progress.total or "")
         log.info("pulled model %s on %s", name, host)
     except Exception as e:  # boundary: a background download must never crash the process

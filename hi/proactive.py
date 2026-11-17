@@ -104,8 +104,7 @@ def nudge() -> str | None:
     message = compose()
     if message is None:
         return None
-    engine._notify(message)
-    engine._record_notification()
+    engine._notify(message)  # the inbox gate records it against the shared budget
     STATE.write_text(json.dumps((_recent() + [message])[-RECENT_KEPT:]))
     return message
 

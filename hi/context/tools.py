@@ -32,3 +32,48 @@ def resume_screen_context() -> str:
     """Resume the always-on screen/context reading."""
     now.PAUSED.unlink(missing_ok=True)
     return "Screen context resumed."
+
+
+@tool
+def post_to_inbox(message: str, kind: str = "info", priority: str = "normal", dedupe_key: str = "", payload_json: str = "{}") -> str:
+    """Show a message in the menu bar island (or as a macOS notification when the app is closed), through the
+    interruption gate. Returns shown, notified, deduped, budget, quiet or unsupported.
+
+    Args:
+        message: One plain sentence, at most 25 words.
+        kind: info, digest, approval, reminder or failure.
+        priority: low, normal or urgent.
+        dedupe_key: Messages with the same key are shown once per day.
+        payload_json: JSON object with report_id, proposal_id or action_id, used by the island's reply handling.
+    """
+    import json
+
+    from hi.context import inbox
+
+    try:
+        payload = json.loads(payload_json or "{}")
+    except ValueError:
+        payload = {}
+    return inbox.post(message, "automation", kind, priority, dedupe_key, payload if isinstance(payload, dict) else {})
+
+
+@tool
+def recent_activity(minutes: int = 30) -> str:
+    """What the user spent the last few minutes on, per window, with how long each took. Runs on the Mac.
+
+    Args:
+        minutes: How far back to look.
+    """
+    return now.recent_activity(minutes)
+
+
+@tool
+def recent_outcomes(limit: int = 20) -> str:
+    """The assistant's recent messages the user ignored or dismissed, one per line as "message | outcome". Runs on the Mac.
+
+    Args:
+        limit: How many to return.
+    """
+    from hi.context import inbox
+
+    return "\n".join(f"{message} | {outcome}" for message, outcome in inbox.recent_outcomes(limit))

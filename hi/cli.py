@@ -27,6 +27,8 @@ CONTEXT_DAEMON_MARKER = "context-daemon"
 MENUBAR_MARKER = "menubar"
 INSTALL_APP_MARKER = "install-app"
 UNINSTALL_APP_MARKER = "uninstall-app"
+INSTALL_AGENT_MARKER = "install-agent"
+UNINSTALL_AGENT_MARKER = "uninstall-agent"
 VOICE_DAEMON_MARKER = "voice-daemon"
 WAKE_DAEMON_MARKER = "wake-daemon"
 
@@ -56,6 +58,8 @@ def parse_mode(argv: list[str]) -> str | None:
     )
     group.add_argument("--install-app", action="store_true", help="package the menu bar app as ~/Applications/hi.app and add it to Login Items")
     group.add_argument("--uninstall-app", action="store_true", help="remove hi.app and its Login Item")
+    group.add_argument("--install-agent", action="store_true", help="start the menu bar app at login and restart it after a crash (launchd)")
+    group.add_argument("--uninstall-agent", action="store_true", help="remove the launch agent")
     group.add_argument("--menubar", action="store_true", help="menu bar prompt that uses your screen as context (macOS)")
     group.add_argument(
         "--voice-daemon",
@@ -76,6 +80,10 @@ def parse_mode(argv: list[str]) -> str | None:
         return INSTALL_APP_MARKER
     if args.uninstall_app:
         return UNINSTALL_APP_MARKER
+    if args.install_agent:
+        return INSTALL_AGENT_MARKER
+    if args.uninstall_agent:
+        return UNINSTALL_AGENT_MARKER
     if args.menubar:
         return MENUBAR_MARKER
     if args.context_daemon:
@@ -96,7 +104,17 @@ def backend_up() -> bool:
 
 
 # Credentials the container can't read from the host's ~/.hi/.env itself.
-FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "TAILSCALE_OLLAMA_URL", "HF_TOKEN", "AI_MODE")
+FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "TAILSCALE_OLLAMA_URL", "HF_TOKEN", "AI_MODE", "SEARXNG_SECRET", "IMAGE_BACKEND", "IMAGE_URL", "IMAGE_MODEL", "IMAGE_API_KEY")
+
+
+def host_timezone() -> str:
+    """The Mac's IANA timezone (for example Europe/London), or "" if it can't be found. The container runs in UTC
+    unless told otherwise, and a schedule at 8am must fire at 8am where you are."""
+    try:
+        target = os.readlink("/etc/localtime")
+    except OSError:
+        return os.environ.get("TZ", "")
+    return target.split("zoneinfo/", 1)[1] if "zoneinfo/" in target else ""
 
 
 def _forwarded_settings() -> dict[str, str]:
@@ -114,7 +132,20 @@ def _forwarded_settings() -> dict[str, str]:
 
         write_env_var("HI_VAULT", forwarded["HI_VAULT"], path=COMPOSE_FILE.parent / ".env")
     forwarded["HI_HOST_ROOT"] = Path.home().as_posix()
+    if tz := host_timezone():
+        forwarded["TZ"] = tz
     return forwarded
+
+
+def ensure_searxng_secret() -> str:
+    """The secret SearXNG signs with, created in ~/.hi/.env on first start (like the host bridge token)."""
+    import secrets
+
+    import hi.config as config
+
+    if not config.SEARXNG_SECRET:
+        config.set_value("SEARXNG_SECRET", secrets.token_hex(32))
+    return config.SEARXNG_SECRET
 
 
 def _ensure_mounted_files() -> None:
@@ -169,6 +200,7 @@ def start_stack() -> None:
         wait_for_host_bridge()
     if backend_up():
         return
+    ensure_searxng_secret()
     if not shutil.which("docker"):
         sys.exit("hi needs Docker to run the web UI.")
     if not COMPOSE_FILE.exists():
@@ -214,6 +246,12 @@ def main() -> None:
         from hi.menubar import install
 
         print(install.install_app() if mode == INSTALL_APP_MARKER else install.uninstall_app())
+        return
+
+    if mode in (INSTALL_AGENT_MARKER, UNINSTALL_AGENT_MARKER):
+        from hi.menubar import install
+
+        print(install.install_agent() if mode == INSTALL_AGENT_MARKER else install.uninstall_agent())
         return
 
     if mode == MENUBAR_MARKER:
