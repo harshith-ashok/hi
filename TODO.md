@@ -75,7 +75,7 @@ typing, no wake word needed for short exchanges.
 
 ## 1d. Tool overhaul (less overlap, less overthinking)
 - [x] `hi/toolkit.py`: every tool has a group + priority (P1 always, P2 on
-      keyword match, P3 only via `more_tools(group)`); duplicates hidden.
+      keyword match, P3 only via `more_tools(group)`); duplicates hidden. (Later: `more_tools` removed, every tool is offered.)
       `term` went from 134 registered tools to 10 visible on a plain turn.
 - [x] term system prompt follows the same selection (16.8 KB -> 8.9 KB on a
       plain turn); sections only appear when their group is on offer.

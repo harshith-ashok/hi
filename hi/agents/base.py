@@ -25,13 +25,12 @@ def make_agent(
     selector: ToolSelector | None = None,
     middleware: Sequence[AgentMiddleware] = (),
 ):
-    """A ReAct agent on `model`. With a `selector`, the model only sees the tools it picks for each
-    turn (plus its `more_tools` escape hatch). `middleware` runs before the selector, and the retry
+    """A ReAct agent on `model`. With a `selector`, the model sees every tool that is currently usable,
+    most important first. `middleware` runs before the selector, and the retry
     policy always runs last."""
     all_tools = list(tools)
     stack = list(middleware)
     if selector is not None:
-        all_tools.append(selector.more_tools)
-        stack.append(selector)
+            stack.append(selector)
     stack.append(retry_middleware())
     return create_agent(model=model, tools=all_tools, system_prompt=system_prompt, middleware=stack)

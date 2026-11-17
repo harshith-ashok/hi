@@ -1,17 +1,9 @@
 """Tool registry + per-turn tool selection.
 
-A persona may own 130+ tools (native + MCP), but a model only reasons well
-over a handful. Every tool belongs to a *group*, and every group has a
-priority that decides when the model sees it:
-
-  P1  always offered              (the core of the persona)
-  P2  offered when the user's message matches the group's keywords
-  P3  offered only after the model asks for it with `more_tools(group)`
-  --  hidden: duplicates of a higher-priority tool, never offered
-
-The agent still *registers* every tool (so anything offered can run); the
-`ToolSelector` middleware only narrows what the model sees on each call.
-Selection is keyword rules over the latest user message: no extra model call.
+A persona may own 130+ tools (native + MCP). Every tool belongs to a *group*; the
+`ToolSelector` middleware offers the model every tool on every call, ordered by group
+priority (P1 core first), except tools hidden as duplicates of a higher-priority tool
+and tools whose outside dependency is down (see `dependency_is_up`).
 
 Tools not listed here are grouped by MCP server (P2, matched by server name),
 so a newly configured server is reachable instead of silently dropped.
@@ -27,8 +19,6 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool, tool
 
 from hi.core import health
-
-MAX_VISIBLE = 50
 
 # Tools that only work while an outside dependency is up. While it is marked down (hi/core/health.py)
 # the model isn't offered them, instead of calling a tool that is known to fail.
@@ -54,7 +44,7 @@ class Group:
     priority: int  # 1 always · 2 on keyword match · 3 on request only
     tools: tuple[str, ...]
     keywords: str = ""  # regex, case-insensitive (P2 only)
-    about: str = ""  # one line shown in more_tools()
+    about: str = ""
 
 
 GROUPS: tuple[Group, ...] = (
@@ -166,8 +156,8 @@ def service_group(server: str, tool_name: str) -> Group | None:
 
 
 class ToolSelector(AgentMiddleware):
-    """Narrows the tools the model sees on each call (see module docstring).
-    Create one per agent; `more_tools` is that agent's escape hatch.
+    """Orders the tools the model sees and drops unusable ones (see module docstring).
+    Create one per agent.
 
     `persona_groups` limits which curated groups apply to this persona (a tool
     listed in two groups resolves to the first one the persona has).
@@ -177,8 +167,6 @@ class ToolSelector(AgentMiddleware):
     def __init__(self, tools: list[BaseTool], persona_groups: set[str] | None = None,
                  server_groups: dict[str, str] | None = None) -> None:
         super().__init__()
-        self._unlocked: set[str] = set()
-        self._turn_text = ""
         self._tool_group: dict[str, Group] = {}
         self._groups: dict[str, Group] = {}
         for t in tools:
@@ -190,39 +178,10 @@ class ToolSelector(AgentMiddleware):
             if group and t.name not in HIDDEN:
                 self._tool_group[t.name] = group
                 self._groups.setdefault(group.name, group)
-        self.more_tools = self._make_more_tools()
-
-    def _make_more_tools(self) -> BaseTool:
-        selector = self
-
-        @tool
-        def more_tools(group: str) -> str:
-            """Make another group of tools available for the rest of this turn.
-            Call this when you need a capability none of your current tools provide."""
-            if group not in selector._groups:
-                return f"Unknown group '{group}'. Available: {', '.join(selector._groups)}"
-            selector._unlocked.add(group)
-            names = [n for n, g in selector._tool_group.items() if g.name == group]
-            return f"Unlocked '{group}'. You can now call: {', '.join(names)}"
-
-        menu = "\n".join(f"- {g.name}: {g.about}" for g in self._groups.values() if g.priority >= 2 and g.about)
-        more_tools.description += "\nGroups:\n" + menu
-        return more_tools
 
     def active_groups(self, messages: list) -> set[str]:
-        """Groups on offer for the turn these messages belong to."""
-        humans = [m for m in messages if isinstance(m, HumanMessage)]
-        text = str(humans[-1].content) if humans else ""
-        if text != self._turn_text:  # a new user message starts a new turn
-            self._turn_text, self._unlocked = text, set()
-        return self._active_groups(text)
-
-    def _active_groups(self, text: str) -> set[str]:
-        active = set(self._unlocked)
-        for g in self._groups.values():
-            if g.priority == 1 or (g.priority == 2 and g.keywords and re.search(g.keywords, text, re.IGNORECASE)):
-                active.add(g.name)
-        return active
+        """Every group is on offer on every turn."""
+        return set(self._groups)
 
     def _rank(self, name: str) -> tuple[int, int]:
         group = self._tool_group.get(name)
@@ -231,14 +190,9 @@ class ToolSelector(AgentMiddleware):
         return (group.priority, group.tools.index(name) if name in group.tools else 0)
 
     def wrap_model_call(self, request: ModelRequest, handler):
-        active = self.active_groups(request.messages)
-        shown = [
-            t for t in request.tools
-            if t.name == "more_tools" or (t.name in self._tool_group and self._tool_group[t.name].name in active and dependency_is_up(t.name))
-        ]
-        # priority first, then the order tools are listed in their group, so a cap cuts the least important
-        shown.sort(key=lambda t: self._rank(t.name))
-        return handler(request.override(tools=shown[: MAX_VISIBLE + 1]))
+        shown = [t for t in request.tools if t.name in self._tool_group and dependency_is_up(t.name)]
+        shown.sort(key=lambda t: self._rank(t.name))  # most important groups first
+        return handler(request.override(tools=shown))
 
 
 def filter_prompt(prompt: str, section_groups: dict[str, str], active: set[str]) -> str:
