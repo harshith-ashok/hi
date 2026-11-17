@@ -30,12 +30,43 @@ def required_dependency(tool_name: str) -> str | None:
 
     if tool_name in SANDBOX_TOOLS:
         return "sandbox"
+    if tool_name == "web_search":
+        return "searxng"
     return "host_bridge" if tool_name in HOST_TOOLS else None
 
 
 def dependency_is_up(tool_name: str) -> bool:
     dep = required_dependency(tool_name)
     return dep is None or health.is_up(dep)
+
+
+# Tools that only read: a background run may call these without asking. Anything not listed here (and not
+# marked readOnlyHint by its MCP server) is not read-only, so an unattended run turns it into a proposal.
+READ_ONLY = frozenset({
+    "search_vault", "read_vault_note", "read_project_file", "list_project_files", "search_files", "read_note", "list_notes",
+    "current_context", "use_skill", "get_person_info", "list_people", "list_conversations", "read_conversation",
+    "leetcode_stats", "list_applications", "list_pipeline_entries", "list_deadlines", "list_tasks",
+    "what_next", "check_suggestions", "show_last_run_trace",
+    "search_wikipedia", "find_image", "fetch", "web_search",
+    "get_me", "search_repositories", "search_code", "get_file_contents", "list_issues", "issue_read",
+    "list_pull_requests", "pull_request_read", "list_commits", "list_branches", "actions_list", "get_job_logs",
+    "get_commit", "actions_get", "get_label", "get_latest_release", "get_release_by_tag", "get_tag", "list_releases",
+    "list_tags", "search_commits", "search_issues", "search_pull_requests",
+    "list_running_apps", "now_playing", "list_timers", "list_playlists",
+    "list_background_tasks", "check_background_task", "check_dev_servers",
+    "list_schedules",
+})
+SCREEN_TOOLS = frozenset({"current_context", "read_screen", "ask_about_screen", "observe_current_tab", "take_screenshot"})
+WEB_TOOLS = frozenset({"web_search", "fetch", "search_wikipedia", "find_image"})
+
+
+def is_read_only(name: str, tool: BaseTool | None = None) -> bool:
+    """True if `name` is on the read-only list, or its MCP server marked it `readOnlyHint`."""
+    if name in READ_ONLY:
+        return True
+    meta = getattr(tool, "metadata", None) or {}
+    hint = meta.get("readOnlyHint", (meta.get("annotations") or {}).get("readOnlyHint"))
+    return hint is True
 
 
 @dataclass(frozen=True)
@@ -113,6 +144,7 @@ GROUPS: tuple[Group, ...] = (
         "tag_list", "command_list", "command_execute", "open_file",
     ), about="Obsidian app (needs it running): search, tags, commands. Prefer read_note/list_notes."),
     Group("fetch", 1, ("fetch",), about="fetch a URL as markdown"),
+    Group("search", 1, ("web_search",), about="search the web (SearXNG)"),
     # ---- butler ----------------------------------------------------------
     Group("mac", 1, (
         "set_volume", "mute", "unmute", "toggle_wifi", "toggle_bluetooth", "toggle_dnd", "adjust_brightness", "resize_window", "scale_window",

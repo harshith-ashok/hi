@@ -96,7 +96,17 @@ def backend_up() -> bool:
 
 
 # Credentials the container can't read from the host's ~/.hi/.env itself.
-FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "TAILSCALE_OLLAMA_URL", "HF_TOKEN", "AI_MODE")
+FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "TAILSCALE_OLLAMA_URL", "HF_TOKEN", "AI_MODE", "SEARXNG_SECRET")
+
+
+def host_timezone() -> str:
+    """The Mac's IANA timezone (for example Europe/London), or "" if it can't be found. The container runs in UTC
+    unless told otherwise, and a schedule at 8am must fire at 8am where you are."""
+    try:
+        target = os.readlink("/etc/localtime")
+    except OSError:
+        return os.environ.get("TZ", "")
+    return target.split("zoneinfo/", 1)[1] if "zoneinfo/" in target else ""
 
 
 def _forwarded_settings() -> dict[str, str]:
@@ -114,7 +124,20 @@ def _forwarded_settings() -> dict[str, str]:
 
         write_env_var("HI_VAULT", forwarded["HI_VAULT"], path=COMPOSE_FILE.parent / ".env")
     forwarded["HI_HOST_ROOT"] = Path.home().as_posix()
+    if tz := host_timezone():
+        forwarded["TZ"] = tz
     return forwarded
+
+
+def ensure_searxng_secret() -> str:
+    """The secret SearXNG signs with, created in ~/.hi/.env on first start (like the host bridge token)."""
+    import secrets
+
+    import hi.config as config
+
+    if not config.SEARXNG_SECRET:
+        config.set_value("SEARXNG_SECRET", secrets.token_hex(32))
+    return config.SEARXNG_SECRET
 
 
 def _ensure_mounted_files() -> None:
@@ -169,6 +192,7 @@ def start_stack() -> None:
         wait_for_host_bridge()
     if backend_up():
         return
+    ensure_searxng_secret()
     if not shutil.which("docker"):
         sys.exit("hi needs Docker to run the web UI.")
     if not COMPOSE_FILE.exists():

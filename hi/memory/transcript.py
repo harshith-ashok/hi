@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import hi.config as config
+from hi.core.runpolicy import BACKGROUND_ORIGINS
 
 HISTORY_TURNS = 8        # exchanges handed to the agent with each new message
 HISTORY_DAYS = 3         # how far back to look for them
@@ -39,13 +40,13 @@ def _day_file(day: date) -> Path:
 
 def record_turn(
     persona: str, tier: str, ask: str, answer: str, tools: list[dict], seconds: float,
-    plan: bool = False, error: str = "",
+    plan: bool = False, error: str = "", origin: str = "",
 ) -> None:
     """tools: [{"name", "args" (JSON string), "result"}] in call order, kept in full."""
     entry = {
         "time": datetime.now().isoformat(timespec="seconds"),
         "persona": persona, "tier": tier, "plan": plan, "seconds": round(seconds, 2),
-        "ask": ask, "tools": tools, "answer": answer, "error": error,
+        "ask": ask, "tools": tools, "answer": answer, "error": error, "origin": origin,
     }
     path = _day_file(date.today())
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,7 +66,7 @@ def _recent_entries(limit: int) -> list[dict]:
                 entry = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if entry.get("answer"):
+            if entry.get("answer") and entry.get("origin") not in BACKGROUND_ORIGINS:
                 found.append(entry)
     return list(found)
 

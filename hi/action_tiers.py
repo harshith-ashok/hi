@@ -53,6 +53,12 @@ def confirm_destructive(description: str) -> bool:
     Args:
         description: What's about to happen, e.g. "delete the note for Dean Haidt".
     """
+    from hi.core import runpolicy
+
+    if runpolicy.is_pre_approved():  # an approved proposal: the user has seen exactly what this does
+        return True
+    if runpolicy.is_unattended():  # nobody is here to answer: deny, never queue a question for later
+        return False
     if _confirm_handler is not None:
         return _confirm_handler(description)
 

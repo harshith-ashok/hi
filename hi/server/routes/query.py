@@ -22,13 +22,14 @@ async def query(request: Request) -> StreamingResponse:
     ids = body.get("attachments")
     context = attachments.render([str(i) for i in ids]) if isinstance(ids, list) else ""
     fresh = bool(body.get("fresh"))  # the menu bar prompt: start from a clean conversation
+    origin = body.get("origin") if body.get("origin") in ("ui", "island", "voice") else "ui"
     encoder = EventEncoder()
 
     async def stream():
         started = time.monotonic()
         try:
             events = iterate_in_one_thread(
-                lambda: turn.stream_query_as_agui(text, forced_persona=forced_persona, fresh=fresh, context=context)
+                lambda: turn.stream_query_as_agui(text, forced_persona=forced_persona, fresh=fresh, context=context, origin=origin)
             )
             async for event in events:
                 yield encoder.encode(event)

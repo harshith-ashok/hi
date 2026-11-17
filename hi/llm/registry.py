@@ -38,6 +38,13 @@ def tier_chain(tier: str) -> list[str]:
     return list(reversed(TIERS[: TIERS.index(tier) + 1]))
 
 
+def is_local(tier: str) -> bool:
+    """True if every model `tier` could fall back to runs on hardware you own (not a hosted `:cloud` model).
+    Screen text and screenshots may only go to a tier for which this is true."""
+    models = tier_models()
+    return not any("cloud" in models[t] for t in tier_chain(tier))
+
+
 _cache: dict[tuple, BaseChatModel] = {}
 
 

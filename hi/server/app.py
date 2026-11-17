@@ -27,10 +27,11 @@ async def lifespan(app: Starlette):
     from hi import startup
     from hi.action_tiers import set_confirm_handler
     from hi.orchestrator.pending_actions import wait_for_approval
+    from hi.server.headless import run_turn
     from hi.server.turn import _warm_up
 
     set_confirm_handler(wait_for_approval)
-    startup.start_background_jobs()
+    startup.start_background_jobs(run_turn)
     threading.Thread(target=_warm_up, name="warm-up", daemon=True).start()
     yield
 

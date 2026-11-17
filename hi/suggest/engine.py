@@ -229,25 +229,11 @@ def _notify(message: str) -> None:
     inbox.deliver(message)
 
 
-MAX_NOTIFICATIONS_PER_HOUR = 3
-BUDGET_PATH = STATE_PATH.with_name("notify_times.json")
-
-
 def _budget_left() -> int:
-    """Notifications still allowed in the last hour (interruption budget)."""
-    try:
-        times = json.loads(BUDGET_PATH.read_text())
-    except (OSError, json.JSONDecodeError):
-        times = []
-    recent = [t for t in times if time.time() - t < 3600]
-    BUDGET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    BUDGET_PATH.write_text(json.dumps(recent))
-    return max(0, MAX_NOTIFICATIONS_PER_HOUR - len(recent))
+    """Notifications still allowed in the last hour: one budget shared by every sender (hi/context/inbox.py)."""
+    from hi.context import inbox
 
-
-def _record_notification() -> None:
-    times = json.loads(BUDGET_PATH.read_text()) if BUDGET_PATH.exists() else []
-    BUDGET_PATH.write_text(json.dumps(times + [time.time()]))
+    return inbox.budget_left()
 
 
 def run_once(notify: bool = True) -> list[Suggestion]:
@@ -262,8 +248,7 @@ def run_once(notify: bool = True) -> list[Suggestion]:
         # Over budget: leave the rest un-recorded so they surface later.
         fresh = fresh[: _budget_left()]
         for s in fresh:
-            _notify(s.message)
-            _record_notification()
+            _notify(s.message)  # the gate records it against the shared budget
     _save_notified(already_notified | {s.key for s in fresh})
     return fresh
 

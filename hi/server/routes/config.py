@@ -70,7 +70,14 @@ async def health(request: Request) -> JSONResponse:
     return JSONResponse(report, status_code=200 if report["ok"] else 503)
 
 
+async def livez(request: Request) -> JSONResponse:
+    """The process answers. Unlike /health this stays 200 while Ollama is down, so Docker's healthcheck restarts a
+    hung backend and not one that is merely waiting for its model host."""
+    return JSONResponse({"ok": True})
+
+
 routes = [
+    Route("/livez", livez, methods=["GET"]),
     Route("/config", get_config, methods=["GET"]),
     Route("/config", post_config, methods=["POST"]),
     Route("/models", models, methods=["GET"]),

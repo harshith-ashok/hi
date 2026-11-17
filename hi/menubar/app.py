@@ -76,7 +76,7 @@ def stream_answer(text: str, on_text, on_status, on_image=None) -> None:
     """POST /query and feed the AG-UI event stream to the callbacks: on_text(delta), on_status(line),
     on_image(local file path) for each diagram or chart a tool made."""
     request = urllib.request.Request(
-        BACKEND_QUERY, json.dumps({"text": text, "fresh": True}).encode(), {"Content-Type": "application/json"}
+        BACKEND_QUERY, json.dumps({"text": text, "fresh": True, "origin": "island"}).encode(), {"Content-Type": "application/json"}
     )
     with urllib.request.urlopen(request, timeout=300) as response:
         for raw in response:

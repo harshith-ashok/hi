@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from uuid import uuid4
 
@@ -54,6 +55,15 @@ _active_orchestrated_count = 0
 # doesn't run forever between restarts — the same trade-off `_pending`
 # itself already makes.
 _resolved: dict[str, bool] = {}
+
+# Called with each new PendingAction so something above this layer can announce it (the server's lifespan
+# registers one that posts to the menu bar island). Kept as a hook so this module imports nothing higher.
+_on_pending: "Callable[[PendingAction], None] | None" = None
+
+
+def set_on_pending(handler: "Callable[[PendingAction], None] | None") -> None:
+    global _on_pending
+    _on_pending = handler
 
 
 @dataclass
@@ -127,27 +137,20 @@ def wait_for_approval(
     Denies on timeout rather than hanging forever or silently
     proceeding — an unattended run should fail safe.
 
-    Prints a periodic reminder with the exact `curl` commands to
-    resolve it: the REPL's own terminal is synchronously blocked
-    waiting on the whole orchestrated run at this point (that's the
-    actual reason this queue exists), so it can't accept a plain "y"
-    typed into the same prompt — the visible reminder is what makes
-    this a real, usable indicator instead of a silent hang, per this
-    phase's own requirement.
+    Announces the action through the hook set by `set_on_pending` (the server posts it to the menu bar island) and
+    prints a periodic reminder: the terminal this runs in cannot accept a typed "y", so the answer comes from tinyui
+    or the island through `resolve()`.
     """
     action = PendingAction(id=uuid4().hex[:8], description=description, created_at=time.time())
     with _lock:
         _pending[action.id] = action
 
-    # Port 8766, not the voice companion's 8765 — wait_for_approval() is
-    # only ever reached from inside the terminal REPL process (the only
-    # place an orchestrated run currently happens), which is exactly
-    # the process hi/orchestrator/pending_server.py's dedicated server
-    # runs in — see that module's docstring for why the two are separate.
-    print(f"\n[pending approval] {description}")
-    print(f"  id: {action.id}")
-    print(f"  approve: curl -X POST http://127.0.0.1:8766/pending/{action.id}/approve")
-    print(f"  deny:    curl -X POST http://127.0.0.1:8766/pending/{action.id}/deny")
+    print(f"\n[pending approval] {description} (id {action.id}); answer it in tinyui or the menu bar island")
+    if _on_pending is not None:
+        try:
+            _on_pending(action)
+        except Exception as e:  # boundary: failing to announce must not stop the wait itself
+            print(f"[pending approval] could not announce {action.id}: {e}")
 
     elapsed = 0.0
     while elapsed < timeout:

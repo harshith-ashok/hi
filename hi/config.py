@@ -194,6 +194,58 @@ DIFF_WATCH_ENABLED = _env.get("DIFF_WATCH_ENABLED", "").strip().lower() in ("1",
 SMART_SUGGESTIONS_ENABLED = _env.get("SMART_SUGGESTIONS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
+# --- Automation (hi/automation/): web search, scheduled tasks, the heartbeat, the drop folder -----------------
+def _flag(name: str, default: bool) -> bool:
+    value = (_env.get(name) or "").strip().lower()
+    return default if not value else value in ("1", "true", "yes", "on")
+
+
+def _number(name: str, default: float) -> float:
+    try:
+        return float(_env.get(name) or default)
+    except ValueError:
+        return float(default)
+
+
+# SearXNG, the private search engine (the `searxng` compose service; natively, publish it on 8888).
+SEARXNG_URL = _env.get("SEARXNG_URL") or "http://127.0.0.1:8888"
+SEARXNG_SECRET = _env.get("SEARXNG_SECRET") or ""
+# The heartbeat: every HEARTBEAT_EVERY seconds, between the hours in HEARTBEAT_HOURS ("08-22"), look for work to prepare.
+HEARTBEAT = _flag("HEARTBEAT", True)
+HEARTBEAT_EVERY = int(_number("HEARTBEAT_EVERY", 1800))
+HEARTBEAT_HOURS = _env.get("HEARTBEAT_HOURS") or "08-22"
+# The drop folder (default <vault>/hi/drop): anything saved there is read, filed as a note and its tasks added.
+DROP_PATH = _env.get("DROP_PATH") or ""
+SCREENSHOT_WATCH = _flag("SCREENSHOT_WATCH", False)
+# Unattended work: how long a proposal waits for you, and the limits on what runs by itself.
+PROPOSAL_TTL_DAYS = int(_number("PROPOSAL_TTL_DAYS", 7))
+MAX_BACKGROUND_RUNS_PER_HOUR = int(_number("MAX_BACKGROUND_RUNS_PER_HOUR", 6))
+MAX_HOSTED_CALLS_PER_DAY = int(_number("MAX_HOSTED_CALLS_PER_DAY", 50))
+MAX_NOTIFICATIONS_PER_HOUR = int(_number("MAX_NOTIFICATIONS_PER_HOUR", 3))
+MAX_BACKGROUND_TOOL_CALLS = int(_number("MAX_BACKGROUND_TOOL_CALLS", 15))
+
+_SECRET_SUFFIXES = ("_TOKEN", "_KEY", "_SECRET", "PASSWORD")
+MIN_SECRET_LENGTH = 8
+
+
+def secret_values() -> list[str]:
+    """The current value of every credential setting, read live. Used to keep them out of anything that leaves `hi`."""
+    found = {
+        str(value)
+        for source in (_env, globals())
+        for name, value in source.items()
+        if name.isupper() and name.endswith(_SECRET_SUFFIXES) and isinstance(value, str) and len(value) >= MIN_SECRET_LENGTH
+    }
+    return sorted(found)
+
+
+def state_dir() -> Path:
+    """Runtime counters (usage, limits). Not memory: the vault is where `hi` remembers things."""
+    path = Path.home() / ".hi" / "state"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def set_value(key: str, value: str) -> None:
     """Persist `key=value` to ~/.hi/.env and apply it to this process
     immediately (every consumer reads `config.<KEY>` live at call time).

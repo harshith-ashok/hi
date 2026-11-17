@@ -27,6 +27,24 @@ def triage_inbox() -> None:
     triage()
 
 
-def start_background_jobs() -> None:
+def announce_pending_approval(action) -> None:
+    """Show a live approval (an interactive turn is waiting on it) in the menu bar island, so it can be answered
+    without tinyui open."""
+    from hi.automation.deliver import Delivery, deliver
+
+    deliver(Delivery(
+        headline=action.description, kind="approval", priority="urgent", origin="approval",
+        dedupe_key=f"approval:{action.id}", payload={"action_id": action.id},
+    ))
+
+
+def start_background_jobs(run_turn=None) -> None:
+    """Start every background job. `run_turn` is the server's headless runner (hi/server/headless.py); automation
+    jobs use it to run agent turns without importing the server."""
+    from hi.memory import proposals
+    from hi.orchestrator.pending_actions import set_on_pending
+
+    set_on_pending(announce_pending_approval)
+    proposals.recover_interrupted()  # a proposal stuck mid-execution is failed, never re-run
     jobs.every("triage-inbox", HOUR_S, triage_inbox)
     jobs.every("weekly-retro", HOUR_S, maybe_generate_weekly_retro)

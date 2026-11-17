@@ -14,8 +14,11 @@ from ag_ui.core import events as ag
 
 import hi.config as config
 from hi import llm
+from hi.automation import profiles
 from hi.agui_adapter import stream_agent_as_agui, stream_orchestrated_as_agui_sync
-from hi.llm.registry import get_tier_model, get_tier_model_fast
+from hi.core import runpolicy
+from hi.core.runpolicy import BACKGROUND_ORIGINS
+from hi.llm.registry import TIERS, get_tier_model, get_tier_model_fast
 from hi.memory import extraction as memory
 from hi.memory import records, reflection as reflection_agent, transcript
 from hi.orchestrator.complexity import classify_or_default
@@ -44,13 +47,15 @@ _FORCED_PERSONA_TIER = "sonnet"
 # live while wiring up config hot-reload (hi/models.py's tier_models()
 # already re-resolves per call; this cache would have silently
 # undermined that one level up if left keyed on tier alone).
-_agent_cache: dict[tuple[str, str, str, str], object] = {}
+_agent_cache: dict[tuple, object] = {}
 _cache_lock = threading.Lock()
 
 
-def _get_agent(persona_name: str, tier: str):
+def _get_agent(persona_name: str, tier: str, isolated: bool = False):
+    """The cached agent for (persona, tier). `isolated` gives background runs their own: term remembers the
+    conversation, and a background run must neither read your chat nor reset it."""
     model = get_tier_model(tier)
-    key = (persona_name, tier, llm.model_name(model), llm.signature())
+    key = (persona_name, tier, llm.model_name(model), llm.signature(), isolated)
     with _cache_lock:
         if key not in _agent_cache:
             _agent_cache[key] = get_agent_builder(persona_name)(model)
@@ -66,18 +71,26 @@ def _context_used(text: str) -> dict | None:
     return {"memory": len(lines), "notes": notes} if lines or notes else None
 
 
-def stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bool = False, context: str = ""):
+def stream_query_as_agui(
+    text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
+    origin: str = "ui", forced_tier: str | None = None,
+):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
     (unreachable Ollama, missing model) reaches the client
     as a RUN_ERROR event instead of a silently dropped connection."""
     try:
-        yield from _stream_query_as_agui(text, forced_persona, fresh, context)
+        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier)
     except Exception as e:
-        records.record_turn(records.TurnRecord(forced_persona or "", "", text, error=llm.friendly_error(e), detail=repr(e)))
+        records.record_turn(records.TurnRecord(
+            forced_persona or "", "", text, error=llm.friendly_error(e), detail=repr(e), origin=origin,
+        ))
         yield ag.RunErrorEvent(message=llm.friendly_error(e))
 
 
-def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: bool = False, context: str = ""):
+def _stream_query_as_agui(
+    text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
+    origin: str = "ui", forced_tier: str | None = None,
+):
     """Yields AG-UI events for one query — a `persona_selected` CUSTOM
     event first (this project's own extension; AG-UI has no built-in
     field for "which persona/tier answered"), then either
@@ -101,7 +114,16 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: b
         routed = fast_route(text)
         persona_name, tier, needs_plan = (*routed, False) if routed else classify_or_default(text)
         persona_name = collapse(persona_name)
-    remember_route(persona_name, tier)
+    prof = profiles.profile(origin)
+    if forced_tier in TIERS:  # a background run asked for a specific tier
+        tier = forced_tier
+    tier = profiles.cap_tier(tier, prof.max_tier)  # the island never needs the heaviest model
+    if origin in BACKGROUND_ORIGINS:
+        state = runpolicy.current()
+        if state is not None:
+            state.persona = persona_name  # so a proposal knows which agent's tools can run it
+    else:
+        remember_route(persona_name, tier)  # a background run must not steer the next chat message's route
     route_s = time.monotonic() - started
 
     yield ag.CustomEvent(name="persona_selected", value={"name": persona_name, "tier": tier, "plan": needs_plan})
@@ -111,18 +133,19 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: b
 
     thread_id = uuid.uuid4().hex
     if needs_plan:
-        events = stream_orchestrated_as_agui_sync(text + context, thread_id)
+        events = stream_orchestrated_as_agui_sync(text + context + prof.style, thread_id)
         log_persona = "orchestrator"
     else:
-        agent = _get_agent(persona_name, tier)
+        agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS)
         if fresh and hasattr(agent, "reset"):
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
-        events = stream_agent_as_agui(agent, text + context, thread_id, [] if fresh else transcript.history())
+        events = stream_agent_as_agui(agent, text + context + prof.style, thread_id, [] if fresh else transcript.history())
         log_persona = persona_name
 
     final_answer = ""
     run_error = ""
     speaker = Speaker()
+    speaks = origin in ("ui", "voice")  # the island and background runs show text; they never read it aloud
     first_token_s: float | None = None
     tool_starts: dict[str, tuple[str, float]] = {}
     tool_times: list[dict] = []
@@ -131,7 +154,7 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: b
         now = time.monotonic()
         if first_token_s is None and isinstance(event, ag.TextMessageContentEvent):
             first_token_s = now - started
-        if isinstance(event, ag.TextMessageContentEvent) and not event.subagent_run_id:
+        if speaks and isinstance(event, ag.TextMessageContentEvent) and not event.subagent_run_id:
             speaker.feed(event.delta)
         if isinstance(event, ag.ToolCallStartEvent):
             journal_tools[event.tool_call_id] = {"name": event.tool_call_name, "args": "", "result": ""}
@@ -168,9 +191,9 @@ def _stream_query_as_agui(text: str, forced_persona: str | None = None, fresh: b
 
     records.record_turn(records.TurnRecord(
         log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started, needs_plan,
-        error="" if final_answer else run_error, detail=run_error,
+        error="" if final_answer else run_error, detail=run_error, origin=origin,
     ))
-    if final_answer:
+    if final_answer and speaks:
         if not speaker.has_spoken:  # nothing sayable streamed (tool-only answer, one-liner): summarize
             yield ag.CustomEvent(name="spoken_summary", value={"text": make_spoken_summary(final_answer)})
 
