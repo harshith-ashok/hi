@@ -442,3 +442,70 @@ def test_a_forced_tier_is_used_but_the_router_choice_is_what_the_next_message_in
     monkeypatch.setattr(turn_module, "make_spoken_summary", lambda a: None)
     list(turn_module.stream_query_as_agui("hello", forced_tier="opus"))
     assert chosen == ["opus"] and remembered == ["sonnet"]
+
+
+# --- a turn that ended by asking ------------------------------------------------------------------------------------
+
+def test_a_turn_that_showed_a_form_stays_in_the_history_so_the_reply_makes_sense(tmp_vault):
+    sid = sessions.create().id
+    ui = {"ui": {"type": "form", "title": "Deploy", "children": []}}
+    turn(sid, "deploy it", "", tools=[{"name": "show_ui", "args": json.dumps(ui), "result": "The UI is now shown. End your turn now"}])
+    turn(sid, "My response to \"Deploy\": deploy\n- Environment: staging", "Deploying.")
+    messages = transcript.history(session=sid)
+    assert [m["role"] for m in messages] == ["user", "assistant", "user", "assistant"]
+    assert "interactive UI (Deploy)" in messages[1]["content"] and "waited for their response" in messages[1]["content"]
+
+
+def test_a_turn_that_asked_questions_is_kept_with_the_questions(tmp_vault):
+    sid = sessions.create().id
+    turn(sid, "delete the branches", "", tools=[{"name": "ask_user", "args": json.dumps({"questions": ["Which ones?", "Force?"]}), "result": "ok"}])
+    (_, assistant) = transcript.history(session=sid)
+    assert "asked the user: Which ones? | Force?" in assistant["content"]
+
+
+def test_a_failed_turn_with_no_answer_is_still_left_out(tmp_vault):
+    sid = sessions.create().id
+    turn(sid, "x", "", tools=[{"name": "read_note", "args": "{}", "result": "x"}], error="model down")
+    assert transcript.history(session=sid) == []
+
+
+def test_the_turn_ends_as_soon_as_a_form_is_shown_without_another_model_call(tmp_vault, monkeypatch):
+    from ag_ui.core import events as ag
+
+    from hi.server import turn as turn_module
+    from hi.ui_spec import WAIT_MARKER
+
+    closed = []
+
+    def agent_stream(agent, text, thread_id, history=None):
+        try:
+            yield ag.RunStartedEvent(thread_id="t", run_id="r")
+            yield ag.ToolCallStartEvent(tool_call_id="c1", tool_call_name="show_ui")
+            yield ag.ToolCallArgsEvent(tool_call_id="c1", delta='{"ui": {"type": "form", "title": "Deploy"}}')
+            yield ag.ToolCallResultEvent(message_id="m", tool_call_id="c1", content=f"The UI is shown. {WAIT_MARKER} without adding anything")
+            yield ag.TextMessageStartEvent(message_id="x")
+            yield ag.TextMessageContentEvent(message_id="x", delta="THE MODEL'S UNWANTED EXTRA WORDS")  # must never be reached
+            yield ag.RunFinishedEvent(thread_id="t", run_id="r", result="THE MODEL'S UNWANTED EXTRA WORDS")
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(turn_module, "stream_agent_as_agui", agent_stream)
+    monkeypatch.setattr(turn_module, "_get_agent", lambda *a, **k: object())
+    monkeypatch.setattr(turn_module, "fast_route", lambda text: ("term", "sonnet"))
+    monkeypatch.setattr(turn_module.reflection_agent, "maybe_reflect_yesterday", lambda: None)
+    monkeypatch.setattr(turn_module, "make_spoken_summary", lambda a: None)
+    sid = sessions.create().id
+    events = list(turn_module.stream_query_as_agui("deploy it", session=sid))
+    kinds = [e.type for e in events if e.type in ("TOOL_CALL_RESULT", "TEXT_MESSAGE_CONTENT", "RUN_FINISHED")]
+    assert kinds == ["TOOL_CALL_RESULT", "RUN_FINISHED"] and events[-1].type in ("RUN_FINISHED", "CUSTOM") and closed == [True]
+    assert [e.result for e in events if e.type == "RUN_FINISHED"] == [""]
+    (saved,) = transcript.session_turns(sid)
+    assert saved["answer"] == "" and saved["error"] == "" and saved["tools"][0]["name"] == "show_ui"
+    # and the next message still sees what was asked
+    assert "interactive UI (Deploy)" in transcript.history(session=sid)[1]["content"]
+
+
+def test_a_stopped_turn_with_tools_is_still_remembered(tmp_vault):
+    sid = sessions.create().id
+    turn(sid, "go", "", tools=[{"name": "show_ui", "args": json.dumps({"ui": {"type": "form", "title": "T"}}), "result": "x"}], error="stopped")
+    assert len(transcript.history(session=sid)) == 2

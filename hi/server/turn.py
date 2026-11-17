@@ -26,6 +26,7 @@ from hi.personas import PERSONAS, get_agent_builder
 from hi.router import collapse, fast_route, remember_route
 from hi.server.spoken_summary import make_spoken_summary
 from hi.speaker import Speaker
+from hi.ui_spec import WAIT_MARKER
 from hi.visuals import make_visual
 
 # Tier used when the client forces a specific persona (the panel's tab
@@ -164,6 +165,7 @@ def _stream_query_as_agui(
     tool_times: list[dict] = []
     journal_tools: dict[str, dict] = {}  # call id -> {name, args, result}, for the journal
     streamed: list[str] = []  # the answer so far, in case the client stops the reply
+    run_ids: tuple[str, str] | None = None
     try:
         for event in events:
             now = time.monotonic()
@@ -189,9 +191,18 @@ def _stream_query_as_agui(
                 final_answer = event.result
             elif isinstance(event, ag.RunErrorEvent):
                 run_error = event.message
+            if isinstance(event, ag.RunStartedEvent):
+                run_ids = (event.thread_id, event.run_id)
             yield event
             for line in speaker.ready():
                 yield ag.CustomEvent(name="spoken_chunk", value={"text": line})
+            if isinstance(event, ag.ToolCallResultEvent) and WAIT_MARKER in str(event.content) and run_ids:
+                # A form or question is on screen and the assistant has nothing to add until the user answers: end the
+                # turn here rather than spend a model call on an empty reply (and leave the user a window to answer
+                # while it is still "running").
+                events.close()
+                yield ag.RunFinishedEvent(thread_id=run_ids[0], run_id=run_ids[1], result="")
+                break
 
     except GeneratorExit:
         # The client pressed Stop (or went away). Keep what was said: a stopped turn stays in its chat session.

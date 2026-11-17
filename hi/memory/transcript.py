@@ -78,7 +78,11 @@ def _recent_entries(limit: int, session: str = "") -> list[dict]:
     days = SESSION_DAYS if session else HISTORY_DAYS
     for offset in range(days - 1, -1, -1):
         for entry in _entries_on(date.today() - timedelta(days=offset)):
-            if entry.get("answer") and entry.get("origin") not in BACKGROUND_ORIGINS and entry.get("session", "") == session:
+            # A turn that ended by showing a form or asking a question has tools but no answer text: it still belongs in
+            # the history, or the assistant could not see what it had asked when the reply comes back.
+            failed = entry.get("error") not in ("", None, "stopped")  # a stopped turn is not a failed one
+            spoke = entry.get("answer") or (entry.get("tools") and not failed)
+            if spoke and entry.get("origin") not in BACKGROUND_ORIGINS and entry.get("session", "") == session:
                 found.append(entry)
     return list(found)
 
@@ -151,8 +155,25 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + " …[clipped]"
 
 
+def _waiting_note(tool: dict) -> str:
+    """What a tool that waits for the user put on screen, in a line, for the history."""
+    try:
+        args = json.loads(tool.get("args") or "{}")
+    except json.JSONDecodeError:
+        return ""
+    if tool.get("name") == "ask_user":
+        return "asked the user: " + " | ".join(str(q) for q in (args.get("questions") or [])[:4])
+    if tool.get("name") == "show_ui" and isinstance(args.get("ui"), (dict, list)):
+        ui = args["ui"] if isinstance(args["ui"], dict) else {}
+        return f"showed the user an interactive UI ({ui.get('title') or args.get('title') or ui.get('type', 'form')}) and waited for their response"
+    return ""
+
+
 def _assistant_text(entry: dict) -> str:
-    answer = _clip(entry["answer"], ANSWER_CHARS)
+    answer = _clip(entry.get("answer") or "", ANSWER_CHARS)
+    notes = [n for t in entry.get("tools", []) if (n := _waiting_note(t))]
+    if notes and not answer:
+        answer = "[" + "; ".join(notes) + "]"
     names = [t["name"] for t in entry.get("tools", [])]
     if not names:
         return answer

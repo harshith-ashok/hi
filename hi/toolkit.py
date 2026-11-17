@@ -157,6 +157,7 @@ GROUPS: tuple[Group, ...] = (
         "tag_list", "command_list", "command_execute", "open_file",
     ), about="Obsidian app (needs it running): search, tags, commands. Prefer read_note/list_notes."),
     Group("fetch", 1, ("fetch",), about="fetch a URL as markdown"),
+    Group("show_ui", 1, ("show_ui",), about="show forms, choices, tables and flows in the chat"),
     Group("ask", 1, ("ask_user",), about="ask the user clarifying questions as a form"),
     Group("search", 1, ("web_search",), about="search the web (SearXNG)"),
     # ---- butler ----------------------------------------------------------

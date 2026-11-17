@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from langchain_core.tools import tool
 
+from hi.ui_spec import WAIT_MARKER
+
 MAX_QUESTIONS = 4
 
 
@@ -25,5 +27,5 @@ def ask_user(questions: list[str]) -> str:
     asked = [q.strip() for q in questions if q and q.strip()][:MAX_QUESTIONS]
     if not asked:
         return "No questions were given. Decide with a sensible default and say what you assumed."
-    return ("The questions are now shown to the user as a form. End your turn now without adding anything: their "
+    return (f"The questions are now shown to the user as a form. {WAIT_MARKER} without adding anything: their "
             "answers arrive as their next message, and then you carry on.")

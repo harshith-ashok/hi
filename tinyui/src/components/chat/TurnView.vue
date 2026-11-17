@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { answerOf, type Turn } from '@/composables/useChat'
-import { questionsOf } from '@/lib/run'
+import GenUi from '@/components/genui/GenUi.vue'
+import { questionsOf, uis } from '@/lib/run'
 
 const props = defineProps<{ turn: Turn; isLast: boolean; busy: boolean; answered: boolean }>()
 const emit = defineEmits<{ answer: [text: string]; regenerate: []; draw: []; redraw: [error: string] }>()
@@ -61,6 +62,11 @@ async function copy() {
           <ThinkingBlock v-if="block.kind === 'thinking'" :block="block" />
           <template v-else-if="block.kind === 'tool'">
             <AskForm v-if="block.name === 'ask_user' && questionsOf(block.args).length" :questions="questionsOf(block.args)" :answered="answered" :disabled="busy" @submit="emit('answer', $event)" />
+            <template v-else-if="block.name === 'show_ui'">
+              <GenUi v-for="src in uis(block.result)" :key="src" :src="src" :answered="answered" @respond="emit('answer', $event)" />
+              <div v-if="block.result === undefined && running" class="space-y-2 rounded-xl border p-4" role="status" aria-label="Building the UI"><Skeleton class="h-4 w-1/3" /><Skeleton class="h-16 w-full" /></div>
+              <ToolCall v-else-if="!uis(block.result).length" :block="block" :running="running" :restored="turn.restored" />
+            </template>
             <ToolCall v-else :block="block" :running="running" :restored="turn.restored" @send="emit('answer', $event)" />
           </template>
           <MarkdownContent v-else :source="block.text" :streaming="running && i === turn.blocks.length - 1" />

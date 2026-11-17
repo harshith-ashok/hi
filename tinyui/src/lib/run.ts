@@ -19,6 +19,9 @@ export const scenes = (result?: string) =>
 /** Mesh files the sandbox exported (.glb .gltf .obj .stl .ply). */
 export const meshes = (result?: string) => files(result).filter((f) => MESH_EXTENSIONS.test(f.name))
 
+/** Interactive UIs saved by show_ui (/ui/<name>.json). */
+export const uis = (result?: string) => [...new Set(result?.match(/(?<![\w/])\/ui\/[\w-]+\.json/g) ?? [])]
+
 export const short = (s: string, n = 140) => {
   const flat = s.replace(/\s+/g, ' ').trim()
   return flat.length > n ? `${flat.slice(0, n)}…` : flat

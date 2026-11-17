@@ -75,8 +75,8 @@ class RunGuard(AgentMiddleware):
         if policy.max_tool_calls and state.tool_calls > policy.max_tool_calls:
             return _refusal(request, f"Not run: this background run is limited to {policy.max_tool_calls} tool calls. "
                                      "Finish with what you have.")
-        if name == "ask_user":
-            return _refusal(request, "Not asked: nobody is here to answer a background run. Make a reasonable "
+        if name in ("ask_user", "show_ui"):
+            return _refusal(request, "Not shown: nobody is here to answer a background run. Make a reasonable "
                                      "assumption, say what you assumed, and carry on.")
         if name in WEB_TOOLS and not policy.allow_web:
             return _refusal(request, "Not run: this background run may not use the web.")
