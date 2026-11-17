@@ -5,7 +5,7 @@
 # set IMAGE_URL=http://host.docker.internal:8790.
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir --default-timeout=120 --retries 10 torch diffusers transformers accelerate sentencepiece protobuf pillow safetensors huggingface_hub
+RUN pip install --no-cache-dir --default-timeout=120 --retries 10 torch diffusers transformers accelerate sentencepiece protobuf pillow safetensors huggingface_hub  # keep in step with requirements.txt
 
 WORKDIR /srv
 COPY server.py ./
