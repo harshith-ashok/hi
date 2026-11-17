@@ -38,6 +38,8 @@ class Delivery:
     proposals: tuple[str, ...] = ()
     links: tuple[str, ...] = ()
     payload: dict = field(default_factory=dict)  # for the island: action_id, proposal_id, ...
+    popup: str = "yes"  # yes | approvals (only if something needs approving) | no
+    notes: tuple[str, ...] = ()  # what was left out of the run and why; added to the end of the report
 
 
 class Delivered(NamedTuple):
@@ -121,6 +123,8 @@ def deliver(d: Delivery, post: Callable[[str, str, str, str, dict], str] | None 
     body = d.body
     if found := [p for pid in d.proposals if (p := proposal_store.get(pid))]:
         body = f"{body.rstrip()}\n\n{_proposals_section(found)}".strip()
+    if d.notes and body.strip():
+        body += "\n\n---\n*Run notes:* " + "; ".join(d.notes)
     try:
         if body.strip():
             report_id, _ = reports.write_report(d.origin, headline, body, d.links, d.proposals, priority)
@@ -128,6 +132,8 @@ def deliver(d: Delivery, post: Callable[[str, str, str, str, dict], str] | None 
     except OSError as e:
         health.mark_down("vault", e)
         log.exception("could not write the report for %r", headline)
+    if d.popup == "no" or (d.popup == "approvals" and kind != "approval"):
+        return Delivered(report_id, "silent")  # the report is in the Inbox; nothing is shown
     try:
         status = (post or _post_default)(headline, kind, priority, key, payload)
     except Exception as e:  # boundary: delivery must never take a background job down

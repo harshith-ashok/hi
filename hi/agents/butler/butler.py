@@ -28,6 +28,7 @@ from hi.agents.butler.timers import cancel_timer, list_timers, set_timer
 from hi.agents.butler.todo import add_task, capture_note, complete_task, list_tasks, remove_task
 from hi.browser import open_url_in_browser
 from hi.agents.base import make_agent
+from hi.agents.term.schedule_tools import SCHEDULE_TOOLS
 from hi.agents.web.search import web_search
 from hi.host import passthrough
 from hi.mcp_install import configure_mcp_server, configure_n8n_server, list_available_mcp_servers
@@ -67,11 +68,12 @@ TOOLS = passthrough([
     configure_mcp_server,
     configure_n8n_server,
     web_search,
+    *SCHEDULE_TOOLS,
 ])
 
 
 def build_agent(model: BaseChatModel):
     """Build a fresh butler agent bound to `model`."""
-    selector = ToolSelector(TOOLS, persona_groups={"mac", "tasks", "mcp_setup", "search"})
+    selector = ToolSelector(TOOLS, persona_groups={"mac", "tasks", "mcp_setup", "search", "schedule"})
     return make_agent(model, TOOLS, system_prompt=voiced_prompt(PROMPT_PATH), selector=selector)
 

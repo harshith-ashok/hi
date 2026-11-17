@@ -8,7 +8,10 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from hi.memory import proposals, reports
+from datetime import datetime
+
+from hi.automation import scheduler
+from hi.memory import proposals, reports, schedules
 from hi.server import proposals_exec
 
 
@@ -46,7 +49,51 @@ async def deny(request: Request) -> Response:
     return Response(status_code=204)
 
 
+def _schedule_row(s: schedules.Schedule, now: datetime) -> dict:
+    nxt = schedules.next_fires(s, 3, now)
+    return {
+        "id": s.id, "when": s.when, "enabled": s.enabled, "kind": s.kind, "tier": s.tier, "deliver": s.deliver,
+        "prompt": s.prompt, "next": [schedules.say_time(n) for n in nxt], "runs": schedules.runs(s.id, 5),
+    }
+
+
+async def list_schedules(request: Request) -> JSONResponse:
+    def load() -> dict:
+        errors: list[str] = []
+        items = schedules.load_all(errors)
+        now = datetime.now()
+        return {"schedules": [_schedule_row(s, now) for s in items], "errors": errors}
+
+    return JSONResponse(await run_in_threadpool(load))
+
+
+async def toggle_schedule(request: Request) -> JSONResponse:
+    schedule_id = request.path_params["schedule_id"]
+    current = await run_in_threadpool(schedules.load, schedule_id)
+    if current is None:
+        raise HTTPException(404, "No such schedule")
+    await run_in_threadpool(schedules.set_enabled, schedule_id, not current.enabled)
+    return JSONResponse({"id": schedule_id, "enabled": not current.enabled})
+
+
+async def run_schedule(request: Request) -> JSONResponse:
+    message = await run_in_threadpool(scheduler.run_now, request.path_params["schedule_id"])
+    if message.startswith("No schedule"):
+        raise HTTPException(404, message)
+    return JSONResponse({"message": message})
+
+
+async def delete_schedule(request: Request) -> Response:
+    if not await run_in_threadpool(schedules.delete, request.path_params["schedule_id"]):
+        raise HTTPException(404, "No such schedule")
+    return Response(status_code=204)
+
+
 routes = [
+    Route("/schedules", list_schedules, methods=["GET"]),
+    Route("/schedules/{schedule_id}/toggle", toggle_schedule, methods=["POST"]),
+    Route("/schedules/{schedule_id}/run", run_schedule, methods=["POST"]),
+    Route("/schedules/{schedule_id}", delete_schedule, methods=["DELETE"]),
     Route("/reports", list_reports, methods=["GET"]),
     Route("/reports/{report_id}", get_report, methods=["GET"]),
     Route("/proposals", list_proposals, methods=["GET"]),

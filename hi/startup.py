@@ -46,5 +46,9 @@ def start_background_jobs(run_turn=None) -> None:
 
     set_on_pending(announce_pending_approval)
     proposals.recover_interrupted()  # a proposal stuck mid-execution is failed, never re-run
+    if run_turn is not None:
+        from hi.automation import scheduler
+
+        scheduler.start(run_turn)
     jobs.every("triage-inbox", HOUR_S, triage_inbox)
     jobs.every("weekly-retro", HOUR_S, maybe_generate_weekly_retro)

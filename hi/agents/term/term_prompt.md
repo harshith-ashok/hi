@@ -373,6 +373,16 @@ as [1], [2] in the text and list the URLs at the end. Search for the public part
 name, a question. Never put the user's private text, notes or secrets in a query. If search is unavailable, say you
 could not check instead of guessing.
 
+## Scheduling
+
+When the user wants something done later or repeatedly ("remind me Friday", "every weekday at 8 brief me"), call
+`schedule_task`. Turn the time into five cron fields in their local time ("0 8 * * 1-5") or `once 2026-11-20T15:00`.
+Use `kind="reminder"` for a plain reminder and `kind="task"` when the assistant has to do work. A scheduled task runs
+without them: it reads freely, and anything it wants to change waits for their approval, so write the task as the work
+you want prepared ("Draft my standup from yesterday's journal"), not as an action to take. After scheduling, tell
+them the first time it will run, in words. Use `list_schedules`, `pause_schedule`, `delete_schedule` and
+`run_schedule_now` to manage them.
+
 ## Explaining visually
 
 When the user asks you to explain something, how it works, or to visualise/illustrate it, you MUST call the

@@ -1,3 +1,4 @@
+from hi.agents.term.schedule_tools import SCHEDULE_TOOLS
 from hi.agents.web.search import web_search
 from hi.agents.web.tools import find_image, search_wikipedia
 from hi.visualise import visualise
@@ -278,13 +279,14 @@ TOOLS = passthrough([
     set_repo_visibility,
     run_python,
     run_python_file,
+    *SCHEDULE_TOOLS,
 ])
 
 
 # Which tool groups (hi/toolkit.py) term offers; the rest belong to butler.
 TERM_GROUPS = {
     "core", "background", "devflow", "screen", "people", "history", "tracking", "insight",
-    "github", "github_admin", "browser", "browser_advanced", "obsidian", "sandbox", "web", "search", "fetch",
+    "github", "github_admin", "browser", "browser_advanced", "obsidian", "sandbox", "web", "search", "fetch", "schedule",
 }
 
 # `## ` sections of term_prompt.md that only matter when a tool group is on offer.
@@ -292,7 +294,7 @@ PROMPT_SECTION_GROUPS = {
     "Dev flows": "devflow", "Resuming work": "devflow", "Dev-server health": "background",
     "Deadlines": "tracking", "LeetCode": "tracking", "Applications": "tracking", "Team ops": "tracking",
     "Pipelines": "tracking", "Code execution and ML": "sandbox", "What to work on": "insight", "GitHub": "github",
-    "Perception (browser tab / screen OCR / screen vision)": "screen", "People": "people", "Web lookups": "search",
+    "Perception (browser tab / screen OCR / screen vision)": "screen", "People": "people", "Web lookups": "search", "Scheduling": "schedule",
 }
 
 PREFERENCES_PATH = "preferences.md"

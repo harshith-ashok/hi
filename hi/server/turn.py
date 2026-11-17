@@ -179,6 +179,7 @@ def _stream_query_as_agui(
     for line in speaker.finish():
         yield ag.CustomEvent(name="spoken_chunk", value={"text": line})
 
+    _record_usage(origin, tier, len(tool_times), time.monotonic() - started, first_token_s)
     yield ag.CustomEvent(
         name="timing",
         value={
@@ -196,6 +197,17 @@ def _stream_query_as_agui(
     if final_answer and speaks:
         if not speaker.has_spoken:  # nothing sayable streamed (tool-only answer, one-liner): summarize
             yield ag.CustomEvent(name="spoken_summary", value={"text": make_spoken_summary(final_answer)})
+
+
+def _record_usage(origin: str, tier: str, tool_calls: int, seconds: float, first_token_s: float | None) -> None:
+    """One line per turn in ~/.hi/state/usage.jsonl: how the limits count background runs, and per-origin latency."""
+    from hi.automation import limits
+    from hi.llm.registry import is_local
+
+    try:
+        limits.record(origin, tier, not is_local(tier), tool_calls, seconds, round(first_token_s, 2) if first_token_s is not None else None)
+    except (OSError, KeyError, ValueError):
+        pass  # a usage record is never a reason to fail a turn
 
 
 def _warm_up() -> None:
