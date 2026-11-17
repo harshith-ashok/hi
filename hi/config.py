@@ -224,6 +224,40 @@ MAX_HOSTED_CALLS_PER_DAY = int(_number("MAX_HOSTED_CALLS_PER_DAY", 50))
 MAX_NOTIFICATIONS_PER_HOUR = int(_number("MAX_NOTIFICATIONS_PER_HOUR", 3))
 MAX_BACKGROUND_TOOL_CALLS = int(_number("MAX_BACKGROUND_TOOL_CALLS", 15))
 
+def to_flag(value: object) -> bool:
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _to_hours(value: object) -> str:
+    text = str(value).strip()
+    if not re.fullmatch(r"\d{1,2}\s*-\s*\d{1,2}", text) or any(int(h) > 24 for h in re.findall(r"\d+", text)):
+        raise ValueError('use two hours like "08-22"')
+    return text
+
+
+def _positive_int(value: object) -> int:
+    number = int(str(value).strip())
+    if number < 0:
+        raise ValueError("must be zero or more")
+    return number
+
+
+# How a setting saved from the UI is turned into the type the rest of the code reads (the .env file holds text).
+_COERCE = {
+    "HEARTBEAT": to_flag, "SCREENSHOT_WATCH": to_flag, "HEARTBEAT_HOURS": _to_hours,
+    "HEARTBEAT_EVERY": _positive_int, "PROPOSAL_TTL_DAYS": _positive_int, "MAX_BACKGROUND_RUNS_PER_HOUR": _positive_int,
+    "MAX_HOSTED_CALLS_PER_DAY": _positive_int, "MAX_NOTIFICATIONS_PER_HOUR": _positive_int,
+}
+
+
+def coerce(key: str, value: object) -> object:
+    """`value` as the setting `key` expects it. Raises ValueError with a message the user can act on."""
+    try:
+        return _COERCE[key](value) if key in _COERCE else value
+    except ValueError as e:
+        raise ValueError(f"{key}: {e}") from e
+
+
 _SECRET_SUFFIXES = ("_TOKEN", "_KEY", "_SECRET", "PASSWORD")
 MIN_SECRET_LENGTH = 8
 
@@ -256,8 +290,9 @@ def set_value(key: str, value: str) -> None:
     if key == "AI_MODE" and value not in MODES:
         raise ValueError(f"AI_MODE must be one of: {', '.join(MODES)}")
     stored_key = env_key(key, AI_MODE) if key in MODEL_ROLES else key
+    typed = coerce(key, value)
     write_env_var(stored_key, value, path=ENV_PATH)
     _env[stored_key] = value
-    globals()[key] = Path(value) if key == "VAULT_PATH" else value
+    globals()[key] = Path(value) if key == "VAULT_PATH" else typed
     if key == "AI_MODE":
         apply_mode()

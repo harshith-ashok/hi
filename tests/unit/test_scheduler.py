@@ -142,6 +142,13 @@ def test_a_reminder_is_delivered_as_written_with_no_model_call(tmp_vault):
     assert d.kind == "reminder" and d.headline == "Stand-up in 5 minutes"
 
 
+def test_a_reminder_respects_its_deliver_mode(tmp_vault):
+    make(id="quiet", when="55 9 * * 1-5", kind="reminder", prompt="x", deliver="silent")
+    sink = Sink()
+    now_run(None, Runner(), sink, datetime(2026, 11, 16, 9, 55))
+    assert sink.items[0].popup == "no"
+
+
 def test_a_failed_run_is_recorded_and_delivered_as_a_failure(tmp_vault):
     make()
     run, sink = Runner(answer="", error="model host unreachable"), Sink()

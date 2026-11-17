@@ -26,7 +26,7 @@ tinyui ──POST /query──▶ hi/server/routes/query.py
 | `hi/llm` | Ollama providers (local, tailscale), tier registry, reasoning probe, retry/warm-up | core, config |
 | `hi/memory` | everything stored in the vault | core, config, llm |
 | `hi/agents` | `make_agent` factory, personas, their tools, the run guard | llm, memory, orchestrator, ... |
-| `hi/automation` | background work: delivery, profiles, (scheduler, heartbeat, drop) | core, llm, memory, the Mac bridge client |
+| `hi/automation` | background work: scheduler, heartbeat, drop folder, delivery, limits ([automation.md](automation.md)) | core, llm, memory, the Mac bridge client |
 | `hi/orchestrator` | plan -> DAG of scoped subagents, approval queue | agents, llm, memory |
 | `hi/server` | HTTP routes, the turn pipeline | everything below |
 
@@ -57,7 +57,9 @@ inbox gate (`hi/context/inbox.py`) to the island. Decisions: [adr/0002-automatio
 ## Background jobs
 
 Started in one place, the server lifespan (`hi/server/app.py` → `hi/startup.py`): inbox triage and the weekly
-retro check (hourly, with backoff on failure), and the model warm-up. Each job's state is in `GET /health` as `job:<name>`.
+retro check (hourly, with backoff on failure), the scheduler (every 30 s), the heartbeat (checked every minute, a beat
+every `HEARTBEAT_EVERY`), the drop folder (every 60 s), and the model warm-up. Scheduler, heartbeat and drop runs share
+one worker (`hi/automation/worker.py`) so two never load the model host at once. Each job's state is in `GET /health` as `job:<name>`.
 
 ## Decisions
 

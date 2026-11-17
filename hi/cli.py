@@ -27,6 +27,8 @@ CONTEXT_DAEMON_MARKER = "context-daemon"
 MENUBAR_MARKER = "menubar"
 INSTALL_APP_MARKER = "install-app"
 UNINSTALL_APP_MARKER = "uninstall-app"
+INSTALL_AGENT_MARKER = "install-agent"
+UNINSTALL_AGENT_MARKER = "uninstall-agent"
 VOICE_DAEMON_MARKER = "voice-daemon"
 WAKE_DAEMON_MARKER = "wake-daemon"
 
@@ -56,6 +58,8 @@ def parse_mode(argv: list[str]) -> str | None:
     )
     group.add_argument("--install-app", action="store_true", help="package the menu bar app as ~/Applications/hi.app and add it to Login Items")
     group.add_argument("--uninstall-app", action="store_true", help="remove hi.app and its Login Item")
+    group.add_argument("--install-agent", action="store_true", help="start the menu bar app at login and restart it after a crash (launchd)")
+    group.add_argument("--uninstall-agent", action="store_true", help="remove the launch agent")
     group.add_argument("--menubar", action="store_true", help="menu bar prompt that uses your screen as context (macOS)")
     group.add_argument(
         "--voice-daemon",
@@ -76,6 +80,10 @@ def parse_mode(argv: list[str]) -> str | None:
         return INSTALL_APP_MARKER
     if args.uninstall_app:
         return UNINSTALL_APP_MARKER
+    if args.install_agent:
+        return INSTALL_AGENT_MARKER
+    if args.uninstall_agent:
+        return UNINSTALL_AGENT_MARKER
     if args.menubar:
         return MENUBAR_MARKER
     if args.context_daemon:
@@ -238,6 +246,12 @@ def main() -> None:
         from hi.menubar import install
 
         print(install.install_app() if mode == INSTALL_APP_MARKER else install.uninstall_app())
+        return
+
+    if mode in (INSTALL_AGENT_MARKER, UNINSTALL_AGENT_MARKER):
+        from hi.menubar import install
+
+        print(install.install_agent() if mode == INSTALL_AGENT_MARKER else install.uninstall_agent())
         return
 
     if mode == MENUBAR_MARKER:

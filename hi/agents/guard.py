@@ -10,14 +10,24 @@ run (hi/core/runpolicy.py) each tool call is checked:
   - anything else: not run; it is saved as a proposal (hi/memory/proposals.py) and the model is told so
 
 The model gets a normal tool result for every refusal, so it carries on and mentions what it could not do.
+
+Two checks guard what leaves your machine, and they are why this middleware also watches the model call:
+
+  - A `fetch` whose URL contains one of your credentials is refused in every run (and, in an unattended run, one
+    that merely looks like a token is refused too).
+  - An unattended run that talks to a hosted (cloud) model has every message, the system prompt included, redacted
+    first: a background run is assembled from your vault and nobody is there to notice what went into it.
 """
 
 from __future__ import annotations
 
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
 
+import hi.config as config
+from hi import llm
 from hi.core import runpolicy
+from hi.core.redact import contains_secret, redact
 from hi.toolkit import SCREEN_TOOLS, WEB_TOOLS, is_read_only
 
 
@@ -26,11 +36,39 @@ def _refusal(request, text: str) -> ToolMessage:
     return ToolMessage(content=text, tool_call_id=call["id"], name=call["name"], status="error")
 
 
+def _is_hosted(model) -> bool:
+    try:
+        return "cloud" in str(llm.model_name(model))
+    except AttributeError:
+        return False
+
+
+def _redact_message(message: BaseMessage, known: list[str]) -> BaseMessage:
+    if isinstance(message.content, str):
+        return message.model_copy(update={"content": redact(message.content, known)})
+    if isinstance(message.content, list):  # text parts only; images and other parts pass through
+        parts = [{**p, "text": redact(p["text"], known)} if isinstance(p, dict) and isinstance(p.get("text"), str) else p
+                 for p in message.content]
+        return message.model_copy(update={"content": parts})
+    return message
+
+
+def _secret_in_url(request, unattended: bool) -> bool:
+    """A `fetch` URL that carries a credential. Interactive: only the exact values of your own settings. Unattended:
+    anything shaped like a token too."""
+    url = str((request.tool_call.get("args") or {}).get("url", ""))
+    known = config.secret_values()
+    return contains_secret(url, known) if unattended else any(v in url for v in known)
+
+
 class RunGuard(AgentMiddleware):
     def _check(self, request) -> ToolMessage | None:
         """A ToolMessage that replaces the call, or None to let it run."""
         state = runpolicy.current()
-        if state is None or state.policy.interactive:
+        unattended = state is not None and not state.policy.interactive
+        if request.tool_call["name"] == "fetch" and _secret_in_url(request, unattended):
+            return _refusal(request, "Not fetched: the URL contains something that looks like a secret.")
+        if not unattended:
             return None
         policy, name = state.policy, request.tool_call["name"]
         state.tool_calls += 1
@@ -50,6 +88,24 @@ class RunGuard(AgentMiddleware):
         state.proposals.append(pid)
         return _refusal(request, f"Not run: queued for the user's approval as proposal {pid}. "
                                  "Carry on without it and mention it in your answer.")
+
+    def _for_model(self, request):
+        """`request`, with every message redacted when an unattended run is about to call a hosted model."""
+        state = runpolicy.current()
+        if state is None or state.policy.interactive or not _is_hosted(request.model):
+            return request
+        known = config.secret_values()
+        system = request.system_message
+        return request.override(
+            messages=[_redact_message(m, known) for m in request.messages],
+            system_message=_redact_message(system, known) if isinstance(system, SystemMessage) else system,
+        )
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._for_model(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._for_model(request))
 
     def wrap_tool_call(self, request, handler):
         return self._check(request) or handler(request)

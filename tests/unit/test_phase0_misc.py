@@ -85,3 +85,102 @@ def test_the_island_origin_is_accepted_by_the_query_route(monkeypatch):
     assert seen["origin"] == "island"
     client.post("/query", json={"text": "hi", "origin": "schedule"})  # a client may not claim a background origin
     assert seen["origin"] == "ui"
+
+
+# --- settings saved from the UI ----------------------------------------------------------------------------------
+
+def test_a_flag_saved_as_off_is_really_false(monkeypatch):
+    monkeypatch.setattr("hi.env_file.write_env_var", lambda *a, **k: None)
+    monkeypatch.setattr(config, "_env", dict(config._env))
+    config.set_value("HEARTBEAT", "off")
+    assert config.HEARTBEAT is False
+    config.set_value("HEARTBEAT", "on")
+    assert config.HEARTBEAT is True
+    config.set_value("HEARTBEAT_EVERY", "900")
+    assert config.HEARTBEAT_EVERY == 900
+
+
+def test_bad_values_are_refused_with_a_message(monkeypatch):
+    monkeypatch.setattr("hi.env_file.write_env_var", lambda *a, **k: pytest.fail("wrote a bad value"))
+    for key, value in [("HEARTBEAT_EVERY", "soon"), ("HEARTBEAT_EVERY", "-5"), ("HEARTBEAT_HOURS", "morning"), ("HEARTBEAT_HOURS", "8-99")]:
+        with pytest.raises(ValueError, match=key):
+            config.set_value(key, value)
+
+
+def test_the_settings_route_validates_before_writing_anything(monkeypatch):
+    from starlette.testclient import TestClient
+
+    from hi.server.app import create_app
+
+    written = []
+    monkeypatch.setattr(config, "set_value", lambda k, v: written.append((k, v)))
+    client = TestClient(create_app())
+    r = client.post("/config", json={"HEARTBEAT": "on", "HEARTBEAT_EVERY": "often"})
+    assert r.status_code == 400 and "HEARTBEAT_EVERY" in r.text
+    assert written == []  # nothing was saved, not even the valid one
+
+
+def test_screenshot_watching_cannot_be_switched_on_with_a_hosted_vision_model(monkeypatch):
+    from starlette.testclient import TestClient
+
+    from hi.server.app import create_app
+
+    written = []
+    monkeypatch.setattr(config, "set_value", lambda k, v: written.append((k, v)))
+    monkeypatch.setattr(config, "VISION_MODEL", "gemma4:31b-cloud")
+    client = TestClient(create_app())
+    assert client.post("/config", json={"SCREENSHOT_WATCH": "on"}).status_code == 400
+    assert client.post("/config", json={"SCREENSHOT_WATCH": "on", "VISION_MODEL": "gemma4:e4b"}).status_code == 200
+    assert client.post("/config", json={"SCREENSHOT_WATCH": "off"}).status_code == 200
+
+
+def test_the_config_endpoint_shows_flags_as_on_and_off(monkeypatch):
+    from starlette.testclient import TestClient
+
+    from hi.server.app import create_app
+
+    monkeypatch.setattr(config, "HEARTBEAT", True)
+    monkeypatch.setattr(config, "SCREENSHOT_WATCH", False)
+    body = TestClient(create_app()).get("/config").json()
+    assert body["HEARTBEAT"] == "on" and body["SCREENSHOT_WATCH"] == "off" and body["HEARTBEAT_HOURS"] == config.HEARTBEAT_HOURS
+
+
+def test_memory_extraction_drops_anything_the_shared_secret_check_knows(tmp_vault, monkeypatch):
+    from hi.memory import extraction
+
+    monkeypatch.setattr(config, "HOST_BRIDGE_TOKEN", "zebra-battery-staple-9")
+    added = extraction.add_items([
+        {"kind": "preference", "text": "Prefers tabs"},
+        {"kind": "fact", "text": "The bridge secret is zebra-battery-staple-9"},
+        {"kind": "fact", "text": "Uses ghp_abcdefghijklmnopqrstuvwxyz0123456789 for GitHub"},
+    ])
+    assert [i["text"] for i in added] == ["Prefers tabs"]
+
+
+# --- the launch agent -------------------------------------------------------------------------------------------
+
+def test_the_launch_agent_restarts_after_a_crash_but_not_after_quit():
+    from hi.menubar import install
+
+    plist = install.agent_plist(["/usr/bin/true"])
+    assert plist["RunAtLoad"] is True and plist["ProgramArguments"] == ["/usr/bin/true"]
+    assert plist["KeepAlive"] == {"SuccessfulExit": False}  # a clean exit (Quit) is not restarted
+    assert plist["ThrottleInterval"] >= 10 and plist["StandardErrorPath"].endswith("agent.log")
+
+
+def test_the_launch_agent_prefers_the_installed_app_and_falls_back_to_python(tmp_path, monkeypatch):
+    from hi.menubar import install
+
+    monkeypatch.setattr(install, "APP", tmp_path / "hi.app")
+    assert install.agent_program()[1:] == ["-m", "hi.cli", "--menubar"]
+    launcher = tmp_path / "hi.app" / "Contents" / "MacOS" / "hi"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("")
+    assert install.agent_program() == [str(launcher)]
+
+
+def test_the_cli_knows_the_agent_flags():
+    from hi import cli
+
+    assert cli.parse_mode(["--install-agent"]) == cli.INSTALL_AGENT_MARKER
+    assert cli.parse_mode(["--uninstall-agent"]) == cli.UNINSTALL_AGENT_MARKER

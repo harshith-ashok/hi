@@ -44,9 +44,41 @@ export async function postJson<T>(path: string, body: unknown = {}): Promise<T |
   }
 }
 
+export async function deleteJson(path: string): Promise<boolean> {
+  try {
+    return (await fetch(`${BASE_URL}${path}`, { method: 'DELETE' })).ok
+  } catch {
+    return false
+  }
+}
+
+// /health answers 503 with a body when an essential is down; the body is what the strip shows.
+export async function getHealth<T>(): Promise<T | null> {
+  try {
+    return (await (await fetch(`${BASE_URL}/health`)).json()) as T
+  } catch {
+    return null
+  }
+}
+
+export const fileAttachment = (id: string) => postJson<{ queued: string }>(`/context/${id}/file`)
+
 export type Config = Record<string, string | boolean | string[]>
 export const fetchConfig = (mode?: string) => getJson<Config>(`/config${mode ? `?mode=${mode}` : ''}`)
 export const saveConfig = (fields: Record<string, string>) => postJson<{ updated: string[]; note: string }>('/config', fields)
+// Like saveConfig, but says why a save was refused (for example a hosted vision model with screenshot watching).
+export async function saveConfigChecked(fields: Record<string, string>): Promise<{ ok: boolean; message: string }> {
+  try {
+    const res = await fetch(`${BASE_URL}/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    })
+    return { ok: res.ok, message: res.ok ? 'saved' : ((await res.text()) || `failed (${res.status})`) }
+  } catch {
+    return { ok: false, message: 'backend unreachable' }
+  }
+}
 export const fetchModels = (mode: string, host = '') =>
   getJson<Models>(`/models?mode=${mode}${host ? `&host=${encodeURIComponent(host)}` : ''}`)
 export const fetchVoices = () => getJson<{ voices: string[]; error: string }>('/tts/voices')

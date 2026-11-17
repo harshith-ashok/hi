@@ -152,7 +152,7 @@ typing, no wake word needed for short exchanges.
       local-model one-line activity -> `~/.hi/context/now.json`. Local models only; denylist, pause file.
 - [x] `hi/proactive.py`: nudge gated by idle/budget/evidence-quote check; briefing opens from live context.
 - [x] Vault skills (`hi/skills.py`): `<vault>/skills/*/SKILL.md`, index + hint + `use_skill`.
-- [ ] Context daemon under launchd (auto-start, restart) + pause hotkey.
+- [x] Menu bar app (which owns the context daemon) under launchd: `hi --install-agent`. Pause hotkey still open.
 - [ ] Nudges still comment on routine activity; tune the prompt/eval on real days.
 - [ ] Context model: calendar, active project, what was ignored before.
 - [ ] Learn from dismissals; suggest less after being ignored.
@@ -173,3 +173,16 @@ typing, no wake word needed for short exchanges.
 - [ ] Decide whether to remove slash commands from the TUI.
 - [ ] Commit the current work; `frontend/` is still deleted in the tree.
 - [ ] Resolve the port 5173 clash with checklister (use `HI_WEB_PORT`).
+
+## 8. Automation (GAMEPLAN.md; guide in docs/automation.md)
+- [x] Web search through a private SearXNG (`web_search`, secret-safe, hidden while down).
+- [x] Background runs under a policy; risky tool calls become proposals; approve from the island or the Inbox.
+- [x] Reports in the vault, one-line headlines to the island, one shared pop-up budget.
+- [x] Scheduled tasks by talking (`schedule_task`), stored as notes; catch-up, never twice, failures delivered.
+- [x] Heartbeat: signals by code, fingerprint, grounded triage, prepare, one digest.
+- [x] Drop folder (documents, PDFs, images, voice memos) and optional screenshot watcher (local vision only).
+- [x] Hardening: limits, redaction at every boundary, dedupe, `/health` per job, `/livez`, launch agent.
+- [ ] Live check with a real model: tune the triage prompt and the heartbeat on real days.
+- [ ] A calendar signal for the heartbeat (today only events saved in the vault count).
+- [ ] Island buttons for Approve and Deny (today you type yes or no).
+- [ ] Remove `hi --suggest-daemon` once the heartbeat has proven itself.

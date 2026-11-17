@@ -10,7 +10,8 @@ from starlette.routing import Route
 
 from datetime import datetime
 
-from hi.automation import scheduler
+from hi import attachments
+from hi.automation import drop, scheduler
 from hi.memory import proposals, reports, schedules
 from hi.server import proposals_exec
 
@@ -89,7 +90,17 @@ async def delete_schedule(request: Request) -> Response:
     return Response(status_code=204)
 
 
+async def file_attachment(request: Request) -> JSONResponse:
+    """Send an uploaded attachment through the drop folder: it is read, filed as a note, and its tasks are added."""
+    source = await run_in_threadpool(attachments.original, request.path_params["attachment_id"])
+    if source is None:
+        raise HTTPException(404, "No such attachment")
+    target = await run_in_threadpool(drop.accept, source)
+    return JSONResponse({"queued": target.name})
+
+
 routes = [
+    Route("/context/{attachment_id}/file", file_attachment, methods=["POST"]),
     Route("/schedules", list_schedules, methods=["GET"]),
     Route("/schedules/{schedule_id}/toggle", toggle_schedule, methods=["POST"]),
     Route("/schedules/{schedule_id}/run", run_schedule, methods=["POST"]),

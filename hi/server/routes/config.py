@@ -19,15 +19,19 @@ CONFIG_FIELDS = (
     "VAULT_PATH",
     "HAIKU_MODEL", "SONNET_MODEL", "OPUS_MODEL", "VISION_MODEL",
     "AI_MODE", "OLLAMA_HOST", "TAILSCALE_OLLAMA_URL", "TTS_MODEL", "TTS_VOICE", "TTS_BACKEND",
+    "HEARTBEAT", "HEARTBEAT_EVERY", "HEARTBEAT_HOURS", "SCREENSHOT_WATCH", "DROP_PATH", "PROPOSAL_TTL_DAYS",
+    "MAX_BACKGROUND_RUNS_PER_HOUR", "MAX_HOSTED_CALLS_PER_DAY", "MAX_NOTIFICATIONS_PER_HOUR",
 )
-CLEARABLE = {"TAILSCALE_OLLAMA_URL"}  # may be set to an empty value; other empty values are ignored
+FLAGS = {"HEARTBEAT", "SCREENSHOT_WATCH"}  # shown as on / off
+CLEARABLE = {"TAILSCALE_OLLAMA_URL", "DROP_PATH"}  # may be set to an empty value; other empty values are ignored
 
 
 async def get_config(request: Request) -> JSONResponse:
     mode = request.query_params.get("mode", config.AI_MODE)
     if mode not in config.MODES:
         raise HTTPException(400, f"Unknown mode '{mode}'")
-    payload = {field: str(getattr(config, field)) for field in CONFIG_FIELDS}
+    payload = {field: ("on" if getattr(config, field) else "off") if field in FLAGS else str(getattr(config, field))
+               for field in CONFIG_FIELDS}
     payload.update({role: config.model_for(role, mode) for role in config.MODEL_ROLES})
     payload["MODES"] = list(config.MODES)
     return JSONResponse(payload)
@@ -41,6 +45,18 @@ async def post_config(request: Request) -> JSONResponse:
         raise HTTPException(400, f"Unknown field(s): {', '.join(unknown)}")
     if body.get("AI_MODE", config.AI_MODE) not in config.MODES:
         raise HTTPException(400, f"AI_MODE must be one of: {', '.join(config.MODES)}")
+
+    try:
+        for field, value in body.items():
+            config.coerce(field, str(value).strip())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if config.to_flag(body.get("SCREENSHOT_WATCH", "off")):
+        from hi.automation import drop
+
+        local, why = drop.vision_is_local(str(body.get("VISION_MODEL") or config.VISION_MODEL))
+        if not local:
+            raise HTTPException(400, f"SCREENSHOT_WATCH: {why}")
 
     # AI_MODE goes first: model names are stored per mode, so the rest must land in the mode being switched to.
     updated = []
@@ -67,6 +83,10 @@ async def models(request: Request) -> JSONResponse:
 
 async def health(request: Request) -> JSONResponse:
     report = await run_in_threadpool(probes.run)
+    try:
+        report.update(await run_in_threadpool(probes.automation_status))
+    except OSError:  # the vault being unreadable is already in `deps`; /health must still answer
+        pass
     return JSONResponse(report, status_code=200 if report["ok"] else 503)
 
 

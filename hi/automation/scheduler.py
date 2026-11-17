@@ -59,7 +59,8 @@ def _popup(s: Schedule, proposals: tuple[str, ...]) -> str:
 
 
 def run_reminder(s: Schedule, slot: str, deliver_fn=deliver) -> str:
-    out = deliver_fn(Delivery(headline=s.prompt, kind="reminder", origin="schedule", dedupe_key=f"schedule:{s.id}:{slot}"))
+    out = deliver_fn(Delivery(headline=s.prompt, kind="reminder", origin="schedule", dedupe_key=f"schedule:{s.id}:{slot}",
+                              popup=_popup(s, ())))
     schedules.finish(s.id, slot, "done" if out.status != "error" else "failed", error="" if out.status != "error" else "could not deliver")
     return "done"
 

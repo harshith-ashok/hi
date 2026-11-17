@@ -9,6 +9,7 @@ so updating the code needs no reinstall; reinstalling after moving the repo or i
 
 from __future__ import annotations
 
+import os
 import plistlib
 import shutil
 import subprocess
@@ -128,3 +129,60 @@ def uninstall_app() -> str:
     if APP.exists():
         shutil.rmtree(APP)
     return "Removed hi.app and its Login Item."
+
+
+# --- the launch agent: start at login and come back after a crash ---------------------------------------------------
+
+AGENT_LABEL = "com.harshith.hi.agent"
+AGENT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{AGENT_LABEL}.plist"
+LOG_DIR = Path.home() / ".hi" / "logs"
+
+
+def agent_program() -> list[str]:
+    """What launchd runs: the installed hi.app's launcher if there is one (so macOS shows permissions under "hi"),
+    else this project's Python."""
+    launcher = APP / "Contents" / "MacOS" / "hi"
+    return [str(launcher)] if launcher.exists() else [sys.executable, "-m", "hi.cli", "--menubar"]
+
+
+def agent_plist(program: list[str] | None = None) -> dict:
+    """The launch agent definition. `KeepAlive.SuccessfulExit = false` restarts the app after a crash but not after
+    you choose Quit (a clean exit), so quitting still stops everything it started. ThrottleInterval keeps a crash
+    loop from spinning."""
+    return {
+        "Label": AGENT_LABEL,
+        "ProgramArguments": program or agent_program(),
+        "WorkingDirectory": str(REPO),
+        "RunAtLoad": True,
+        "KeepAlive": {"SuccessfulExit": False},
+        "ThrottleInterval": 30,
+        "ProcessType": "Interactive",
+        "StandardOutPath": str(LOG_DIR / "agent.log"),
+        "StandardErrorPath": str(LOG_DIR / "agent.log"),
+        "EnvironmentVariables": {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"},
+    }
+
+
+def _launchctl(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["launchctl", *args], capture_output=True, text=True)
+
+
+def install_agent() -> str:
+    if sys.platform != "darwin":
+        return "The launch agent is macOS only."
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    AGENT_PLIST.parent.mkdir(parents=True, exist_ok=True)
+    AGENT_PLIST.write_bytes(plistlib.dumps(agent_plist()))
+    domain = f"gui/{os.getuid()}"
+    _launchctl("bootout", f"{domain}/{AGENT_LABEL}")  # replace one that is already loaded
+    loaded = _launchctl("bootstrap", domain, str(AGENT_PLIST))
+    if loaded.returncode != 0:
+        return f"Wrote {AGENT_PLIST} but launchctl refused it: {loaded.stderr.strip()[:200]}"
+    return (f"Installed {AGENT_PLIST}. hi now starts at login and restarts after a crash (not after Quit). "
+            f"Logs: {LOG_DIR / 'agent.log'}. Remove it with `hi --uninstall-agent`.")
+
+
+def uninstall_agent() -> str:
+    _launchctl("bootout", f"gui/{os.getuid()}/{AGENT_LABEL}")
+    AGENT_PLIST.unlink(missing_ok=True)
+    return "Removed the launch agent."

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { fetchConfig, fetchModels, fetchVoices, saveConfig } from './backend'
+import { fetchConfig, fetchModels, fetchVoices, saveConfig, saveConfigChecked } from './backend'
 import { getWakePhrase, setWakePhrase, speak, unlockAudio } from './voice'
 
 type Mode = 'local' | 'tailscale'
@@ -14,7 +14,7 @@ const ENDPOINT: Record<Mode, { key: string; label: string; placeholder: string }
 }
 const MODEL_KEYS = ['HAIKU_MODEL', 'SONNET_MODEL', 'OPUS_MODEL', 'VISION_MODEL']
 
-const tab = ref<'connection' | 'models' | 'voice'>('connection')
+const tab = ref<'connection' | 'models' | 'voice' | 'automation'>('connection')
 const active = ref<Mode>('local')
 const mode = ref<Mode>('local')
 const endpoints = reactive<Record<string, string>>({ OLLAMA_HOST: '', TAILSCALE_OLLAMA_URL: '' })
@@ -66,6 +66,22 @@ async function saveVoice() {
   voiceStatus.value = 'saved'
 }
 
+// Work hi does by itself (hi/automation/): the heartbeat, screenshot watching, and the limits on unattended runs.
+const AUTO_KEYS = ['HEARTBEAT', 'HEARTBEAT_EVERY', 'HEARTBEAT_HOURS', 'SCREENSHOT_WATCH', 'MAX_BACKGROUND_RUNS_PER_HOUR', 'MAX_HOSTED_CALLS_PER_DAY', 'MAX_NOTIFICATIONS_PER_HOUR', 'PROPOSAL_TTL_DAYS'] as const
+const auto = reactive<Record<string, string>>({})
+const autoStatus = ref('')
+const everyMinutes = computed({
+  get: () => String(Math.round(Number(auto.HEARTBEAT_EVERY || 1800) / 60)),
+  set: (v: string) => (auto.HEARTBEAT_EVERY = String(Math.max(1, Number(v) || 30) * 60)),
+})
+
+async function saveAutomation() {
+  const body: Record<string, string> = {}
+  for (const key of AUTO_KEYS) body[key] = String(auto[key] ?? '')
+  const result = await saveConfigChecked(body)
+  autoStatus.value = result.message
+}
+
 const endpoint = computed(() => ENDPOINT[mode.value])
 const shown = computed(() => available.value.filter((m) => m.toLowerCase().includes(filter.value.toLowerCase())).slice(0, 200))
 
@@ -108,6 +124,7 @@ onMounted(async () => {
     status.value = 'backend unreachable'
     return
   }
+  for (const key of AUTO_KEYS) auto[key] = String(config[key] ?? '')
   active.value = mode.value = String(config.AI_MODE) as Mode
   voice.value = voiceSaved.value = String(config.TTS_VOICE ?? 'default')
   ttsBackend.value = String(config.TTS_BACKEND ?? 'ollama')
@@ -123,7 +140,7 @@ onMounted(async () => {
     <div><h1>Settings</h1></div>
     <div class="grow"></div>
     <div class="tabs notab" role="tablist">
-      <button v-for="t in ['connection', 'models', 'voice']" :key="t" role="tab" :class="{ on: tab === t }" @click="tab = t as typeof tab">{{ t }}</button>
+      <button v-for="t in ['connection', 'models', 'voice', 'automation']" :key="t" role="tab" :class="{ on: tab === t }" @click="tab = t as typeof tab">{{ t }}</button>
     </div>
   </header>
   <div class="scroll">
@@ -174,6 +191,37 @@ onMounted(async () => {
         </section>
       </div>
 
+      <div v-else-if="tab === 'automation'" class="cols two">
+        <section>
+          <div class="sect-h"><h2>Heartbeat</h2></div>
+          <div class="seg" role="radiogroup" aria-label="Heartbeat">
+            <button role="radio" :aria-checked="auto.HEARTBEAT === 'on'" @click="auto.HEARTBEAT = 'on'">on</button>
+            <button role="radio" :aria-checked="auto.HEARTBEAT === 'off'" @click="auto.HEARTBEAT = 'off'">off</button>
+          </div>
+          <p class="hint">Every so often hi looks at what is due and on your screen, and prepares what you will need. It never sends or changes anything without your approval in the Inbox.</p>
+          <div class="form">
+            <label>check every (minutes)<input v-model="everyMinutes" class="field" type="number" min="1" inputmode="numeric" /></label>
+            <label>active hours (24h, like 08-22)<input v-model="auto.HEARTBEAT_HOURS" class="field" type="text" placeholder="08-22" spellcheck="false" /></label>
+          </div>
+          <div class="sect-h"><h2>Screenshots</h2></div>
+          <div class="seg" role="radiogroup" aria-label="Screenshot watching">
+            <button role="radio" :aria-checked="auto.SCREENSHOT_WATCH === 'on'" @click="auto.SCREENSHOT_WATCH = 'on'">on</button>
+            <button role="radio" :aria-checked="auto.SCREENSHOT_WATCH === 'off'" @click="auto.SCREENSHOT_WATCH = 'off'">off</button>
+          </div>
+          <p class="hint">Describes new screenshots on your Desktop and files them as notes. Needs a local vision model (Models tab): screenshots can show anything.</p>
+        </section>
+        <section>
+          <div class="sect-h"><h2>Limits</h2></div>
+          <div class="form">
+            <label>background runs per hour<input v-model="auto.MAX_BACKGROUND_RUNS_PER_HOUR" class="field" type="number" min="0" inputmode="numeric" /></label>
+            <label>hosted-model runs per day<input v-model="auto.MAX_HOSTED_CALLS_PER_DAY" class="field" type="number" min="0" inputmode="numeric" /></label>
+            <label>pop-ups per hour<input v-model="auto.MAX_NOTIFICATIONS_PER_HOUR" class="field" type="number" min="0" inputmode="numeric" /></label>
+            <label>days an action waits for approval<input v-model="auto.PROPOSAL_TTL_DAYS" class="field" type="number" min="1" inputmode="numeric" /></label>
+            <div><button class="btn primary" @click="saveAutomation">Save</button> <span class="msg" role="status">{{ autoStatus }}</span></div>
+          </div>
+        </section>
+      </div>
+
       <div v-else class="cols two">
         <section>
           <div class="sect-h"><h2>Voice for replies</h2><span>{{ ttsBackend === 'huggingface' ? 'phonon-40m-en' : 'phonon' }}</span></div>
@@ -197,7 +245,7 @@ onMounted(async () => {
         </section>
       </div>
 
-      <div v-if="tab !== 'voice'" class="formfoot">
+      <div v-if="tab === 'connection' || tab === 'models'" class="formfoot">
         <button class="btn" @click="loadModels">Test</button>
         <button class="btn primary" @click="save">Save &amp; use {{ mode }}</button>
         <span class="msg">{{ status }}</span>

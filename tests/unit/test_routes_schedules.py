@@ -37,3 +37,35 @@ def test_run_now_404s_for_an_unknown_schedule_and_starts_a_known_one(tmp_vault, 
 
 def test_a_bad_id_in_the_url_cannot_reach_outside_the_schedules_folder(tmp_vault, client):
     assert client.delete("/schedules/..%2Fsecret").status_code == 404
+
+
+def test_filing_an_uploaded_attachment_copies_it_into_the_drop_folder(tmp_vault, client, monkeypatch):
+    from hi import attachments
+    from hi.automation import drop
+
+    monkeypatch.setattr(drop.config, "DROP_PATH", "")
+    folder = tmp_vault / "hi" / "context" / "0123456789ab"
+    folder.mkdir(parents=True)
+    (folder / "memo.txt").write_text("hello")
+    (folder / "extracted.md").write_text("hello")
+    assert attachments.original("0123456789ab").name == "memo.txt"
+    assert client.post("/context/0123456789ab/file").json() == {"queued": "memo.txt"}
+    assert (tmp_vault / "hi" / "drop" / "memo.txt").read_text() == "hello"
+    assert (folder / "memo.txt").exists()  # the attachment itself is untouched
+    assert client.post("/context/0123456789ab/file").json() == {"queued": "memo-2.txt"}
+    assert client.post("/context/nope/file").status_code == 404
+    assert client.post("/context/..%2F..%2Fetc/file").status_code in (404, 405)
+
+
+def test_health_reports_jobs_proposals_and_the_zone(tmp_vault, client, monkeypatch):
+    from hi import probes
+    from hi.core import health, jobs
+    from hi.memory import proposals
+
+    monkeypatch.setattr(probes, "PROBES", {"ollama": lambda: None, "vault": lambda: None})
+    jobs.last_run["scheduler"] = 1_000_000.0
+    health.mark_down("searxng", "refused")
+    proposals.create("heartbeat", "term", "send_email", {})
+    body = client.get("/health").json()
+    assert body["jobs"]["scheduler"]["last_run"] == 1_000_000 and body["pending_proposals"] == 1
+    assert body["timezone"] and not body["deps"]["searxng"]["ok"] and "latency" in body

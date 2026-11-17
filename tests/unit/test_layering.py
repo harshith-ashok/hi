@@ -19,7 +19,7 @@ ALLOWED = {
     "llm": {"core", "config"},
     "memory": {"core", "config", "llm"},
     # Never `server`: the server hands automation its `run_turn` when jobs start (hi/startup.py).
-    "automation": {"core", "config", "llm", "memory", "host", "context", "capture", "tracking", "watchdogs", "perception"},
+    "automation": {"core", "config", "llm", "memory", "host", "context", "capture", "tracking", "watchdogs", "perception", "attachments"},
 }
 
 

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { BASE_URL, fetchConfig, fetchPending, getJson, ping, resolvePending, type Pending } from './backend'
+import { BASE_URL, fetchConfig, fetchPending, fileAttachment, getJson, ping, resolvePending, type Pending } from './backend'
 import { useAttachments } from './attachments'
 import { useChat } from './chat'
 import History from './History.vue'
+import Inbox from './Inbox.vue'
 import Markdown from './Markdown.vue'
 import Memory from './Memory.vue'
 import Orb from './Orb.vue'
@@ -19,7 +20,7 @@ const PERSONAS: [string, string][] = [
   ['docs', 'search your notes'],
   ['web', 'Wikipedia · images · URLs'],
 ]
-const VIEWS = ['chat', 'history', 'tasks', 'memory', 'status', 'settings'] as const
+const VIEWS = ['chat', 'inbox', 'history', 'tasks', 'memory', 'status', 'settings'] as const
 const TRIES = ['get me a picture of srk', 'plot a linear regression', 'turn off bluetooth', 'make logic_play private', 'what did I note about binary search trees', 'delete the build folder']
 const FLOW = ['send', 'route', 'tools', 'reply', 'speak']
 
@@ -36,6 +37,7 @@ watch(
 )
 const cycleTheme = () => (theme.value = ({ auto: 'light', light: 'dark', dark: 'auto' } as Record<string, string>)[theme.value])
 const activeTasks = ref(0)
+const waitingActions = ref(0) // proposals the assistant prepared that need an answer
 const nextPersona = () => (persona.value = PERSONAS[(PERSONAS.findIndex((p) => p[0] === persona.value) + 1) % PERSONAS.length][0])
 
 const { entries, busy, add, ask, cancel, clear } = useChat((text) => void reply(text))
@@ -99,6 +101,7 @@ async function refreshStatus() {
   online.value = await ping()
   if (!online.value) return
   activeTasks.value = ((await getJson<{ status: string }[]>('/background')) ?? []).filter((t) => t.status === 'running').length
+  waitingActions.value = ((await getJson<{ status: string }[]>('/proposals?status=pending')) ?? []).length
   const config = await fetchConfig()
   const mode = String(config?.AI_MODE ?? '')
   host.value = `${mode} · ${config?.[mode === 'tailscale' ? 'TAILSCALE_OLLAMA_URL' : 'OLLAMA_HOST']}`
@@ -293,6 +296,7 @@ onMounted(() => {
   window.addEventListener('paste', onPaste)
   window.addEventListener('pointerdown', unlockAudio, { once: true }) // lets later spoken replies play
   window.addEventListener('keydown', unlockAudio, { once: true })
+  if (window.location.hash.startsWith('#/inbox')) view.value = 'inbox' // a link from the menu bar island
   timers.push(window.setInterval(refreshStatus, 5000))
   void refreshStatus()
   void briefing()
@@ -357,6 +361,12 @@ const routeLine = computed(() => {
 })
 const [personaName, personaTier] = [(t: string) => t.split('/')[0], (t: string) => t.split('/')[1] ?? '']
 const zoomed = ref(new Set<number>())
+async function fileIt(a: { id?: string; name: string }) {
+  if (!a.id) return
+  const out = await fileAttachment(a.id)
+  note(out ? `Filing ${a.name}: it will appear in the Inbox within a minute.` : `Could not file ${a.name}.`)
+}
+
 const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) : set.add(id))
 </script>
 <template>
@@ -366,7 +376,7 @@ const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) :
       <div class="sys" :class="{ busy: state() !== 'ready' && state() !== 'offline', bad: state() === 'offline' }" role="status">{{ state() }}</div>
       <nav class="nav">
         <button v-for="v in VIEWS" :key="v" :class="{ on: v === view }" :aria-current="v === view ? 'page' : undefined" @click="view = v">
-          {{ v }}<span v-if="v === 'tasks' && activeTasks" class="count">{{ activeTasks }}</span>
+          {{ v }}<span v-if="v === 'tasks' && activeTasks" class="count">{{ activeTasks }}</span><span v-if="v === 'inbox' && waitingActions" class="count">{{ waitingActions }}</span>
         </button>
       </nav>
       <div class="rail-foot">
@@ -451,6 +461,7 @@ const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) :
                 <li v-for="a in attached.items.value" :key="a.key" :class="a.status" :title="a.detail">
                   <span class="aname">{{ a.name }}</span>
                   <span class="astate">{{ a.status === 'reading' ? 'reading…' : a.status === 'failed' ? 'failed' : 'ready' }}</span>
+                  <button v-if="a.status === 'ready' && a.id" type="button" class="afile" :title="`File ${a.name} as a note and add its tasks`" @click="fileIt(a)">file it</button>
                   <button type="button" class="aremove" :aria-label="`Remove ${a.name}`" @click="attached.remove(a.key)">×</button>
                 </li>
               </ul>
@@ -487,7 +498,8 @@ const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) :
         </div>
       </div>
 
-      <History v-if="view === 'history'" />
+      <Inbox v-if="view === 'inbox'" />
+      <History v-else-if="view === 'history'" />
       <Tasks v-else-if="view === 'tasks'" />
       <Memory v-else-if="view === 'memory'" :key="view" />
       <Status v-else-if="view === 'status'" />
@@ -519,6 +531,8 @@ const toggle = (set: Set<number>, id: number) => (set.has(id) ? set.delete(id) :
 .attached .aname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28ch; }
 .attached .astate { color: var(--dim); }
 .attached .failed .astate { color: var(--err); }
+.attached .afile { color: var(--dim); text-decoration: underline; min-height: 28px; }
+.attached .afile:hover { color: var(--ink); }
 .attached .aremove { min-width: 28px; min-height: 28px; color: var(--dim); }
 .attached .aremove:hover { color: var(--ink); }
 .dropveil { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; gap: 6px; text-align: center; pointer-events: none;

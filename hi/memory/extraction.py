@@ -22,6 +22,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage
 
 import hi.config as config
+from hi.core.redact import contains_secret
 from hi.memory import journal
 from hi.memory.frontmatter import with_frontmatter
 from hi.llm.resilience import invoke_with_retry
@@ -81,6 +82,12 @@ def forget_line(line: str) -> bool:
     return True
 
 
+def _is_secret(text: str) -> bool:
+    """True if `text` looks like it holds a secret: the keyword filter here, or the shared check that also knows the
+    exact values of this machine's credential settings."""
+    return bool(_SECRET.search(text)) or contains_secret(text, config.secret_values())
+
+
 def add_items(items: list[dict]) -> list[dict]:
     """Append new items under their kind heading; returns the ones actually added."""
     path = memory_path()
@@ -89,7 +96,7 @@ def add_items(items: list[dict]) -> list[dict]:
     added = []
     for item in items:
         text = item["text"].strip().rstrip(".")
-        if not text or _SECRET.search(text) or any(_normalize(text) in k for k in known):
+        if not text or _is_secret(text) or any(_normalize(text) in k for k in known):
             continue
         added.append({"kind": item["kind"], "text": text})
         known.add(_normalize(text))
