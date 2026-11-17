@@ -3,6 +3,10 @@
 
 export const BASE_URL = 'http://127.0.0.1:8765'
 
+// Sent on every request that changes something. A browser only sends a custom header after a CORS preflight, which the
+// backend answers for tinyui's own origin only, so another web page cannot approve or delete anything.
+const CLIENT = { 'X-Hi-Client': 'tinyui' }
+
 export interface AguiEvent {
   type: string
   name?: string
@@ -33,7 +37,7 @@ export async function postJson<T>(path: string, body: unknown = {}): Promise<T |
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...CLIENT },
       body: JSON.stringify(body),
     })
     if (!res.ok) return null
@@ -46,7 +50,7 @@ export async function postJson<T>(path: string, body: unknown = {}): Promise<T |
 
 export async function deleteJson(path: string): Promise<boolean> {
   try {
-    return (await fetch(`${BASE_URL}${path}`, { method: 'DELETE' })).ok
+    return (await fetch(`${BASE_URL}${path}`, { method: 'DELETE', headers: CLIENT })).ok
   } catch {
     return false
   }
@@ -71,7 +75,7 @@ export async function saveConfigChecked(fields: Record<string, string>): Promise
   try {
     const res = await fetch(`${BASE_URL}/config`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...CLIENT },
       body: JSON.stringify(fields),
     })
     return { ok: res.ok, message: res.ok ? 'saved' : ((await res.text()) || `failed (${res.status})`) }

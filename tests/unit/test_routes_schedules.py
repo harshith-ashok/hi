@@ -9,7 +9,7 @@ from hi.server.app import create_app
 
 @pytest.fixture
 def client():
-    return TestClient(create_app())
+    return TestClient(create_app(), headers={"X-Hi-Client": "test"})
 
 
 def test_the_schedules_endpoint_lists_next_runs_and_bad_notes(tmp_vault, client):

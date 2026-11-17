@@ -32,6 +32,18 @@ Decisions:
 9. **Search is a private SearXNG** (`searxng` compose service, pinned tag, JSON enabled, not published). A query
    containing a secret is refused, not redacted.
 
+10. **Routes that run or delete something need `X-Hi-Client`** (`hi/server/http.py` `require_client`): approvals,
+    proposals, schedules (toggle, run, delete) and "file it". A request with no body and no custom header is a "simple"
+    cross-site request: any web page open in your browser could send it to `127.0.0.1:8765` without asking. A custom
+    header forces a CORS preflight, which is answered only for tinyui's own origins. tinyui and the island send it;
+    with `curl` add `-H 'X-Hi-Client: curl'`. Proposal ids are 6 hex characters.
+11. **Background runs are not routed or planned.** A background turn goes straight to `term` (no routing model call) and
+    is never split into a multi-agent plan, so the run guard sees every tool call.
+12. **The inbox gate is serialized and writes atomically.** The Mac bridge serves requests on several threads, and the
+    context daemon writes the same budget file from another process.
+13. **Growing logs are read through a cache keyed by file signature** (`hi/core/jsonl.py`), because the UI polls them
+    every few seconds. An append always changes the signature, so a stale read is not possible.
+
 Consequences: `hi.automation` sits beside `agents` and may not import `hi.server` (the server passes it a
 `run_turn`); `GET /health` lists jobs; `/livez` exists for Docker's healthcheck because `/health` is 503 whenever
 Ollama is down. `hi --suggest-daemon` overlaps with the heartbeat and is deprecated once the heartbeat ships.

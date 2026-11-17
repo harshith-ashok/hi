@@ -13,11 +13,13 @@ import json
 import time
 
 import hi.config as config
+from hi.core import jsonl
 from hi.core.runpolicy import BACKGROUND_ORIGINS
 from hi.llm import registry
 
 KEEP_LINES = 2000
-TRIM_AT = 5000
+TRIM_AT = 5000  # lines read when counting
+TRIM_BYTES = 1_000_000  # the file is trimmed to KEEP_LINES once it passes this size
 LOCAL_TIERS = ("sonnet", "haiku")  # tried in this order when a hosted run is over its limit
 
 
@@ -32,25 +34,13 @@ def record(origin: str, tier: str, hosted: bool, tool_calls: int, seconds: float
     path = _path()
     with path.open("a") as f:
         f.write(json.dumps(entry) + "\n")
-    lines = path.read_text().splitlines()
-    if len(lines) > TRIM_AT:
+    if path.stat().st_size > TRIM_BYTES:  # a size check, not a read of the whole file on every turn
+        lines = path.read_text().splitlines()
         path.write_text("\n".join(lines[-KEEP_LINES:]) + "\n")
 
 
 def _entries(since: float) -> list[dict]:
-    try:
-        lines = _path().read_text().splitlines()
-    except OSError:
-        return []
-    found = []
-    for line in lines[-TRIM_AT:]:
-        try:
-            entry = json.loads(line)
-        except ValueError:
-            continue
-        if entry.get("ts", 0) >= since:
-            found.append(entry)
-    return found
+    return [e for e in jsonl.read(_path())[-TRIM_AT:] if e.get("ts", 0) >= since]
 
 
 def background_runs_last_hour(now: float | None = None) -> int:

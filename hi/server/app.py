@@ -40,7 +40,7 @@ def create_app() -> Starlette:
     return Starlette(
         routes=ALL,
         middleware=[
-            Middleware(CORSMiddleware, allow_origins=allowed_origins(), allow_methods=["GET", "POST", "DELETE", "OPTIONS"], allow_headers=["Content-Type"]),
+            Middleware(CORSMiddleware, allow_origins=allowed_origins(), allow_methods=["GET", "POST", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "X-Hi-Client"]),
         ],
         lifespan=lifespan,
     )

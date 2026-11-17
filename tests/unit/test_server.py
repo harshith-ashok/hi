@@ -91,7 +91,7 @@ def test_files_are_downloads_not_pages(client, tmp_vault):
 
 def test_pending_approvals(client):
     assert client.get("/pending").json() == []
-    assert client.post("/pending/nope/approve").status_code == 404
+    assert client.post("/pending/nope/approve", headers={"X-Hi-Client": "test"}).status_code == 404
 
 
 def test_agent_routes_are_not_shadowed_by_the_run_id_route(client, monkeypatch):

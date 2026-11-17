@@ -22,6 +22,7 @@ from pathlib import Path
 from croniter import croniter
 
 import hi.config as config
+from hi.core import jsonl
 from hi.memory.frontmatter import dump_frontmatter, parse_frontmatter
 
 log = logging.getLogger(__name__)
@@ -249,17 +250,7 @@ def say_time(moment: datetime) -> str:
 # --- the run log ----------------------------------------------------------------------------------------------
 
 def _read_runs() -> list[dict]:
-    try:
-        lines = runs_path().read_text().splitlines()
-    except OSError:
-        return []
-    rows = []
-    for line in lines:
-        try:
-            rows.append(json.loads(line))
-        except ValueError:
-            continue
-    return rows
+    return jsonl.read(runs_path())  # cached until the file changes; a torn line is skipped
 
 
 def _append_run(entry: dict) -> None:
@@ -301,4 +292,4 @@ def runs(schedule_id: str | None = None, limit: int = 20) -> list[dict]:
     for r in _read_runs():
         if schedule_id is None or r["id"] == schedule_id:
             latest[(r["id"], r["slot"])] = r
-    return sorted(latest.values(), key=lambda r: r["ts"], reverse=True)[:limit]
+    return [dict(r) for r in sorted(latest.values(), key=lambda r: r["ts"], reverse=True)[:limit]]

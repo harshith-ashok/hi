@@ -110,6 +110,9 @@ def _stream_query_as_agui(
     reflection_agent.maybe_reflect_yesterday()  # background, at most once a day
     if forced_persona in PERSONAS:
         persona_name, tier, needs_plan = forced_persona, _FORCED_PERSONA_TIER, False
+    elif origin in BACKGROUND_ORIGINS:
+        # No routing model call, and never a multi-agent plan: a background run is one agent under the run guard.
+        persona_name, tier, needs_plan = "term", _FORCED_PERSONA_TIER, False
     else:
         routed = fast_route(text)
         persona_name, tier, needs_plan = (*routed, False) if routed else classify_or_default(text)

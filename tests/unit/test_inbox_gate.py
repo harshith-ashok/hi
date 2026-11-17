@@ -116,3 +116,30 @@ def test_answering_twice_reports_already_answered():
 
     item = {"payload": {"proposal_id": "P-1"}}
     assert inbox.answer_approval(item, "yes", conflict) == "That was already answered."
+
+
+def test_concurrent_posts_with_one_key_show_it_once_and_do_not_overspend_the_budget():
+    import threading
+
+    results = []
+    barrier = threading.Barrier(8)
+
+    def post(i):
+        barrier.wait()
+        results.append(inbox.post(f"m{i}", dedupe_key="same"))
+
+    threads = [threading.Thread(target=post, args=(i,)) for i in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert results.count("shown") == 1 and results.count("deduped") == 7
+
+    results.clear()
+    threads = [threading.Thread(target=lambda i=i: results.append(inbox.post(f"n{i}"))) for i in range(10)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert results.count("shown") == 2 and inbox.budget_left() == 0  # 3 per hour, one already used by "same"
+
+
+def test_the_budget_file_is_replaced_atomically(tmp_path):
+    inbox.record_notification()
+    assert not list(tmp_path.glob("*.tmp")) and len(json.loads(inbox.BUDGET.read_text())) == 1

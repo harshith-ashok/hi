@@ -98,3 +98,13 @@ def test_a_failed_turn_is_an_error_not_an_exception(wired, monkeypatch):
     monkeypatch.setattr(turn, "_get_agent", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("model host down")))
     result = headless.run_turn("x", origin="schedule", policy=UNATTENDED)
     assert result.answer == "" and result.error
+
+
+def test_a_background_run_is_never_routed_by_a_model_or_planned(tmp_vault, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(turn, "fast_route", lambda text: pytest.fail("routed a background run"))
+    monkeypatch.setattr(turn, "classify_or_default", lambda text: pytest.fail("classified a background run"))
+    monkeypatch.setattr(turn.reflection_agent, "maybe_reflect_yesterday", lambda: None)
+    monkeypatch.setattr(turn, "_get_agent", lambda persona, tier, isolated=False: seen.update(persona=persona, tier=tier) or make_agent(Scripted(messages=iter([AIMessage("ok")])), []))
+    result = headless.run_turn("prepare it", origin="heartbeat", policy=UNATTENDED)
+    assert result.answer == "ok" and seen == {"persona": "term", "tier": "sonnet"}

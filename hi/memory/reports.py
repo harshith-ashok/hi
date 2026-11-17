@@ -68,8 +68,16 @@ def write_report(
     return report_id, path
 
 
+HEAD_CHARS = 4096  # the frontmatter is at the top: a listing never needs to read whole reports
+
+
+def _head(path: Path) -> str:
+    with path.open(errors="ignore") as f:
+        return f.read(HEAD_CHARS)
+
+
 def _summary(path: Path) -> dict:
-    fields, _ = parse_frontmatter(path.read_text(errors="ignore"))
+    fields, _ = parse_frontmatter(_head(path))
     return {k: fields.get(k, "") for k in ("id", "origin", "headline", "priority", "created", "proposals")}
 
 

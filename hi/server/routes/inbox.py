@@ -14,6 +14,7 @@ from hi import attachments
 from hi.automation import drop, scheduler
 from hi.memory import proposals, reports, schedules
 from hi.server import proposals_exec
+from hi.server.http import require_client
 
 
 async def list_reports(request: Request) -> JSONResponse:
@@ -35,6 +36,7 @@ async def list_proposals(request: Request) -> JSONResponse:
 
 
 async def approve(request: Request) -> JSONResponse:
+    require_client(request)
     try:
         outcome = await run_in_threadpool(proposals_exec.run, request.path_params["proposal_id"])
     except proposals_exec.NotWaiting:
@@ -43,6 +45,7 @@ async def approve(request: Request) -> JSONResponse:
 
 
 async def deny(request: Request) -> Response:
+    require_client(request)
     try:
         await run_in_threadpool(proposals_exec.deny, request.path_params["proposal_id"])
     except proposals_exec.NotWaiting:
@@ -69,6 +72,7 @@ async def list_schedules(request: Request) -> JSONResponse:
 
 
 async def toggle_schedule(request: Request) -> JSONResponse:
+    require_client(request)
     schedule_id = request.path_params["schedule_id"]
     current = await run_in_threadpool(schedules.load, schedule_id)
     if current is None:
@@ -78,6 +82,7 @@ async def toggle_schedule(request: Request) -> JSONResponse:
 
 
 async def run_schedule(request: Request) -> JSONResponse:
+    require_client(request)
     message = await run_in_threadpool(scheduler.run_now, request.path_params["schedule_id"])
     if message.startswith("No schedule"):
         raise HTTPException(404, message)
@@ -85,6 +90,7 @@ async def run_schedule(request: Request) -> JSONResponse:
 
 
 async def delete_schedule(request: Request) -> Response:
+    require_client(request)
     if not await run_in_threadpool(schedules.delete, request.path_params["schedule_id"]):
         raise HTTPException(404, "No such schedule")
     return Response(status_code=204)
@@ -92,6 +98,7 @@ async def delete_schedule(request: Request) -> Response:
 
 async def file_attachment(request: Request) -> JSONResponse:
     """Send an uploaded attachment through the drop folder: it is read, filed as a note, and its tasks are added."""
+    require_client(request)
     source = await run_in_threadpool(attachments.original, request.path_params["attachment_id"])
     if source is None:
         raise HTTPException(404, "No such attachment")

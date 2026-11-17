@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 import hi.config as config
+from hi.core import jsonl
 
 DAY_S = 86400
 _lock = threading.Lock()
@@ -40,17 +41,7 @@ def _append(event: dict) -> None:
 
 
 def _read() -> list[dict]:
-    try:
-        lines = path().read_text().splitlines()
-    except OSError:
-        return []
-    events = []
-    for line in lines:
-        try:
-            events.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue  # a torn line must not hide the rest
-    return events
+    return jsonl.read(path())  # cached until the file changes; a torn line is skipped
 
 
 def _fold(events: list[dict]) -> dict[str, dict]:
@@ -68,10 +59,10 @@ def _fold(events: list[dict]) -> dict[str, dict]:
 
 
 def create(origin: str, persona: str, tool: str, args: dict, reason: str = "", report_id: str = "") -> str:
-    pid = "P-" + secrets.token_hex(2)
+    pid = "P-" + secrets.token_hex(3)
     with _lock:
         while pid in _fold(_read()):
-            pid = "P-" + secrets.token_hex(2)
+            pid = "P-" + secrets.token_hex(3)
         _append({"event": CREATED, "id": pid, "origin": origin, "persona": persona, "tool": tool, "args": args,
                  "reason": reason, "report_id": report_id})
     return pid

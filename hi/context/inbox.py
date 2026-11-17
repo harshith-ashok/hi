@@ -16,8 +16,10 @@ quiet period (they are things you are waiting for), but never the dedupe.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -36,6 +38,7 @@ BUDGET = now.DIR.parent / "notify_times.json"  # when recent messages were shown
 DEDUPE = now.DIR / "dedupe.json"  # {"day": ISO date, "keys": [...]}
 BACKEND = "http://127.0.0.1:8765"
 EXEMPT_KINDS = frozenset({"approval", "reminder", "failure"})
+_gate = threading.Lock()  # the bridge serves requests on several threads: dedupe and budget are read-then-write
 STATUSES = ("shown", "notified", "deduped", "budget", "quiet", "unsupported")
 
 
@@ -43,6 +46,14 @@ def _append(path, entry: dict) -> None:
     now.DIR.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
         f.write(json.dumps(entry) + "\n")
+
+
+def _write_atomic(path, text: str) -> None:
+    """Replace `path` in one step, so the context daemon (another process) never reads half a file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(text)
+    tmp.replace(path)
 
 
 def _exempt(kind: str, priority: str) -> bool:
@@ -56,8 +67,7 @@ def budget_left() -> int:
     except (OSError, ValueError):
         times = []
     recent = [t for t in times if time.time() - t < 3600]
-    BUDGET.parent.mkdir(parents=True, exist_ok=True)
-    BUDGET.write_text(json.dumps(recent))
+    _write_atomic(BUDGET, json.dumps(recent))
     return max(0, config.MAX_NOTIFICATIONS_PER_HOUR - len(recent))
 
 
@@ -66,8 +76,7 @@ def record_notification() -> None:
         times = json.loads(BUDGET.read_text())
     except (OSError, ValueError):
         times = []
-    BUDGET.parent.mkdir(parents=True, exist_ok=True)
-    BUDGET.write_text(json.dumps(times + [time.time()]))
+    _write_atomic(BUDGET, json.dumps(times + [time.time()]))
 
 
 def _seen_today(key: str) -> bool:
@@ -84,8 +93,7 @@ def _remember(key: str) -> None:
     except (OSError, ValueError):
         data = {}
     keys = data.get("keys", []) if data.get("day") == date.today().isoformat() else []
-    now.DIR.mkdir(parents=True, exist_ok=True)
-    DEDUPE.write_text(json.dumps({"day": date.today().isoformat(), "keys": [*keys, key][-500:]}))
+    _write_atomic(DEDUPE, json.dumps({"day": date.today().isoformat(), "keys": [*keys, key][-500:]}))
 
 
 def _system_notification(message: str) -> None:
@@ -101,21 +109,23 @@ def post(message: str, source: str = "nudge", kind: str = "info", priority: str 
     the app is closed), or why nothing was shown: "deduped", "budget", "quiet", "unsupported"."""
     if sys.platform != "darwin":
         return "unsupported"
-    if dedupe_key and _seen_today(dedupe_key):
-        return "deduped"
-    exempt = _exempt(kind, priority)
-    if not exempt:
-        if budget_left() <= 0:
-            return "budget"
-        if quiet_for() > 0:
-            return "quiet"
     from hi.menubar.lock import lock_is_free
 
-    if dedupe_key:
-        _remember(dedupe_key)
-    if not exempt:
-        record_notification()
-    if lock_is_free():
+    with _gate:  # decide and record as one step: two threads must not both pass the same dedupe key or budget slot
+        if dedupe_key and _seen_today(dedupe_key):
+            return "deduped"
+        exempt = _exempt(kind, priority)
+        if not exempt:
+            if budget_left() <= 0:
+                return "budget"
+            if quiet_for() > 0:
+                return "quiet"
+        if dedupe_key:
+            _remember(dedupe_key)
+        if not exempt:
+            record_notification()
+        island_closed = lock_is_free()
+    if island_closed:
         _system_notification(message)
         return "notified"
     _append(INBOX, {"id": uuid.uuid4().hex[:8], "ts": time.time(), "message": message, "source": source,
@@ -129,7 +139,7 @@ def deliver(message: str, source: str = "nudge") -> bool:
 
 
 def _http_post(url: str) -> str:
-    request = urllib.request.Request(url, method="POST")
+    request = urllib.request.Request(url, method="POST", headers={"X-Hi-Client": "island"})
     with urllib.request.urlopen(request, timeout=10):
         return "ok"
 
