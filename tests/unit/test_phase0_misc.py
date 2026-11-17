@@ -74,7 +74,7 @@ def test_the_island_origin_is_accepted_by_the_query_route(monkeypatch):
 
     seen = {}
 
-    def fake(text, forced_persona=None, fresh=False, context="", origin="ui", forced_tier=None):
+    def fake(text, forced_persona=None, fresh=False, context="", origin="ui", forced_tier=None, session="", visualize=False):
         seen["origin"] = origin
         yield ag.RunStartedEvent(thread_id="t", run_id="r")
         yield ag.RunFinishedEvent(thread_id="t", run_id="r", result="x")

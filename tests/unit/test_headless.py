@@ -25,7 +25,7 @@ def wired(tmp_vault, monkeypatch):
 
     def script(messages):
         agent = make_agent(Scripted(messages=iter(messages)), [write_project_file])
-        monkeypatch.setattr(turn, "_get_agent", lambda persona, tier, isolated=False: agent)
+        monkeypatch.setattr(turn, "_get_agent", lambda persona, tier, isolated=False, session="": agent)
 
     monkeypatch.setattr(turn, "fast_route", lambda text: ("term", "sonnet"))
     monkeypatch.setattr(turn.reflection_agent, "maybe_reflect_yesterday", lambda: None)
@@ -74,7 +74,7 @@ def test_a_background_run_does_not_steer_the_next_chat_route(wired, monkeypatch)
 def test_it_uses_its_own_agent_so_your_chat_is_not_reset(wired, monkeypatch):
     script, _ = wired
     seen = []
-    monkeypatch.setattr(turn, "_get_agent", lambda persona, tier, isolated=False: seen.append(isolated) or make_agent(Scripted(messages=iter([AIMessage("ok")])), []))
+    monkeypatch.setattr(turn, "_get_agent", lambda persona, tier, isolated=False, session="": seen.append(isolated) or make_agent(Scripted(messages=iter([AIMessage("ok")])), []))
     headless.run_turn("x", origin="heartbeat", policy=UNATTENDED)
     assert seen == [True]
 
@@ -105,6 +105,6 @@ def test_a_background_run_is_never_routed_by_a_model_or_planned(tmp_vault, monke
     monkeypatch.setattr(turn, "fast_route", lambda text: pytest.fail("routed a background run"))
     monkeypatch.setattr(turn, "classify_or_default", lambda text: pytest.fail("classified a background run"))
     monkeypatch.setattr(turn.reflection_agent, "maybe_reflect_yesterday", lambda: None)
-    monkeypatch.setattr(turn, "_get_agent", lambda persona, tier, isolated=False: seen.update(persona=persona, tier=tier) or make_agent(Scripted(messages=iter([AIMessage("ok")])), []))
+    monkeypatch.setattr(turn, "_get_agent", lambda persona, tier, isolated=False, session="": seen.update(persona=persona, tier=tier) or make_agent(Scripted(messages=iter([AIMessage("ok")])), []))
     result = headless.run_turn("prepare it", origin="heartbeat", policy=UNATTENDED)
     assert result.answer == "ok" and seen == {"persona": "term", "tier": "sonnet"}

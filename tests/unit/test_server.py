@@ -129,7 +129,7 @@ def test_upload_streams_the_body_to_attachments_save(client, monkeypatch):
     assert r.json()["id"] == "abc" and seen == {"name": "notes.txt", "data": b"hello", "size": 5, "kind": "audio"}
 
 
-def fake_events(text, forced_persona=None, fresh=False, context="", origin="ui", forced_tier=None):
+def fake_events(text, forced_persona=None, fresh=False, context="", origin="ui", forced_tier=None, session="", visualize=False):
     yield ag.RunStartedEvent(thread_id="t", run_id="r")
     yield ag.CustomEvent(name="persona_selected", value={"name": "term", "tier": "sonnet", "plan": False, "echo": text})
     yield ag.RunFinishedEvent(thread_id="t", run_id="r", result="done")

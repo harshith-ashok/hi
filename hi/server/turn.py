@@ -26,6 +26,7 @@ from hi.personas import PERSONAS, get_agent_builder
 from hi.router import collapse, fast_route, remember_route
 from hi.server.spoken_summary import make_spoken_summary
 from hi.speaker import Speaker
+from hi.visuals import make_visual
 
 # Tier used when the client forces a specific persona (the panel's tab
 # row) instead of letting classify_with_plan() pick one — "typical,
@@ -51,14 +52,21 @@ _agent_cache: dict[tuple, object] = {}
 _cache_lock = threading.Lock()
 
 
-def _get_agent(persona_name: str, tier: str, isolated: bool = False):
-    """The cached agent for (persona, tier). `isolated` gives background runs their own: term remembers the
-    conversation, and a background run must neither read your chat nor reset it."""
+MAX_CACHED_AGENTS = 16  # one per (persona, tier, session) in use; the least recently used is dropped
+
+
+def _get_agent(persona_name: str, tier: str, isolated: bool = False, session: str = ""):
+    """The cached agent for (persona, tier, session). term remembers its conversation, so each chat session gets its
+    own, and `isolated` gives background runs theirs: a background run must neither read your chat nor reset it."""
     model = get_tier_model(tier)
-    key = (persona_name, tier, llm.model_name(model), llm.signature(), isolated)
+    key = (persona_name, tier, llm.model_name(model), llm.signature(), isolated, session)
     with _cache_lock:
-        if key not in _agent_cache:
+        if key in _agent_cache:
+            _agent_cache[key] = _agent_cache.pop(key)  # most recently used goes last
+        else:
             _agent_cache[key] = get_agent_builder(persona_name)(model)
+            while len(_agent_cache) > MAX_CACHED_AGENTS:
+                _agent_cache.pop(next(iter(_agent_cache)))
         return _agent_cache[key]
 
 
@@ -73,23 +81,23 @@ def _context_used(text: str) -> dict | None:
 
 def stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
-    origin: str = "ui", forced_tier: str | None = None,
+    origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
 ):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
     (unreachable Ollama, missing model) reaches the client
     as a RUN_ERROR event instead of a silently dropped connection."""
     try:
-        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier)
+        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier, session, visualize)
     except Exception as e:
         records.record_turn(records.TurnRecord(
-            forced_persona or "", "", text, error=llm.friendly_error(e), detail=repr(e), origin=origin,
+            forced_persona or "", "", text, error=llm.friendly_error(e), detail=repr(e), origin=origin, session=session,
         ))
         yield ag.RunErrorEvent(message=llm.friendly_error(e))
 
 
 def _stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
-    origin: str = "ui", forced_tier: str | None = None,
+    origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
 ):
     """Yields AG-UI events for one query — a `persona_selected` CUSTOM
     event first (this project's own extension; AG-UI has no built-in
@@ -139,10 +147,10 @@ def _stream_query_as_agui(
         events = stream_orchestrated_as_agui_sync(text + context + prof.style, thread_id)
         log_persona = "orchestrator"
     else:
-        agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS)
+        agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS, session=session)
         if fresh and hasattr(agent, "reset"):
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
-        events = stream_agent_as_agui(agent, text + context + prof.style, thread_id, [] if fresh else transcript.history())
+        events = stream_agent_as_agui(agent, text + context + prof.style, thread_id, [] if fresh else transcript.history(session=session))
         log_persona = persona_name
 
     final_answer = ""
@@ -182,6 +190,14 @@ def _stream_query_as_agui(
     for line in speaker.finish():
         yield ag.CustomEvent(name="spoken_chunk", value={"text": line})
 
+    visual = ""
+    if visualize and final_answer and origin in ("ui", "voice"):
+        # Forced visualization: draw the answer after it has streamed. The chat shows "drawing" until this arrives.
+        yield ag.CustomEvent(name="phase", value={"name": "visualizing", "state": "start"})
+        visual = make_visual(text, final_answer) or ""
+        yield ag.CustomEvent(name="visual", value={"mermaid": visual})
+        yield ag.CustomEvent(name="phase", value={"name": "visualizing", "state": "end"})
+
     _record_usage(origin, tier, len(tool_times), time.monotonic() - started, first_token_s)
     yield ag.CustomEvent(
         name="timing",
@@ -195,7 +211,7 @@ def _stream_query_as_agui(
 
     records.record_turn(records.TurnRecord(
         log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started, needs_plan,
-        error="" if final_answer else run_error, detail=run_error, origin=origin,
+        error="" if final_answer else run_error, detail=run_error, origin=origin, session=session, visual=visual,
     ))
     if final_answer and speaks:
         if not speaker.has_spoken:  # nothing sayable streamed (tool-only answer, one-liner): summarize

@@ -40,13 +40,14 @@ def _day_file(day: date) -> Path:
 
 def record_turn(
     persona: str, tier: str, ask: str, answer: str, tools: list[dict], seconds: float,
-    plan: bool = False, error: str = "", origin: str = "",
+    plan: bool = False, error: str = "", origin: str = "", session: str = "", visual: str = "",
 ) -> None:
     """tools: [{"name", "args" (JSON string), "result"}] in call order, kept in full."""
     entry = {
         "time": datetime.now().isoformat(timespec="seconds"),
         "persona": persona, "tier": tier, "plan": plan, "seconds": round(seconds, 2),
         "ask": ask, "tools": tools, "answer": answer, "error": error, "origin": origin,
+        "session": session, "visual": visual,
     }
     path = _day_file(date.today())
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,21 +55,96 @@ def record_turn(
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def _recent_entries(limit: int) -> list[dict]:
-    """The newest `limit` answered turns, oldest first."""
-    found: deque[dict] = deque(maxlen=limit)
-    for offset in range(HISTORY_DAYS - 1, -1, -1):
-        path = _day_file(date.today() - timedelta(days=offset))
-        if not path.exists():
+SESSION_DAYS = 90        # how far back a session's history is looked for (it may be resumed after weeks)
+
+
+def _entries_on(day: date) -> list[dict]:
+    try:
+        lines = _day_file(day).read_text(errors="ignore").splitlines()
+    except OSError:
+        return []
+    found = []
+    for line in lines:
+        try:
+            found.append(json.loads(line))
+        except json.JSONDecodeError:
             continue
-        for line in path.read_text(errors="ignore").splitlines():
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if entry.get("answer") and entry.get("origin") not in BACKGROUND_ORIGINS:
+    return found
+
+
+def _recent_entries(limit: int, session: str = "") -> list[dict]:
+    """The newest `limit` answered turns of `session` ("" = turns that belong to no session), oldest first."""
+    found: deque[dict] = deque(maxlen=limit)
+    days = SESSION_DAYS if session else HISTORY_DAYS
+    for offset in range(days - 1, -1, -1):
+        for entry in _entries_on(date.today() - timedelta(days=offset)):
+            if entry.get("answer") and entry.get("origin") not in BACKGROUND_ORIGINS and entry.get("session", "") == session:
                 found.append(entry)
     return list(found)
+
+
+def session_turns(session: str) -> list[dict]:
+    """Every turn of `session`, oldest first (answered or not), for showing the conversation again."""
+    turns = []
+    if not transcript_dir().exists():
+        return turns
+    for path in sorted(transcript_dir().glob("*.jsonl")):
+        try:
+            day = date.fromisoformat(path.stem)
+        except ValueError:
+            continue
+        turns += [e for e in _entries_on(day) if e.get("session", "") == session]
+    return turns
+
+
+def delete_session(session: str) -> int:
+    """Remove a session's turns from every day's file. Returns how many were removed."""
+    removed = 0
+    if not transcript_dir().exists():
+        return removed
+    for path in sorted(transcript_dir().glob("*.jsonl")):
+        try:
+            lines = path.read_text(errors="ignore").splitlines()
+        except OSError:
+            continue
+        keep = []
+        for line in lines:
+            try:
+                drop = json.loads(line).get("session", "") == session
+            except json.JSONDecodeError:
+                drop = False
+            removed += drop
+            if not drop:
+                keep.append(line)
+        if len(keep) != len(lines):
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text("".join(f"{line}\n" for line in keep))
+            tmp.replace(path)
+    return removed
+
+
+def search_sessions(query: str, limit: int = 30) -> dict[str, str]:
+    """{session id: a snippet around the match} for sessions whose questions or answers contain `query`."""
+    needle, found = query.strip().lower(), {}
+    if not needle or not transcript_dir().exists():
+        return found
+    for path in sorted(transcript_dir().glob("*.jsonl"), reverse=True):
+        try:
+            day = date.fromisoformat(path.stem)
+        except ValueError:
+            continue
+        for entry in reversed(_entries_on(day)):
+            sid = entry.get("session", "")
+            if not sid or sid in found:
+                continue
+            for text in (entry.get("ask", ""), entry.get("answer", "")):
+                at = text.lower().find(needle)
+                if at >= 0:
+                    found[sid] = ("…" if at > 40 else "") + text[max(0, at - 40): at + 80].replace("\n", " ")
+                    break
+            if len(found) >= limit:
+                return found
+    return found
 
 
 def _clip(text: str, limit: int) -> str:
@@ -83,10 +159,10 @@ def _assistant_text(entry: dict) -> str:
     return f"{answer}\n\n[tools used this turn: {_clip(', '.join(names), TOOLS_CHARS)}]"
 
 
-def history(turns: int = HISTORY_TURNS) -> list[dict]:
-    """The latest exchanges as chat messages, ready to go in front of a new user message."""
+def history(turns: int = HISTORY_TURNS, session: str = "") -> list[dict]:
+    """The latest exchanges of `session` as chat messages, ready to go in front of a new user message."""
     messages: list[dict] = []
-    for entry in _recent_entries(turns):
+    for entry in _recent_entries(turns, session):
         messages.append({"role": "user", "content": _clip(entry["ask"], ASK_CHARS)})
         messages.append({"role": "assistant", "content": _assistant_text(entry)})
     return messages
