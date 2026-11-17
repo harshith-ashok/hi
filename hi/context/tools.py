@@ -65,3 +65,15 @@ def recent_activity(minutes: int = 30) -> str:
         minutes: How far back to look.
     """
     return now.recent_activity(minutes)
+
+
+@tool
+def recent_outcomes(limit: int = 20) -> str:
+    """The assistant's recent messages the user ignored or dismissed, one per line as "message | outcome". Runs on the Mac.
+
+    Args:
+        limit: How many to return.
+    """
+    from hi.context import inbox
+
+    return "\n".join(f"{message} | {outcome}" for message, outcome in inbox.recent_outcomes(limit))

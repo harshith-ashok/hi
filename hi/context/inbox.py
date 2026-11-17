@@ -213,6 +213,15 @@ def log_outcome(item: dict, outcome: str) -> None:
     _append(LOG, {"id": item["id"], "ts": time.time(), "message": item["message"], "outcome": outcome})
 
 
+def recent_outcomes(limit: int = 20) -> list[tuple[str, str]]:
+    """(message, outcome) for the newest messages you did not answer (ignored or dismissed), newest first."""
+    try:
+        rows = [json.loads(line) for line in LOG.read_text().splitlines()[-200:] if line.strip()]
+    except (OSError, ValueError):
+        return []
+    return [(r["message"], r["outcome"]) for r in reversed(rows) if r.get("outcome") in ("ignored", "dismissed")][:limit]
+
+
 def quiet_for() -> float:
     """Seconds nudges should stay quiet: the last BACK_OFF_AFTER outcomes were all unanswered."""
     try:

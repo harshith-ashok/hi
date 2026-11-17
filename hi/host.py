@@ -25,7 +25,7 @@ HOST_TOOLS = frozenset({
     "write_clipboard", "open_url_in_browser", "observe_current_tab", "read_screen", "ask_about_screen",
     "play_music", "music_control", "now_playing", "list_playlists",
     "mac_shell", "git_on_mac", "git_push_on_mac", "set_timer", "list_timers", "cancel_timer", "current_context", "pause_screen_context", "resume_screen_context",
-    "post_to_inbox", "recent_activity",
+    "post_to_inbox", "recent_activity", "recent_outcomes",
 })
 CALL_TIMEOUT_SECONDS = 180  # ask_about_screen waits on a vision model
 

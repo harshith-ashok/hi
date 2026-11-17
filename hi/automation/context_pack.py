@@ -80,18 +80,20 @@ def _vault_sections(query: str, now: datetime) -> list[tuple[str, str]]:
     ]
 
 
-def _screen_sections() -> list[tuple[str, str]]:
+def _screen_sections(described: str | None = None) -> list[tuple[str, str]]:
     from hi.context import now as live
 
-    described = live.describe(include_screen=True)
+    if described is None:
+        described = live.describe(include_screen=True)
     if not described or described.startswith(PAUSED_MARKER):
         return []
     return [("What the user is doing right now", described), ("The last half hour", live.recent_activity(30))]
 
 
 def build(parts: set[str] | frozenset[str] | list[str], query: str = "", tier: str = "sonnet",
-          now: datetime | None = None) -> ContextPack:
-    """The context for a run. `parts` may contain "vault" and "screen"."""
+          now: datetime | None = None, described: str | None = None) -> ContextPack:
+    """The context for a run. `parts` may contain "vault" and "screen". `described` is live screen context the caller
+    has already read (the heartbeat's), so it is not fetched twice."""
     now = now or datetime.now()
     parts = set(parts)
     pack = ContextPack()
@@ -103,7 +105,7 @@ def build(parts: set[str] | frozenset[str] | list[str], query: str = "", tier: s
         if not registry.is_local(tier):
             pack.notes.append(f"screen left out: the {tier} tier is not a local model")
         else:
-            screen = _screen_sections()
+            screen = _screen_sections(described)
             if screen:
                 sections += screen
                 pack.screen_included = True

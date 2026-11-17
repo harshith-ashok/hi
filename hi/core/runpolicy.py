@@ -33,6 +33,11 @@ CHAT_ORIGINS = frozenset({"ui", "island", "voice"})
 BACKGROUND_ORIGINS = frozenset({"schedule", "heartbeat", "drop"})
 ORIGINS = CHAT_ORIGINS | BACKGROUND_ORIGINS
 
+def replace_policy(policy: RunPolicy, **changes) -> RunPolicy:
+    """A copy of `policy` with some fields changed."""
+    return replace(policy, **changes)
+
+
 INTERACTIVE = RunPolicy("interactive")
 UNATTENDED = RunPolicy(
     "unattended", interactive=False, allowed=frozenset({"write_report"}), max_tool_calls=15, timeout_s=300.0,

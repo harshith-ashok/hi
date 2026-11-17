@@ -50,5 +50,8 @@ def start_background_jobs(run_turn=None) -> None:
         from hi.automation import scheduler
 
         scheduler.start(run_turn)
+        from hi.automation import heartbeat
+
+        heartbeat.start(run_turn)
     jobs.every("triage-inbox", HOUR_S, triage_inbox)
     jobs.every("weekly-retro", HOUR_S, maybe_generate_weekly_retro)
