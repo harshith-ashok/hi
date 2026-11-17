@@ -34,7 +34,8 @@ tinyui ──POST /query──▶ hi/server/routes/query.py
 
 A chat is a session: a note in `hi/sessions/` plus the turns in the transcript tagged with its id (`hi/memory/sessions.py`,
 `hi/memory/transcript.py`). `POST /query` takes `session` and `visualize`; each session gets its own agent. With
-`visualize` a Mermaid diagram of the answer is drawn after it streams (`hi/visuals.py`). Routes: `/sessions`, `/visual`.
+`visualize` a Mermaid diagram of the answer is drawn after it streams (`hi/visuals.py`). Routes: `/sessions`, `/visual`. 3D: `render_3d` (`hi/scene3d.py`) saves a validated scene under `hi/scenes/`, served at
+`/scenes/<name>.json`; the chat draws it with three.js. The sandbox image has `trimesh` and returns mesh files.
 Decisions: [adr/0003-tinyui-redesign.md](adr/0003-tinyui-redesign.md).
 
 ## Background work

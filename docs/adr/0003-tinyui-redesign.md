@@ -24,5 +24,15 @@ Decisions:
    question and partial answer survive in the session. Untitled sessions that stay empty are hidden after ten minutes.
 7. **The clarifying form (`ask_user`) is part of the chat**, answered by sending the answers as the next message.
 
+8. **You choose a model size, not an agent.** The composer's picker is Auto, Fast (haiku), Balanced (sonnet) or Deep
+   (opus), each showing the model behind it. `POST /query` takes `tier`; hi still decides what kind of help a message
+   needs. A forced tier is never remembered as the router's choice, so Auto stays Auto. (The earlier agent select could
+   not be used: its list rendered off-screen inside a tooltip.)
+9. **3D scenes are data, not code.** `render_3d` (hi/scene3d.py) takes a JSON scene, refuses a bad one with every problem
+   listed, saves it under `hi/scenes/` and the chat draws it with three.js (`Viewer3D.vue`). Because the viewer builds only
+   the shapes it knows, a scene cannot run anything in the page, which running model-written JavaScript would. The same
+   viewer opens a `scene3d` block in an answer, and meshes the sandbox exports (`.glb .gltf .obj .stl .ply`, with
+   `trimesh` installed there) or a `scene.json` it writes. A viewer holds a WebGL context only while on screen.
+
 Consequences: the tinyui bundle is about 160 KB gzipped plus Mermaid on demand; `hi/server/routes/sessions.py` adds
 `/sessions` and `/visual`; the destructive routes need the `X-Hi-Client` header (ADR 0002).

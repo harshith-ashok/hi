@@ -2,6 +2,7 @@
 
 import { BASE_URL } from '@/backend'
 import { label } from '@/lib/mermaid'
+import { MESH_EXTENSIONS } from '@/lib/scene3d'
 import { answerOf, toolsOf, type Turn } from '@/composables/useChat'
 
 // Charts made by run_python come back as /plots/<name> paths in a tool result.
@@ -10,6 +11,13 @@ export const plots = (result?: string) => [...new Set(result?.match(/\/plots\/[\
 // Files made by run_python (PDF, CSV, ...) come back as /files/<run>/<name> paths.
 export const files = (result?: string) =>
   [...new Set(result?.match(/\/files\/[\w.-]+\/[\w.-]+/g) ?? [])].map((p) => ({ href: BASE_URL + p, name: p.split('/').pop() ?? p }))
+
+/** 3D scenes saved by render_3d (/scenes/<name>.json), or written by the sandbox as <name>.scene.json. */
+export const scenes = (result?: string) =>
+  [...new Set(result?.match(/\/scenes\/[\w-]+\.json|\/files\/[\w.-]+\/[\w.-]+\.scene\.json/g) ?? [])].map((p) => BASE_URL + p)
+
+/** Mesh files the sandbox exported (.glb .gltf .obj .stl .ply). */
+export const meshes = (result?: string) => files(result).filter((f) => MESH_EXTENSIONS.test(f.name))
 
 export const short = (s: string, n = 140) => {
   const flat = s.replace(/\s+/g, ' ').trim()

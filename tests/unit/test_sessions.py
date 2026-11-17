@@ -401,3 +401,44 @@ def test_an_untitled_empty_chat_disappears_after_a_while_but_a_new_one_stays(tmp
     sessions._write(s)
     ids = {x.id for x in sessions.list_sessions()}
     assert fresh.id in ids and named.id in ids and old.id not in ids
+
+
+# --- the tier chosen in the chat ---------------------------------------------------------------------------------
+
+def test_the_tier_reaches_the_turn_and_a_bad_one_is_ignored(tmp_vault, monkeypatch):
+    from ag_ui.core import events as ag
+    from starlette.testclient import TestClient
+
+    from hi.server import turn as turn_module
+    from hi.server.app import create_app
+
+    seen = []
+
+    def fake(text, **kw):
+        seen.append(kw.get("forced_tier"))
+        yield ag.RunStartedEvent(thread_id="t", run_id="r")
+        yield ag.RunFinishedEvent(thread_id="t", run_id="r", result="x")
+
+    monkeypatch.setattr(turn_module, "stream_query_as_agui", fake)
+    client = TestClient(create_app())
+    for tier in ("haiku", "opus", "gpt-5", None, 3):
+        client.post("/query", json={"text": "hi", **({"tier": tier} if tier is not None else {})})
+    assert seen == ["haiku", "opus", None, None, None]
+
+
+def test_a_forced_tier_is_used_but_the_router_choice_is_what_the_next_message_inherits(tmp_vault, monkeypatch):
+    from fakes import Scripted
+    from langchain_core.messages import AIMessage
+
+    from hi.agents.base import make_agent
+    from hi.server import turn as turn_module
+
+    chosen, remembered = [], []
+    agent = make_agent(Scripted(messages=iter([AIMessage("ok")])), [])
+    monkeypatch.setattr(turn_module, "_get_agent", lambda persona, tier, *a, **k: chosen.append(tier) or agent)
+    monkeypatch.setattr(turn_module, "fast_route", lambda text: ("term", "sonnet"))
+    monkeypatch.setattr(turn_module, "remember_route", lambda persona, tier: remembered.append(tier))
+    monkeypatch.setattr(turn_module.reflection_agent, "maybe_reflect_yesterday", lambda: None)
+    monkeypatch.setattr(turn_module, "make_spoken_summary", lambda a: None)
+    list(turn_module.stream_query_as_agui("hello", forced_tier="opus"))
+    assert chosen == ["opus"] and remembered == ["sonnet"]

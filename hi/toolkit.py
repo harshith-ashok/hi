@@ -112,6 +112,9 @@ GROUPS: tuple[Group, ...] = (
     Group("visualise", 2, ("visualise",),
           r"explain|visuali[sz]e|diagram|illustrate|draw|how does .+ work|show me how|walk me through",
           "explain a topic by drawing a diagram shown in the UI"),
+    Group("render3d", 2, ("render_3d",),
+          r"\b3-?d\b|three[- ]?d|render|\bmodel (of|a)\b|\bshape|\bmesh|\bcube|\bsphere|\bmolecule|solar system|orbit|rotat|spin|sculpt|floor ?plan|prototype|blueprint",
+          "show 3D objects and scenes in an interactive viewer"),
     Group("insight", 2, ("what_next", "generate_retro", "reflect_on_week", "synthesize_vault", "check_suggestions", "show_last_run_trace"),
           r"what (should|next)|what's next|retro|reflect|synthes|suggest|trace|summari[sz]e (my|the) (vault|week)", "what to do next, weekly retro/reflection, vault synthesis"),
     # ---- MCP: subsets by priority ----------------------------------------

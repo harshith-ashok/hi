@@ -33,9 +33,10 @@ const sessions = useSessions()
 const status = useStatus()
 const attached = useAttachments()
 const input = ref('')
-const persona = ref(localStorage.getItem('persona') ?? 'auto')
+const tier = ref(['haiku', 'sonnet', 'opus'].includes(localStorage.getItem('tier') ?? '') ? localStorage.getItem('tier')! : 'auto')
+localStorage.removeItem('persona') // an older version chose an agent here; what you choose now is the model size
 const visualize = ref(localStorage.getItem('visualize') === '1')
-watch(persona, (v) => localStorage.setItem('persona', v))
+watch(tier, (v) => localStorage.setItem('tier', v))
 watch(visualize, (v) => localStorage.setItem('visualize', v ? '1' : '0'))
 const composer = ref<InstanceType<typeof Composer> | null>(null)
 
@@ -118,7 +119,7 @@ async function submit(override?: string) {
   const ids = files.map((f) => f.id!)
   attached.clear()
   stick.value = true
-  await chat.ask(message, { persona: persona.value === 'auto' ? null : persona.value, attachments: ids, names, session, visualize: visualize.value })
+  await chat.ask(message, { tier: tier.value, attachments: ids, names, session, visualize: visualize.value })
 }
 
 function recall(step: number) {
@@ -279,7 +280,8 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
         <Composer
           ref="composer"
           v-model="input"
-          v-model:persona="persona"
+          v-model:tier="tier"
+          :models="status.models.value"
           v-model:visualize="visualize"
           :busy="chat.busy.value"
           :voice="voice"

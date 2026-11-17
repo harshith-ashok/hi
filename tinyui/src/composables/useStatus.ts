@@ -6,6 +6,7 @@ import { fetchConfig, getJson, ping } from '@/backend'
 const online = ref(false)
 const host = ref('')
 const model = ref('')
+const models = ref<Record<string, string>>({ haiku: '', sonnet: '', opus: '' }) // the model behind each tier
 const activeTasks = ref(0)
 const waitingActions = ref(0) // actions the assistant prepared that need an answer
 let users = 0
@@ -20,6 +21,7 @@ async function refresh() {
   const mode = String(config?.AI_MODE ?? '')
   host.value = `${mode} · ${config?.[mode === 'tailscale' ? 'TAILSCALE_OLLAMA_URL' : 'OLLAMA_HOST']}`
   model.value = String(config?.SONNET_MODEL ?? '')
+  models.value = { haiku: String(config?.HAIKU_MODEL ?? ''), sonnet: String(config?.SONNET_MODEL ?? ''), opus: String(config?.OPUS_MODEL ?? '') }
 }
 
 export function useStatus() {
@@ -32,5 +34,5 @@ export function useStatus() {
   onUnmounted(() => {
     if (--users === 0) clearInterval(timer)
   })
-  return { online, host, model, activeTasks, waitingActions, refresh }
+  return { online, host, model, models, activeTasks, waitingActions, refresh }
 }

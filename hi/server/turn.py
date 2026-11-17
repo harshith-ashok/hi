@@ -126,7 +126,8 @@ def _stream_query_as_agui(
         persona_name, tier, needs_plan = (*routed, False) if routed else classify_or_default(text)
         persona_name = collapse(persona_name)
     prof = profiles.profile(origin)
-    if forced_tier in TIERS:  # a background run asked for a specific tier
+    routed_tier = tier  # what the router chose, before the user's choice is applied
+    if forced_tier in TIERS:  # the user (or a background run) asked for a specific tier
         tier = forced_tier
     tier = profiles.cap_tier(tier, prof.max_tier)  # the island never needs the heaviest model
     if origin in BACKGROUND_ORIGINS:
@@ -134,7 +135,8 @@ def _stream_query_as_agui(
         if state is not None:
             state.persona = persona_name  # so a proposal knows which agent's tools can run it
     else:
-        remember_route(persona_name, tier)  # a background run must not steer the next chat message's route
+        remember_route(persona_name, routed_tier)  # the router's pick, not a tier you forced: Auto must stay auto
+        # (a background run must not steer the next chat message's route either)
     route_s = time.monotonic() - started
 
     yield ag.CustomEvent(name="persona_selected", value={"name": persona_name, "tier": tier, "plan": needs_plan})

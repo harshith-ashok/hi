@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ArrowUp, AudioLines, Ear, FileUp, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, Volume2, Wand2, Workflow, X } from '@lucide/vue'
+import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Gauge, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, Volume2, Wand2, Workflow, X, Zap } from '@lucide/vue'
 import { computed, ref, type Component } from 'vue'
 import type { Attachment } from '@/attachments'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { useVoice } from '@/composables/useVoice'
@@ -12,13 +12,18 @@ import { cn } from '@/lib/utils'
 
 type Voice = ReturnType<typeof useVoice>
 
-const PERSONAS: [string, string][] = [
-  ['auto', 'Auto'], ['term', 'Shell, files, code'], ['butler', 'Mac and to-dos'], ['docs', 'Your notes'], ['web', 'Web lookups'],
+// What you choose is how much model to spend. hi still decides what kind of help a message needs.
+const TIERS: { id: string; label: string; hint: string; icon: Component }[] = [
+  { id: 'auto', label: 'Auto', hint: 'hi picks the size for each message', icon: Sparkles },
+  { id: 'haiku', label: 'Fast', hint: 'Quick answers and lookups', icon: Zap },
+  { id: 'sonnet', label: 'Balanced', hint: 'Most everyday work', icon: Gauge },
+  { id: 'opus', label: 'Deep', hint: 'Hard problems. Slower.', icon: BrainCircuit },
 ]
 
 const props = defineProps<{
   modelValue: string
-  persona: string
+  tier: string
+  models: Record<string, string>
   visualize: boolean
   busy: boolean
   voice: Voice
@@ -27,7 +32,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: string]
-  'update:persona': [value: string]
+  'update:tier': [value: string]
   'update:visualize': [value: boolean]
   submit: []
   cancel: []
@@ -39,6 +44,7 @@ const emit = defineEmits<{
 
 const box = ref<InstanceType<typeof Textarea> | null>(null)
 const picker = ref<HTMLInputElement>()
+const current = computed(() => TIERS.find((t) => t.id === props.tier) ?? TIERS[0])
 const canSend = computed(() => props.modelValue.trim().length > 0 || props.attachments.some((a) => a.status === 'ready'))
 
 function onKey(e: KeyboardEvent) {
@@ -98,12 +104,27 @@ defineExpose({ focus: () => (box.value?.$el as HTMLTextAreaElement | undefined)?
       <input ref="picker" type="file" multiple class="sr-only" tabindex="-1" aria-hidden="true" @change="pick" />
       <Tooltip><TooltipTrigger as-child><Button variant="ghost" size="icon" class="size-8" aria-label="Attach files" @click="picker?.click()"><FileUp class="size-4" /></Button></TooltipTrigger><TooltipContent>Attach files as context</TooltipContent></Tooltip>
 
-      <Select :model-value="persona" @update:model-value="emit('update:persona', String($event))">
-        <Tooltip><TooltipTrigger as-child>
-          <SelectTrigger class="h-8 w-auto gap-1.5 border-0 bg-transparent px-2 text-xs shadow-none" aria-label="Agent"><Sparkles class="size-3.5" /><SelectValue /></SelectTrigger>
-        </TooltipTrigger><TooltipContent>Which agent answers. Auto picks for you.</TooltipContent></Tooltip>
-        <SelectContent><SelectItem v-for="[id, label] in PERSONAS" :key="id" :value="id">{{ label }}</SelectItem></SelectContent>
-      </Select>
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <Button variant="ghost" size="sm" class="h-8 gap-1.5 px-2 text-xs" aria-label="Model size" :title="`Model size: ${current.label}. ${current.hint}`">
+            <component :is="current.icon" class="size-3.5" />{{ current.label }}<ChevronDown class="size-3 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" class="w-72">
+          <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">How much model to use</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuRadioGroup :model-value="tier" @update:model-value="emit('update:tier', String($event))">
+            <DropdownMenuRadioItem v-for="t in TIERS" :key="t.id" :value="t.id" class="items-start gap-2 py-2">
+              <component :is="t.icon" class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <span class="min-w-0">
+                <span class="block text-sm font-medium">{{ t.label }}</span>
+                <span class="block text-xs text-muted-foreground">{{ t.hint }}</span>
+                <span v-if="models[t.id]" class="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">{{ models[t.id] }}</span>
+              </span>
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <Tooltip><TooltipTrigger as-child>
         <Button variant="ghost" size="sm" :aria-pressed="visualize" :class="cn('h-8 gap-1.5 px-2 text-xs', visualize && 'bg-accent text-accent-foreground')" @click="emit('update:visualize', !visualize)"><Workflow class="size-4" /> Visualize</Button>

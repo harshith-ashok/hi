@@ -11,6 +11,7 @@ from starlette.routing import Route
 
 from hi import attachments
 from hi.dashboard import record_query_latency
+from hi.llm.registry import TIERS
 from hi.memory import sessions
 from hi.server import turn
 from hi.server.http import iterate_in_one_thread, json_body, required_text
@@ -24,6 +25,7 @@ async def query(request: Request) -> StreamingResponse:
     context = attachments.render([str(i) for i in ids]) if isinstance(ids, list) else ""
     fresh = bool(body.get("fresh"))  # the menu bar prompt: start from a clean conversation
     origin = body.get("origin") if body.get("origin") in ("ui", "island", "voice") else "ui"
+    tier = body.get("tier") if body.get("tier") in TIERS else None  # fast, balanced or deep; None = the router chooses
     session = str(body.get("session") or "")
     session = session if sessions.valid_id(session) else ""
     visualize = body.get("visualize") is True  # draw a diagram of the answer after it streams
@@ -34,7 +36,7 @@ async def query(request: Request) -> StreamingResponse:
         try:
             events = iterate_in_one_thread(
                 lambda: turn.stream_query_as_agui(text, forced_persona=forced_persona, fresh=fresh, context=context, origin=origin,
-                    session=session, visualize=visualize)
+                    session=session, visualize=visualize, forced_tier=tier)
             )
             async for event in events:
                 yield encoder.encode(event)

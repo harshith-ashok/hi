@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ToolBlock } from '@/composables/useChat'
-import { files, ms, plots, scope, short } from '@/lib/run'
+import Viewer3D from '@/components/content/Viewer3D.vue'
+import { files, meshes, ms, plots, scenes, scope, short } from '@/lib/run'
 import { cn } from '@/lib/utils'
 
 const props = defineProps<{ block: ToolBlock; running: boolean; restored?: boolean }>()
@@ -41,6 +42,10 @@ const tone = () => ({ danger: 'border-destructive/40 text-destructive', warn: 'b
       <a v-for="src in plots(block.result)" :key="src" :href="src" target="_blank" rel="noopener" class="block overflow-hidden rounded-md border bg-background">
         <img :src="src" alt="Image made by the assistant" class="max-h-96 w-full object-contain" loading="lazy" />
       </a>
+    </div>
+    <div v-if="scenes(block.result).length || meshes(block.result).length" class="border-t px-3">
+      <Viewer3D v-for="src in scenes(block.result)" :key="src" :src="src" />
+      <Viewer3D v-for="m in meshes(block.result)" :key="m.href" :src="m.href" :title="m.name" />
     </div>
     <div v-if="files(block.result).length" class="flex flex-wrap gap-2 border-t p-3">
       <Button v-for="f in files(block.result)" :key="f.href" as="a" :href="f.href" target="_blank" rel="noopener" variant="outline" size="sm"><Download class="size-3.5" /> {{ f.name }}</Button>

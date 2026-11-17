@@ -59,7 +59,9 @@ def run_python(code: str) -> str:
     HTTP. Use it to compute things, train/evaluate ML models, and draw
     charts: call plt.show() or plt.savefig() and every figure is shown to the user
     automatically in the UI. Files you write to the current directory (pdf, csv, json,
-    txt, md, html, xlsx, svg) are saved to the user's vault and linked in the UI. Print the numbers worth reporting. No files persist
+    txt, md, html, xlsx, svg) are saved to the user's vault and linked in the UI. 3D: trimesh is installed, so
+    mesh.export('model.glb') (or .obj, .stl, .ply) shows an interactive 3D viewer in the UI, and a file named
+    scene.json written in the render_3d format (hi/scene3d.py) does too. Print the numbers worth reporting. No files persist
     between runs, so put the whole program in one call.
 
     Args:

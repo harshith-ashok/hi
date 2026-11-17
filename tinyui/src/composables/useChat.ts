@@ -49,6 +49,7 @@ export interface AskOptions {
   names?: string[]
   session?: string
   visualize?: boolean
+  tier?: string // haiku | sonnet | opus, or 'auto' to let the router choose
 }
 
 let nextId = 0

@@ -19,9 +19,9 @@ npx shadcn-vue@latest add <name>    # add another component
 src/App.vue                  shell: sidebar + the open view
 src/components/app/          sidebar (chats, search, nav), page header, master/detail layout
 src/components/chat/         ChatView, TurnView, RunTimeline, ToolCall, ThinkingBlock, AskForm, Composer, voice overlay
-src/components/content/      MarkdownContent, MermaidDiagram, CodeBlock
+src/components/content/      MarkdownContent, MermaidDiagram, Viewer3D (three.js), CodeBlock
 src/composables/             useChat (stream -> turns), useSessions, useVoice, useStatus, useTheme
-src/lib/                     markdown segmenting, mermaid loader, run helpers (steps, run diagram)
+src/lib/                     markdown segmenting, mermaid loader, 3D scene builder, run helpers (steps, run diagram)
 src/views/                   Inbox, Tasks, Memory, Daily logs, Status, Settings
 ```
 
@@ -32,6 +32,16 @@ time they started and ended. `RunTimeline` reads those times to show the steps (
 model, thinking, each tool, writing, drawing a diagram) with live timers. Text goes through `MarkdownContent`, which
 draws ` ```mermaid ` blocks as diagrams (Mermaid is loaded on first use) and code blocks with a copy button.
 **Visualize** in the composer asks the backend to draw a diagram of each answer after it streams.
+
+## 3D
+
+`render_3d` scenes (`/scenes/<name>.json`), `scene3d` code blocks, and mesh files from the sandbox are drawn by
+`Viewer3D` (drag to rotate, scroll to zoom; wireframe, auto-rotate, reset, save a picture, expand). `lib/scene3d.ts`
+turns a scene description into three.js objects and enforces limits itself; three.js loads on first use.
+
+## Model size
+
+The composer picks Auto, Fast, Balanced or Deep (haiku, sonnet, opus) and sends it as `tier`.
 
 ## Chats
 

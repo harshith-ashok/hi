@@ -3,7 +3,7 @@
 # read-only filesystem, non-root, no capabilities, CPU/memory/process limits.
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir numpy pandas scipy scikit-learn matplotlib seaborn statsmodels
+RUN pip install --no-cache-dir numpy pandas scipy scikit-learn matplotlib seaborn statsmodels trimesh
 
 WORKDIR /srv
 COPY server.py ./

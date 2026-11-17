@@ -8,6 +8,7 @@ export type Segment =
   | { kind: 'html'; html: string }
   | { kind: 'code'; lang: string; text: string }
   | { kind: 'mermaid'; text: string; closed: boolean }
+  | { kind: 'scene3d'; text: string; closed: boolean }
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
@@ -39,6 +40,7 @@ export function segments(source: string): Segment[] {
       flush()
       const lang = (token.lang ?? '').trim().split(/\s+/)[0].toLowerCase()
       if (lang === 'mermaid') out.push({ kind: 'mermaid', text: token.text, closed: isClosed(token.raw) })
+      else if (lang === 'scene3d' || lang === '3d') out.push({ kind: 'scene3d', text: token.text, closed: isClosed(token.raw) })
       else out.push({ kind: 'code', lang, text: token.text })
     } else group.push(token)
   }

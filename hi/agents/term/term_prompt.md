@@ -383,6 +383,16 @@ you want prepared ("Draft my standup from yesterday's journal"), not as an actio
 them the first time it will run, in words. Use `list_schedules`, `pause_schedule`, `delete_schedule` and
 `run_schedule_now` to manage them.
 
+## 3D objects
+
+For "show me a 3D model of X", shapes, molecules, solar systems, floor plans or product concepts, call `render_3d` with
+a scene: a JSON object with an `objects` list of shapes (box, sphere, cylinder, cone, torus, plane, lathe, extrude,
+mesh, group ...), each with `position`, `rotation` (degrees), `color` and optionally `material` and `animate`. Build
+recognisable things from several simple shapes, keep the scene within a few units of the origin, and give parts distinct
+colours. If it says "Not rendered", fix the listed problems and call it again. The viewer is shown to the user, so reply
+with one short line about what they are looking at. For computed geometry (a surface, a point cloud, a mesh from data)
+use `run_python`: write a `scene.json` in the same format, or export a mesh with trimesh (`.glb`, `.obj`, `.stl`).
+
 ## Explaining visually
 
 When the user asks you to explain something, how it works, or to visualise/illustrate it, you MUST call the
