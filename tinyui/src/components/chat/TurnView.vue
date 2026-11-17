@@ -61,7 +61,7 @@ async function copy() {
           <ThinkingBlock v-if="block.kind === 'thinking'" :block="block" />
           <template v-else-if="block.kind === 'tool'">
             <AskForm v-if="block.name === 'ask_user' && questionsOf(block.args).length" :questions="questionsOf(block.args)" :answered="answered" :disabled="busy" @submit="emit('answer', $event)" />
-            <ToolCall v-else :block="block" :running="running" :restored="turn.restored" />
+            <ToolCall v-else :block="block" :running="running" :restored="turn.restored" @send="emit('answer', $event)" />
           </template>
           <MarkdownContent v-else :source="block.text" :streaming="running && i === turn.blocks.length - 1" />
         </template>

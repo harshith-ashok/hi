@@ -41,7 +41,7 @@ HOST_ENV_PATH = Path("/run/hi-host.env")
 HOST_ENV_KEYS = (
     "GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN",
     "TAILSCALE_OLLAMA_URL", "HOST_BRIDGE_TOKEN", "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET",
-    "TTS_BACKEND", "AI_MODE",
+    "TTS_BACKEND", "AI_MODE", "IMAGE_API_KEY",
 )
 _host_env = {k: v for k, v in _parse_env(HOST_ENV_PATH).items() if k in HOST_ENV_KEYS}
 _env = {**os.environ, **_host_env, **_parse_env(ENV_PATH)}
@@ -207,6 +207,12 @@ def _number(name: str, default: float) -> float:
         return float(default)
 
 
+# Image generation (hi/imagegen.py): "service" = the `imagegen` service in this repo (Z-Image-Turbo or FLUX.2 klein), "openai" =
+# any OpenAI-compatible images endpoint (set IMAGE_API_KEY), "off" = no image generation.
+IMAGE_BACKEND = (_env.get("IMAGE_BACKEND") or "service").lower()
+IMAGE_URL = _env.get("IMAGE_URL") or "http://127.0.0.1:8790"
+IMAGE_MODEL = _env.get("IMAGE_MODEL") or "Tongyi-MAI/Z-Image-Turbo"
+IMAGE_API_KEY = _env.get("IMAGE_API_KEY") or ""
 # SearXNG, the private search engine (the `searxng` compose service; natively, publish it on 8888).
 SEARXNG_URL = _env.get("SEARXNG_URL") or "http://127.0.0.1:8888"
 SEARXNG_SECRET = _env.get("SEARXNG_SECRET") or ""
@@ -242,11 +248,19 @@ def _positive_int(value: object) -> int:
     return number
 
 
+def _image_backend(value: object) -> str:
+    text = str(value).strip().lower()
+    if text not in ("service", "openai", "off"):
+        raise ValueError("must be service, openai or off")
+    return text
+
+
 # How a setting saved from the UI is turned into the type the rest of the code reads (the .env file holds text).
 _COERCE = {
     "HEARTBEAT": to_flag, "SCREENSHOT_WATCH": to_flag, "HEARTBEAT_HOURS": _to_hours,
     "HEARTBEAT_EVERY": _positive_int, "PROPOSAL_TTL_DAYS": _positive_int, "MAX_BACKGROUND_RUNS_PER_HOUR": _positive_int,
     "MAX_HOSTED_CALLS_PER_DAY": _positive_int, "MAX_NOTIFICATIONS_PER_HOUR": _positive_int,
+    "IMAGE_BACKEND": _image_backend,
 }
 
 

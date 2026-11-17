@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable
@@ -38,6 +39,17 @@ def _searxng() -> None:
     _get(f"{config.SEARXNG_URL.rstrip('/')}/healthz")
 
 
+def _imagegen() -> None:
+    if config.IMAGE_BACKEND == "off":
+        health.mark_ok("imagegen")  # switched off on purpose is not an outage
+        return
+    path = "/health" if config.IMAGE_BACKEND == "service" else "/v1/models"
+    try:
+        _get(f"{config.IMAGE_URL.rstrip('/')}{path}")
+    except urllib.error.HTTPError:
+        pass  # it answered (a hosted API wants a key for /v1/models): reachable
+
+
 def _whisper() -> None:
     _get(config.WHISPER_CPP_URL)
 
@@ -59,6 +71,7 @@ PROBES: dict[str, Callable[[], None]] = {
     "sandbox": _sandbox,
     "vault": _vault,
     "searxng": _searxng,
+    "imagegen": _imagegen,
     "whisper": _whisper,
     "vision": _vision,
 }

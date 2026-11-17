@@ -32,10 +32,17 @@ def required_dependency(tool_name: str) -> str | None:
         return "sandbox"
     if tool_name == "web_search":
         return "searxng"
+    if tool_name == "generate_image":
+        return "imagegen"
     return "host_bridge" if tool_name in HOST_TOOLS else None
 
 
 def dependency_is_up(tool_name: str) -> bool:
+    if tool_name == "generate_image":
+        import hi.config as config
+
+        if config.IMAGE_BACKEND == "off":  # switched off: never offered
+            return False
     dep = required_dependency(tool_name)
     return dep is None or health.is_up(dep)
 
@@ -115,6 +122,9 @@ GROUPS: tuple[Group, ...] = (
     Group("render3d", 2, ("render_3d",),
           r"\b3-?d\b|three[- ]?d|render|\bmodel (of|a)\b|\bshape|\bmesh|\bcube|\bsphere|\bmolecule|solar system|orbit|rotat|spin|sculpt|floor ?plan|prototype|blueprint",
           "show 3D objects and scenes in an interactive viewer"),
+    Group("imagegen", 2, ("generate_image",),
+          r"\b(generate|create|make|draw|paint|design|sketch|illustrate|render)\b.*\b(image|picture|photo|illustration|logo|poster|wallpaper|artwork|icon|banner|thumbnail|portrait|painting|mockup|concept art)\b|\b(image|picture) of\b|\blogo\b|\bposter\b|\bwallpaper\b|\billustrat|concept art|midjourney|dall-?e|stable diffusion|\bflux\b",
+          "create a new image from a description"),
     Group("insight", 2, ("what_next", "generate_retro", "reflect_on_week", "synthesize_vault", "check_suggestions", "show_last_run_trace"),
           r"what (should|next)|what's next|retro|reflect|synthes|suggest|trace|summari[sz]e (my|the) (vault|week)", "what to do next, weekly retro/reflection, vault synthesis"),
     # ---- MCP: subsets by priority ----------------------------------------

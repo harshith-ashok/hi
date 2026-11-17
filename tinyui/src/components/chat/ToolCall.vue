@@ -1,15 +1,28 @@
 <script setup lang="ts">
-import { AlertCircle, Check, ChevronDown, Download, Loader2, Wrench } from '@lucide/vue'
+import { AlertCircle, Check, ChevronDown, Download, ImagePlus, Loader2, Wrench } from '@lucide/vue'
 import { ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { ToolBlock } from '@/composables/useChat'
+import ImageCard from '@/components/content/ImageCard.vue'
 import Viewer3D from '@/components/content/Viewer3D.vue'
+import { Skeleton } from '@/components/ui/skeleton'
 import { files, meshes, ms, plots, scenes, scope, short } from '@/lib/run'
 import { cn } from '@/lib/utils'
 
 const props = defineProps<{ block: ToolBlock; running: boolean; restored?: boolean }>()
+const emit = defineEmits<{ send: [text: string] }>()
+
+// generate_image: the prompt is in the arguments, the picture in the result
+const isImage = () => props.block.name === 'generate_image'
+const promptOf = () => {
+  try {
+    return String((JSON.parse(props.block.args) as { prompt?: unknown }).prompt ?? '')
+  } catch {
+    return ''
+  }
+}
 const open = ref(false)
 const pending = () => props.block.result === undefined
 const failed = () => pending() && !props.running
@@ -38,7 +51,14 @@ const tone = () => ({ danger: 'border-destructive/40 text-destructive', warn: 'b
       </CollapsibleContent>
     </Collapsible>
 
-    <div v-if="plots(block.result).length" class="grid gap-2 border-t p-3 sm:grid-cols-2">
+    <div v-if="isImage() && pending() && running" class="space-y-2 border-t p-3" role="status" aria-label="Making an image">
+      <div class="flex items-center gap-2 text-xs text-muted-foreground"><ImagePlus class="size-3.5 animate-pulse" /> Making an image. This can take up to a minute.</div>
+      <Skeleton class="aspect-square max-h-72 w-full max-w-72" />
+    </div>
+    <div v-if="isImage() && plots(block.result).length" class="border-t px-3">
+      <ImageCard v-for="src in plots(block.result)" :key="src" :src="src" :prompt="promptOf()" @another="emit('send', 'Make another version of that image with a different seed.')" />
+    </div>
+    <div v-else-if="plots(block.result).length" class="grid gap-2 border-t p-3 sm:grid-cols-2">
       <a v-for="src in plots(block.result)" :key="src" :href="src" target="_blank" rel="noopener" class="block overflow-hidden rounded-md border bg-background">
         <img :src="src" alt="Image made by the assistant" class="max-h-96 w-full object-contain" loading="lazy" />
       </a>

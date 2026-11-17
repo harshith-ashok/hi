@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { fetchConfig, fetchModels, fetchVoices, saveConfig, saveConfigChecked } from '@/backend'
+import ImagesTab from '@/views/ImagesTab.vue'
 import { getWakePhrase, setWakePhrase, speak, unlockAudio } from '@/voice'
 
 type Mode = 'local' | 'tailscale'
@@ -44,15 +45,15 @@ const wakePhrase = ref(getWakePhrase())
 const voiceStatus = ref('')
 const ttsBackend = ref('ollama')
 
-const auto = reactive<Record<string, string>>({})
+const automation = reactive<Record<string, string>>({})
 const autoStatus = ref('')
 const saving = ref(false)
 
 const endpoint = computed(() => ENDPOINT[mode.value])
 const shown = computed(() => available.value.filter((m) => m.toLowerCase().includes(filter.value.toLowerCase())).slice(0, 200))
 const everyMinutes = computed({
-  get: () => String(Math.round(Number(auto.HEARTBEAT_EVERY || 1800) / 60)),
-  set: (v: string) => (auto.HEARTBEAT_EVERY = String(Math.max(1, Number(v) || 30) * 60)),
+  get: () => String(Math.round(Number(automation.HEARTBEAT_EVERY || 1800) / 60)),
+  set: (v: string) => (automation.HEARTBEAT_EVERY = String(Math.max(1, Number(v) || 30) * 60)),
 })
 
 async function pickBackend(value: string) {
@@ -111,14 +112,14 @@ async function save() {
 }
 async function saveAutomation() {
   const body: Record<string, string> = {}
-  for (const key of AUTO_KEYS) body[key] = String(auto[key] ?? '')
+  for (const key of AUTO_KEYS) body[key] = String(automation[key] ?? '')
   autoStatus.value = (await saveConfigChecked(body)).message
 }
 
 onMounted(async () => {
   const config = await fetchConfig()
   if (!config) return void (status.value = 'Backend unreachable')
-  for (const key of AUTO_KEYS) auto[key] = String(config[key] ?? '')
+  for (const key of AUTO_KEYS) automation[key] = String(config[key] ?? '')
   active.value = mode.value = String(config.AI_MODE) as Mode
   voice.value = voiceSaved.value = String(config.TTS_VOICE ?? 'default')
   ttsBackend.value = String(config.TTS_BACKEND ?? 'ollama')
@@ -134,7 +135,7 @@ onMounted(async () => {
     <PageHeader title="Settings" />
     <div class="min-h-0 flex-1 overflow-y-auto p-4">
       <div class="mx-auto max-w-4xl space-y-4">
-        <Tabs v-model="tab"><TabsList><TabsTrigger value="connection">Connection</TabsTrigger><TabsTrigger value="models">Models</TabsTrigger><TabsTrigger value="voice">Voice</TabsTrigger><TabsTrigger value="automation">Automation</TabsTrigger></TabsList></Tabs>
+        <Tabs v-model="tab"><TabsList><TabsTrigger value="connection">Connection</TabsTrigger><TabsTrigger value="models">Models</TabsTrigger><TabsTrigger value="voice">Voice</TabsTrigger><TabsTrigger value="images">Images</TabsTrigger><TabsTrigger value="automation">Automation</TabsTrigger></TabsList></Tabs>
 
         <Card v-if="tab === 'connection'">
           <CardHeader><CardTitle>Where the language model runs</CardTitle><CardDescription>{{ MODES.find((m) => m.id === mode)?.hint }}<template v-if="mode !== active"> · not active until saved</template></CardDescription></CardHeader>
@@ -194,23 +195,25 @@ onMounted(async () => {
           </Card>
         </div>
 
+        <ImagesTab v-else-if="tab === 'images'" />
+
         <div v-else class="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader><CardTitle>Heartbeat</CardTitle><CardDescription>Every so often hi looks at what is due and on your screen, and prepares what you will need. It never sends or changes anything without your approval in the Inbox.</CardDescription></CardHeader>
             <CardContent class="space-y-4">
-              <div class="flex items-center justify-between"><Label for="hb">Heartbeat</Label><Switch id="hb" :model-value="auto.HEARTBEAT === 'on'" @update:model-value="auto.HEARTBEAT = $event ? 'on' : 'off'" /></div>
+              <div class="flex items-center justify-between"><Label for="hb">Heartbeat</Label><Switch id="hb" :model-value="automation.HEARTBEAT === 'on'" @update:model-value="automation.HEARTBEAT = $event ? 'on' : 'off'" /></div>
               <div class="space-y-1.5"><Label for="every">Check every (minutes)</Label><Input id="every" v-model="everyMinutes" type="number" min="1" inputmode="numeric" /></div>
-              <div class="space-y-1.5"><Label for="hours">Active hours (24h, like 08-22)</Label><Input id="hours" v-model="auto.HEARTBEAT_HOURS" placeholder="08-22" spellcheck="false" /></div>
-              <div class="flex items-center justify-between"><div><Label for="shots">Watch screenshots</Label><p class="text-xs text-muted-foreground">Needs a local vision model: screenshots can show anything.</p></div><Switch id="shots" :model-value="auto.SCREENSHOT_WATCH === 'on'" @update:model-value="auto.SCREENSHOT_WATCH = $event ? 'on' : 'off'" /></div>
+              <div class="space-y-1.5"><Label for="hours">Active hours (24h, like 08-22)</Label><Input id="hours" v-model="automation.HEARTBEAT_HOURS" placeholder="08-22" spellcheck="false" /></div>
+              <div class="flex items-center justify-between"><div><Label for="shots">Watch screenshots</Label><p class="text-xs text-muted-foreground">Needs a local vision model: screenshots can show anything.</p></div><Switch id="shots" :model-value="automation.SCREENSHOT_WATCH === 'on'" @update:model-value="automation.SCREENSHOT_WATCH = $event ? 'on' : 'off'" /></div>
             </CardContent>
           </Card>
           <Card>
             <CardHeader><CardTitle>Limits</CardTitle><CardDescription>What may run by itself.</CardDescription></CardHeader>
             <CardContent class="space-y-3">
-              <div class="space-y-1.5"><Label for="l1">Background runs per hour</Label><Input id="l1" v-model="auto.MAX_BACKGROUND_RUNS_PER_HOUR" type="number" min="0" inputmode="numeric" /></div>
-              <div class="space-y-1.5"><Label for="l2">Hosted-model runs per day</Label><Input id="l2" v-model="auto.MAX_HOSTED_CALLS_PER_DAY" type="number" min="0" inputmode="numeric" /></div>
-              <div class="space-y-1.5"><Label for="l3">Pop-ups per hour</Label><Input id="l3" v-model="auto.MAX_NOTIFICATIONS_PER_HOUR" type="number" min="0" inputmode="numeric" /></div>
-              <div class="space-y-1.5"><Label for="l4">Days an action waits for approval</Label><Input id="l4" v-model="auto.PROPOSAL_TTL_DAYS" type="number" min="1" inputmode="numeric" /></div>
+              <div class="space-y-1.5"><Label for="l1">Background runs per hour</Label><Input id="l1" v-model="automation.MAX_BACKGROUND_RUNS_PER_HOUR" type="number" min="0" inputmode="numeric" /></div>
+              <div class="space-y-1.5"><Label for="l2">Hosted-model runs per day</Label><Input id="l2" v-model="automation.MAX_HOSTED_CALLS_PER_DAY" type="number" min="0" inputmode="numeric" /></div>
+              <div class="space-y-1.5"><Label for="l3">Pop-ups per hour</Label><Input id="l3" v-model="automation.MAX_NOTIFICATIONS_PER_HOUR" type="number" min="0" inputmode="numeric" /></div>
+              <div class="space-y-1.5"><Label for="l4">Days an action waits for approval</Label><Input id="l4" v-model="automation.PROPOSAL_TTL_DAYS" type="number" min="1" inputmode="numeric" /></div>
               <div class="flex items-center gap-3"><Button @click="saveAutomation">Save</Button><span class="text-sm text-muted-foreground" role="status">{{ autoStatus }}</span></div>
             </CardContent>
           </Card>

@@ -35,6 +35,7 @@ services:
       TTS_URL: http://tts:8780
       WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://whisper:8080} # the `whisper` service below
       SEARXNG_URL: http://searxng:8080              # the `searxng` service below
+      IMAGE_URL: ${IMAGE_URL:-http://imagegen:8790} # image generation: the `imagegen` service below (profile gpu), or a native one
       TZ: ${TZ:-UTC}                                # schedules fire in this zone; `hi` sets it from your Mac
       HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-/host/Dev/Projects} # where shell commands start
       HI_HOST_HOME: /host
@@ -119,6 +120,30 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # Image generation for the agent (hi/imagegen.py): Z-Image-Turbo by default (Apache-2.0, fits 16 GB), or set
+  # IMAGE_MODEL=black-forest-labs/FLUX.2-klein-4B. Needs an NVIDIA GPU and the NVIDIA container toolkit:
+  # `docker compose --profile gpu up -d --build imagegen`. The first request downloads the weights (about 12 GB) into
+  # hi-image-models and loads them, which takes minutes. On a Mac run `python imagegen/server.py` natively instead
+  # (Apple GPU) and set IMAGE_URL=http://host.docker.internal:8790.
+  imagegen:
+    build: ./imagegen
+    profiles: [gpu]
+    environment:
+      IMAGE_MODEL: ${IMAGE_MODEL:-Tongyi-MAI/Z-Image-Turbo}
+      HF_TOKEN: ${HF_TOKEN:-}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8790:8790"
+    volumes:
+      - hi-image-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   # Speech-to-text: whisper.cpp's `whisper-server` on CPU (hi/stt.py). The model (WHISPER_MODEL,
   # default base.en) downloads on first start into hi-whisper-models. For Metal speed on a Mac, run
   # `whisper-server` natively instead and set WHISPER_CPP_URL=http://host.docker.internal:8080.
@@ -185,4 +210,5 @@ volumes:
   hi-home:
   hi-google:
   hi-tts-models:
+  hi-image-models:
   hi-whisper-models:

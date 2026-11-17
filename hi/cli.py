@@ -104,7 +104,7 @@ def backend_up() -> bool:
 
 
 # Credentials the container can't read from the host's ~/.hi/.env itself.
-FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "TAILSCALE_OLLAMA_URL", "HF_TOKEN", "AI_MODE", "SEARXNG_SECRET")
+FORWARDED_KEYS = ("GITHUB_PERSONAL_ACCESS_TOKEN", "N8N_MCP_URL", "N8N_MCP_TOKEN", "TAILSCALE_OLLAMA_URL", "HF_TOKEN", "AI_MODE", "SEARXNG_SECRET", "IMAGE_BACKEND", "IMAGE_URL", "IMAGE_MODEL", "IMAGE_API_KEY")
 
 
 def host_timezone() -> str:
