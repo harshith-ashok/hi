@@ -35,7 +35,8 @@ services:
       TTS_URL: http://tts:8780
       WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://whisper:8080} # the `whisper` service below
       SEARXNG_URL: http://searxng:8080              # the `searxng` service below
-      IMAGE_URL: ${IMAGE_URL:-http://imagegen:8790} # image generation: the `imagegen` service below (profile gpu), or a native one
+      IMAGE_URL: ${IMAGE_URL:-}                      # image generation: blank = the tailscale box in tailscale mode, else the service below
+      IMAGE_URL_DEFAULT: http://imagegen:8790       # the `imagegen` service below (profile gpu)
       TZ: ${TZ:-UTC}                                # schedules fire in this zone; `hi` sets it from your Mac
       HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-/host/Dev/Projects} # where shell commands start
       HI_HOST_HOME: /host
@@ -124,7 +125,8 @@ services:
   # IMAGE_MODEL=black-forest-labs/FLUX.2-klein-4B. Needs an NVIDIA GPU and the NVIDIA container toolkit:
   # `docker compose --profile gpu up -d --build imagegen`. The first request downloads the weights (about 12 GB) into
   # hi-image-models and loads them, which takes minutes. On a Mac run `python imagegen/server.py` natively instead
-  # (Apple GPU) and set IMAGE_URL=http://host.docker.internal:8790.
+  # (Apple GPU) and set IMAGE_URL=http://host.docker.internal:8790. In AI_MODE=tailscale, run this service on the
+  # tailscale box instead: hi then calls http://<that host>:8790 on its own (set IMAGE_API_KEY on both sides).
   imagegen:
     build: ./imagegen
     profiles: [gpu]

@@ -45,7 +45,7 @@ def _imagegen() -> None:
         return
     path = "/health" if config.IMAGE_BACKEND == "service" else "/v1/models"
     try:
-        _get(f"{config.IMAGE_URL.rstrip('/')}{path}")
+        _get(f"{config.image_url()}{path}")
     except urllib.error.HTTPError:
         pass  # it answered (a hosted API wants a key for /v1/models): reachable
 

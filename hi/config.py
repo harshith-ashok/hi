@@ -210,9 +210,24 @@ def _number(name: str, default: float) -> float:
 # Image generation (hi/imagegen.py): "service" = the `imagegen` service in this repo (Z-Image-Turbo or FLUX.2 klein), "openai" =
 # any OpenAI-compatible images endpoint (set IMAGE_API_KEY), "off" = no image generation.
 IMAGE_BACKEND = (_env.get("IMAGE_BACKEND") or "service").lower()
-IMAGE_URL = _env.get("IMAGE_URL") or "http://127.0.0.1:8790"
+IMAGE_URL = _env.get("IMAGE_URL") or ""  # blank: image_url() picks one
+IMAGE_PORT = 8790
 IMAGE_MODEL = _env.get("IMAGE_MODEL") or "Tongyi-MAI/Z-Image-Turbo"
 IMAGE_API_KEY = _env.get("IMAGE_API_KEY") or ""
+
+
+def image_url() -> str:
+    """Where the image service is: IMAGE_URL if set; in tailscale mode the Ollama box on port 8790 (the GPU is there);
+    else the compose `imagegen` service (IMAGE_URL_DEFAULT) or this machine."""
+    if IMAGE_URL:
+        return IMAGE_URL.rstrip("/")
+    if AI_MODE == "tailscale" and TAILSCALE_OLLAMA_URL:
+        from urllib.parse import urlsplit
+
+        host = urlsplit(TAILSCALE_OLLAMA_URL if "//" in TAILSCALE_OLLAMA_URL else f"//{TAILSCALE_OLLAMA_URL}").hostname
+        if host:
+            return f"http://{host}:{IMAGE_PORT}"
+    return (_env.get("IMAGE_URL_DEFAULT") or f"http://127.0.0.1:{IMAGE_PORT}").rstrip("/")
 # SearXNG, the private search engine (the `searxng` compose service; natively, publish it on 8888).
 SEARXNG_URL = _env.get("SEARXNG_URL") or "http://127.0.0.1:8888"
 SEARXNG_SECRET = _env.get("SEARXNG_SECRET") or ""

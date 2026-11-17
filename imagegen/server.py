@@ -176,6 +176,9 @@ def make_handler(generator: Generator):
             self._send(*handle(generator, "GET", self.path.split("?")[0], b""))
 
         def do_POST(self) -> None:
+            key = os.environ.get("IMAGE_API_KEY", "")
+            if key and self.headers.get("Authorization") != f"Bearer {key}":  # it listens on all interfaces: a key limits who may spend the GPU
+                return self._send(401, {"error": {"message": "missing or wrong API key"}})
             size = int(self.headers.get("Content-Length") or 0)
             if size > MAX_REQUEST_BYTES:
                 return self._send(413, {"error": {"message": "request too large"}})

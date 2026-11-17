@@ -245,7 +245,7 @@ def test_routes_and_models_listing(server):
 def test_the_compose_service_and_dockerfile_exist():
     root = Path(__file__).resolve().parents[2]
     compose = (root / "docker-compose.yml").read_text()
-    assert "imagegen:" in compose and "IMAGE_URL: ${IMAGE_URL:-http://imagegen:8790}" in compose and "hi-image-models" in compose
+    assert "imagegen:" in compose and "IMAGE_URL_DEFAULT: http://imagegen:8790" in compose and "hi-image-models" in compose
     assert "diffusers" in (root / "imagegen" / "Dockerfile").read_text()
 
 
@@ -256,3 +256,17 @@ def test_zero_guidance_for_zimage_turbo_is_kept_and_can_be_overridden(monkeypatc
     assert mod.family("someone/unknown-model")["guidance"] == 0.0
     monkeypatch.setenv("IMAGE_GUIDANCE", "2.5")
     assert mod.family("Tongyi-MAI/Z-Image-Turbo")["guidance"] == 2.5
+
+
+def test_image_url_follows_the_tailscale_box(monkeypatch):
+    monkeypatch.setattr(config, "IMAGE_URL", "")
+    monkeypatch.setattr(config, "AI_MODE", "tailscale")
+    monkeypatch.setattr(config, "TAILSCALE_OLLAMA_URL", "http://gpu-box.tail1234.ts.net:11434")
+    assert config.image_url() == "http://gpu-box.tail1234.ts.net:8790"
+    monkeypatch.setattr(config, "TAILSCALE_OLLAMA_URL", "100.64.0.5:11434")
+    assert config.image_url() == "http://100.64.0.5:8790"
+    monkeypatch.setattr(config, "IMAGE_URL", "http://other:9000/")
+    assert config.image_url() == "http://other:9000"  # an explicit setting wins
+    monkeypatch.setattr(config, "IMAGE_URL", "")
+    monkeypatch.setattr(config, "AI_MODE", "local")
+    assert config.image_url().endswith(":8790")

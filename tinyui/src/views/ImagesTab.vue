@@ -53,7 +53,7 @@ onMounted(async () => {
         <p class="text-xs text-muted-foreground">{{ hint }}</p>
         <div class="space-y-1.5">
           <Label for="iurl">Server URL</Label>
-          <Input id="iurl" v-model="url" placeholder="http://127.0.0.1:8790" spellcheck="false" />
+          <Input id="iurl" v-model="url" placeholder="blank: the tailscale box in tailscale mode, else this machine" spellcheck="false" />
           <p class="text-xs text-muted-foreground">From Docker, a service on your Mac is <code class="rounded bg-muted px-1">http://host.docker.internal:8790</code>.</p>
         </div>
         <div class="space-y-1.5"><Label for="imodel">Model</Label><Input id="imodel" v-model="model" spellcheck="false" /></div>

@@ -53,12 +53,12 @@ def generate(prompt: str, size: str = DEFAULT_SIZE, seed: int | None = None, cli
                   "n": 1, "response_format": "b64_json"}
     if seed is not None:
         body["seed"] = int(seed)
-    url = f"{config.IMAGE_URL.rstrip('/')}/v1/images/generations"
+    url = f"{config.image_url()}/v1/images/generations"
     try:
         response = (client or httpx).post(url, json=body, headers=_headers(), timeout=TIMEOUT_S)
     except httpx.HTTPError as e:
         health.mark_down("imagegen", e)
-        raise ImageError(f"the image service at {config.IMAGE_URL} is not reachable ({type(e).__name__}). "
+        raise ImageError(f"the image service at {config.image_url()} is not reachable ({type(e).__name__}). "
                          "Start it with `docker compose --profile gpu up -d imagegen`.") from e
     if response.status_code != 200:
         detail = _error_text(response)
