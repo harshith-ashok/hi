@@ -35,6 +35,9 @@ draws ` ```mermaid ` blocks as diagrams (Mermaid is loaded on first use) and cod
 
 ## 3D
 
+Animated scenes get a timeline (play/pause, scrub, speed, loop) and a Record video button; camera motion stops when you drag.
+See `docs/adr/0004-animation-image-gen-generated-ui.md`.
+
 `render_3d` scenes (`/scenes/<name>.json`), `scene3d` code blocks, and mesh files from the sandbox are drawn by
 `Viewer3D` (drag to rotate, scroll to zoom; wireframe, auto-rotate, reset, save a picture, expand). `lib/scene3d.ts`
 turns a scene description into three.js objects and enforces limits itself; three.js loads on first use.

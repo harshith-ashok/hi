@@ -2,7 +2,7 @@
 // An interactive 3D view: drag to rotate, scroll to zoom, right-drag to pan. Shows a scene described as data
 // (hi/scene3d.py) or a mesh file (.glb .gltf .obj .stl .ply). three.js is loaded on first use, and a WebGL context is
 // only held while the viewer is on screen (browsers allow only a handful at once).
-import { Box, Download, Grid3x3, Maximize2, RefreshCw, RotateCw, TriangleAlert } from '@lucide/vue'
+import { Box, Circle, Download, Grid3x3, Maximize2, Pause, Play, RefreshCw, RotateCw, Square, TriangleAlert } from '@lucide/vue'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTheme } from '@/composables/useTheme'
-import { buildScene, disposeTree, MESH_EXTENSIONS, parseScene, type Animated, type SceneData } from '@/lib/scene3d'
+import { buildScene, disposeTree, MESH_EXTENSIONS, parseScene, type Built, type SceneData } from '@/lib/scene3d'
 import { cn } from '@/lib/utils'
 
 type ThreeModule = typeof import('three')
@@ -28,6 +28,11 @@ const wire = ref(false)
 const expanded = ref(false)
 const info = ref('')
 const heading = ref(props.title ?? '3D')
+const duration = ref(0) // seconds; 0 for a still scene
+const time = ref(0)
+const playing = ref(true)
+const speed = ref(1)
+const recording = ref(false)
 
 interface Live {
   THREE: ThreeModule
@@ -36,7 +41,9 @@ interface Live {
   camera: import('three').PerspectiveCamera
   controls: import('three/examples/jsm/controls/OrbitControls.js').OrbitControls
   root: import('three').Object3D
-  animated: Animated[]
+  built: Built | null
+  mixer?: import('three').AnimationMixer
+  userMoved: boolean
   grid?: import('three').GridHelper
   raf: number
   dirty: boolean
@@ -50,6 +57,7 @@ let observer: IntersectionObserver | undefined
 let resizer: ResizeObserver | undefined
 let hiddenTimer = 0
 const clock = { last: 0 }
+const loopOn = ref(true)
 
 const background = () => (dark.value ? '#18181b' : '#f4f4f5')
 
@@ -62,13 +70,16 @@ async function loadSceneData(): Promise<SceneData> {
   return parsed.scene
 }
 
+let gltfClips: import('three').AnimationClip[] = []
 async function loadMesh(THREE: ThreeModule): Promise<import('three').Object3D> {
   const url = props.src!
   const ext = /\.(\w+)$/.exec(url.split('?')[0])?.[1]?.toLowerCase()
   const fallback = () => new THREE.MeshStandardMaterial({ color: '#8899aa', metalness: 0.1, roughness: 0.6 })
   if (ext === 'glb' || ext === 'gltf') {
     const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js')
-    return (await new GLTFLoader().loadAsync(url)).scene
+    const gltf = await new GLTFLoader().loadAsync(url)
+    gltfClips = gltf.animations
+    return gltf.scene
   }
   if (ext === 'obj') {
     const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js')
@@ -120,11 +131,18 @@ function tick(now: number) {
   l.raf = requestAnimationFrame(tick)
   const dt = Math.min(0.1, (now - clock.last) / 1000)
   clock.last = now
-  const moving = l.animated.length > 0 || autoRotate.value
+  const b = l.built
+  const timed = !!b?.animated || !!l.mixer
+  if (timed && playing.value) {
+    time.value += dt * speed.value
+    if (duration.value > 0 && time.value > duration.value) time.value = loopOn.value || recording.value ? time.value % duration.value : duration.value
+  }
+  const moving = (timed && playing.value) || autoRotate.value
   if (!moving && !l.dirty) return
-  for (const a of l.animated) {
-    if (a.rotate) { a.object.rotation.x += a.rotate[0] * dt; a.object.rotation.y += a.rotate[1] * dt; a.object.rotation.z += a.rotate[2] * dt }
-    if (a.bob) a.object.position.y = a.baseY + Math.sin(now / 600) * a.bob
+  if (timed) {
+    b?.update(time.value)
+    l.mixer?.setTime(time.value)
+    if (b?.camera.moving && !l.userMoved) b.camera.apply(time.value, l.camera, l.controls.target)
   }
   l.controls.autoRotate = autoRotate.value
   l.controls.update()
@@ -141,19 +159,23 @@ async function start() {
     const THREE = await import('three')
     const { OrbitControls } = await import('three/examples/jsm/controls/OrbitControls.js')
     let root: import('three').Object3D
-    let animated: Animated[] = []
+    let built: Built | null = null
+    let clips: import('three').AnimationClip[] = []
     let lights: import('three').Light[] = []
     let sceneData: SceneData | null = null
     if (props.scene || (props.src && !MESH_EXTENSIONS.test(props.src.split('?')[0]))) {
       data ??= await loadSceneData()
       sceneData = data
       heading.value = props.title ?? data.title ?? '3D scene'
-      const built = buildScene(THREE, data)
+      built = buildScene(THREE, data)
       root = built.root
-      animated = built.animated
       lights = built.lights
+      duration.value = built.duration
+      loopOn.value = data.loop !== false
     } else {
+      gltfClips = []
       root = await loadMesh(THREE)
+      clips = gltfClips
       const sun = new THREE.DirectionalLight('#ffffff', 2.2)
       sun.position.set(3, 5, 4)
       lights = [new THREE.AmbientLight('#ffffff', 0.7), new THREE.HemisphereLight('#ffffff', '#555566', 0.6), sun]
@@ -166,10 +188,25 @@ async function start() {
     } catch {
       throw new Error('3D is not available here: the browser could not start WebGL.')
     }
+    if (sceneData?.shadows) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(sceneData?.background ?? background())
     scene.add(root, ...lights)
+    if (sceneData?.environment) {
+      const { RoomEnvironment } = await import('three/examples/jsm/environments/RoomEnvironment.js')
+      const pmrem = new THREE.PMREMGenerator(renderer)
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+      pmrem.dispose()
+    }
+    if (sceneData?.fog) scene.fog = new THREE.Fog(sceneData.fog.color ?? (scene.background as import('three').Color), sceneData.fog.near ?? 10, sceneData.fog.far ?? 60)
+    if (sceneData?.ground) {
+      const size = sceneData.ground.size ?? 40
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ color: sceneData.ground.color ?? '#a1a1aa', roughness: 0.9 }))
+      ground.rotation.x = -Math.PI / 2
+      ground.receiveShadow = true
+      scene.add(ground)
+    }
     const fov = sceneData?.camera?.fov ?? 50
     const camera = new THREE.PerspectiveCamera(fov, 1, 0.01, 1000)
     const controls = new OrbitControls(camera, canvas.value)
@@ -181,9 +218,16 @@ async function start() {
       scene.add(grid)
     }
     if (sceneData?.axes) scene.add(new THREE.AxesHelper(2))
-    const l: Live = { THREE, renderer, scene, camera, controls, root, animated, grid, raf: 0, dirty: true, home: { position: new THREE.Vector3(), target: new THREE.Vector3() } }
+    const l: Live = { THREE, renderer, scene, camera, controls, root, grid, built, userMoved: false, raf: 0, dirty: true, home: { position: new THREE.Vector3(), target: new THREE.Vector3() } }
     live = l
     controls.addEventListener('change', () => { l.dirty = true })
+    controls.addEventListener('start', () => { l.userMoved = true }) // the person took the camera: stop moving it for them
+    if (clips.length) {
+      l.mixer = new THREE.AnimationMixer(root)
+      for (const clip of clips) l.mixer.clipAction(clip).play()
+      duration.value = Math.max(...clips.map((c) => c.duration))
+    }
+    if (built) built.update(0)
     frame(l, fov)
     if (sceneData?.camera?.position) camera.position.set(...sceneData.camera.position)
     if (sceneData?.camera?.target) controls.target.set(...sceneData.camera.target)
@@ -230,6 +274,7 @@ function setWire(on: boolean) {
 
 function reset() {
   if (!live) return
+  live.userMoved = false
   live.camera.position.copy(live.home.position)
   live.controls.target.copy(live.home.target)
   live.controls.update()
@@ -241,6 +286,33 @@ function snapshot() {
   live.renderer.render(live.scene, live.camera)
   const a = Object.assign(document.createElement('a'), { href: live.renderer.domElement.toDataURL('image/png'), download: `${heading.value.replace(/\W+/g, '-').toLowerCase()}.png` })
   a.click()
+}
+
+function seek(value: number) {
+  time.value = value
+  playing.value = false
+  if (live) live.dirty = true
+}
+
+/** Record one pass of the animation as a WebM video and download it. */
+function record() {
+  const l = live
+  if (!l || recording.value || typeof MediaRecorder === 'undefined') return
+  const stream = l.renderer.domElement.captureStream(30)
+  const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm' })
+  const chunks: Blob[] = []
+  recorder.ondataavailable = (e) => chunks.push(e.data)
+  recorder.onstop = () => {
+    recording.value = false
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(chunks, { type: 'video/webm' })), download: `${heading.value.replace(/\W+/g, '-').toLowerCase()}.webm` })
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+  }
+  time.value = 0
+  playing.value = true
+  recording.value = true
+  recorder.start()
+  setTimeout(() => recorder.state !== 'inactive' && recorder.stop(), Math.min(duration.value / speed.value, 120) * 1000 + 100)
 }
 
 watch(wire, setWire)
@@ -286,6 +358,14 @@ onBeforeUnmount(() => {
       <Tooltip v-if="!large"><TooltipTrigger as-child><Button variant="ghost" size="icon" class="size-7" aria-label="Expand" @click="expanded = true"><Maximize2 class="size-3.5" /></Button></TooltipTrigger><TooltipContent>Expand</TooltipContent></Tooltip>
     </figcaption>
 
+    <div v-if="duration > 0" class="flex items-center gap-2 border-b px-3 py-1 text-xs text-muted-foreground" data-testid="timeline">
+      <Button variant="ghost" size="icon" class="size-7" :aria-label="playing ? 'Pause' : 'Play'" @click="playing = !playing"><Pause v-if="playing" class="size-3.5" /><Play v-else class="size-3.5" /></Button>
+      <input type="range" min="0" :max="duration" step="0.01" :value="time" class="h-1 grow accent-primary" aria-label="Time" @input="seek(Number(($event.target as HTMLInputElement).value))" />
+      <span class="w-20 text-right font-mono">{{ time.toFixed(1) }} / {{ duration.toFixed(1) }}s</span>
+      <select v-model.number="speed" class="rounded border bg-background px-1 py-0.5" aria-label="Speed"><option :value="0.5">0.5×</option><option :value="1">1×</option><option :value="2">2×</option></select>
+      <Button variant="ghost" size="icon" :class="cn('size-7', loopOn && 'bg-accent')" aria-label="Loop" :aria-pressed="loopOn" @click="loopOn = !loopOn"><RotateCw class="size-3.5" /></Button>
+      <Button variant="ghost" size="icon" class="size-7" :aria-label="recording ? 'Recording' : 'Record video'" :disabled="recording" @click="record"><Square v-if="recording" class="size-3.5 text-red-500" /><Circle v-else class="size-3.5" /></Button>
+    </div>
     <div ref="host" :class="cn('relative w-full touch-none', large ? 'h-[70vh]' : 'h-[360px]')">
       <canvas ref="canvas" class="size-full" aria-label="Interactive 3D view. Drag to rotate, scroll to zoom." role="img" />
       <img v-if="poster && !live" :src="poster" alt="" class="absolute inset-0 size-full object-cover" />
