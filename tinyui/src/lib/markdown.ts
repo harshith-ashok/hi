@@ -25,8 +25,12 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 // Charts and files the assistant makes are served by the backend; a relative path would point at the web UI.
 const absolute = (html: string) => html.replace(/(src|href)="(\/(?:plots|files)\/[^"]+)"/g, `$1="${BASE_URL}$2"`)
 
+/** Options passed to marked.lexer and marked.parser. They must carry `marked.defaults`: those two take the options object
+ *  as the whole configuration, so without the defaults the math extension registered above is silently not used. */
+const options = () => ({ ...marked.defaults, gfm: true, breaks: true })
+
 const render = (group: Token[], links: TokensList['links']) =>
-  absolute(DOMPurify.sanitize(marked.parser(Object.assign([...group], { links }) as TokensList, { gfm: true, breaks: true })))
+  absolute(DOMPurify.sanitize(marked.parser(Object.assign([...group], { links }) as TokensList, options())))
 
 /** A fenced block is closed when its raw text ends with the fence it opened with. While a reply streams the last
  *  block may not be: drawing it then would only flicker. */
@@ -37,7 +41,7 @@ export const kindOf = (lang: string): 'html' | 'svg' | 'markdown' | 'mermaid' | 
   ({ html: 'html', htm: 'html', svg: 'svg', md: 'markdown', markdown: 'markdown', mermaid: 'mermaid' } as const)[lang.toLowerCase() as 'html'] ?? 'code'
 
 export function segments(source: string): Segment[] {
-  const tokens = marked.lexer(source, { gfm: true, breaks: true })
+  const tokens = marked.lexer(source, options())
   const out: Segment[] = []
   let group: Token[] = []
   const flush = () => {
