@@ -31,6 +31,7 @@ async def query(request: Request) -> StreamingResponse:
     session = session if sessions.valid_id(session) else ""
     visualize = body.get("visualize") is True  # draw a diagram of the answer after it streams
     parent = body.get("parent") if isinstance(body.get("parent"), str) else None  # follow this turn, not the chat's latest (edit, ask again)
+    think = body.get("think") if isinstance(body.get("think"), bool) else None  # False: answer without streamed reasoning
     style = body.get("style") if isinstance(body.get("style"), str) else ""  # a writing style from GET /styles; an unknown one adds nothing
     if parent and not (session and transcript.has_turn(session, parent)):
         raise HTTPException(400, "parent must be the id of a turn in this chat")
@@ -41,7 +42,7 @@ async def query(request: Request) -> StreamingResponse:
         try:
             events = iterate_in_one_thread(
                 lambda: turn.stream_query_as_agui(text, forced_persona=forced_persona, fresh=fresh, context=context, origin=origin,
-                    session=session, visualize=visualize, forced_tier=tier, **({} if parent is None else {"parent": parent}), **({"style": style} if style else {}))
+                    session=session, visualize=visualize, forced_tier=tier, **({} if parent is None else {"parent": parent}), **({"style": style} if style else {}), **({"think": think} if think is not None else {}))
             )
             async for event in events:
                 yield encoder.encode(event)

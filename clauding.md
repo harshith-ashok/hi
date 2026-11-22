@@ -285,7 +285,7 @@ always sees the latest version in full.
 - Selector next to the model picker; remembered per browser.
 - **Tests:** a built-in style and a vault style both reach the agent's input; an unknown style is ignored.
 
-### - [ ] 4.6 Thinking toggle
+### - [x] 4.6 Thinking toggle
 
 - First read how reasoning is chosen (`hi/llm/reasoning.py`, `registry._resolve`, `Profile.reasoning`, the agent
   builders). Then add a `think: bool | null` option to `/query` (null = current behaviour) and a "Think" toggle in the

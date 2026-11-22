@@ -101,3 +101,61 @@ def test_a_normal_follow_up_keeps_the_agents_memory(run, tmp_vault):
     record_turn(TurnRecord("term", "sonnet", "q1", "a1", session=s))
     _sent, history, agent, _e = run("q2", session=s)
     assert [m["content"] for m in history if m["role"] == "user"] == ["q1"] and agent.resets == 0
+
+
+def test_think_off_builds_the_agent_on_the_model_without_reasoning(run, tmp_vault, monkeypatch):
+    asked = []
+    monkeypatch.setattr(turn_module, "_get_agent", lambda persona, tier, isolated=False, session="", think=True: asked.append(think) or Agent())
+    s = sessions.create().id
+    list(turn_module.stream_query_as_agui("hi", session=s))
+    list(turn_module.stream_query_as_agui("hi", session=s, think=False))
+    assert asked == [True, False]  # not passed at all unless it is off, so a fixed-signature fake still works
+
+
+def test_the_agent_cache_keeps_thinking_and_not_thinking_agents_apart(monkeypatch):
+    built = []
+    models = {True: object(), False: object()}
+    monkeypatch.setattr(turn_module, "get_tier_model", lambda tier: models[True])
+    monkeypatch.setattr(turn_module, "get_tier_model_fast", lambda tier: models[False])
+    monkeypatch.setattr(turn_module.llm, "model_name", lambda m: "m")
+    monkeypatch.setattr(turn_module, "get_agent_builder", lambda name: lambda model: built.append(model) or object())
+    turn_module._agent_cache.clear()
+    a = turn_module._get_agent("term", "sonnet", session="s")
+    b = turn_module._get_agent("term", "sonnet", session="s", think=False)
+    assert a is not b and built == [models[True], models[False]]
+    assert turn_module._get_agent("term", "sonnet", session="s", think=False) is b
+    turn_module._agent_cache.clear()
+
+
+def test_the_query_route_passes_think_only_when_it_is_false(tmp_vault, monkeypatch):
+    from starlette.testclient import TestClient
+
+    from hi.server.app import create_app
+
+    seen = []
+
+    def fake(text, **kw):
+        seen.append(kw)
+        yield ag.RunStartedEvent(thread_id="t", run_id="r")
+        yield ag.RunFinishedEvent(thread_id="t", run_id="r", result="x")
+
+    monkeypatch.setattr(turn_module, "stream_query_as_agui", fake)
+    client = TestClient(create_app())
+    for body in ({"text": "a"}, {"text": "b", "think": False}, {"text": "c", "think": True}, {"text": "d", "think": "no"}):
+        client.post("/query", json=body)
+    assert ["think" in kw and kw["think"] for kw in seen] == [False, False, True, False] and [("think" in kw) for kw in seen] == [False, True, True, False]
+
+
+def test_which_models_stream_thinking_is_reported_without_probing(monkeypatch):
+    from starlette.testclient import TestClient
+
+    import hi.config as config
+    from hi.llm import reasoning
+    from hi.server.app import create_app
+
+    monkeypatch.setattr(config, "HAIKU_MODEL", "small")
+    monkeypatch.setattr(config, "SONNET_MODEL", "mid")
+    monkeypatch.setattr(config, "OPUS_MODEL", "big")
+    monkeypatch.setattr(reasoning, "_reasoning_supported", {"small": False, "mid": True})
+    monkeypatch.setattr(reasoning, "_probe_reasoning_support", lambda *a: pytest.fail("must not probe"))
+    assert TestClient(create_app()).get("/reasoning").json() == {"haiku": False, "sonnet": True, "opus": None}

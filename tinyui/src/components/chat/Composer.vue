@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Folder, NotebookText, PenLine, Plus, Slash, Gauge, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, TextCursorInput, Volume2, Wand2, Workflow, X, Zap } from '@lucide/vue'
+import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Folder, Lightbulb, NotebookText, PenLine, Plus, Slash, Gauge, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, TextCursorInput, Volume2, Wand2, Workflow, X, Zap } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { getJson, postJson } from '@/backend'
 import type { Attachment } from '@/attachments'
@@ -38,11 +38,13 @@ const props = defineProps<{
   contextWindow?: ContextWindow | null
   projectSlug?: string
   style?: string
+  think?: boolean
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'update:tier': [value: string]
   'update:style': [value: string]
+  'update:think': [value: boolean]
   'update:visualize': [value: boolean]
   submit: []
   cancel: []
@@ -62,6 +64,10 @@ const styles = ref<StyleInfo[]>([])
 const currentStyle = computed(() => styles.value.find((x) => x.id === (props.style || 'normal')))
 async function loadStyles() { styles.value = (await getJson<StyleInfo[]>('/styles')) ?? styles.value }
 onMounted(loadStyles)
+// "Think": stream the model's reasoning before the answer. Off is faster. Not every model can think (the backend probes once).
+const reasoning = ref<Record<string, boolean | null>>({})
+onMounted(async () => { reasoning.value = (await getJson<Record<string, boolean | null>>('/reasoning')) ?? {} })
+const canThink = computed(() => (props.tier === 'auto' ? Object.values(reasoning.value).some((v) => v !== false) || !Object.keys(reasoning.value).length : reasoning.value[props.tier] !== false))
 const notePicker = ref(false)
 const NO_PROJECT = '__none' // a radio item needs a value; "no project" is the empty slug
 const projectStore = useProjects()
@@ -191,8 +197,9 @@ function pick(e: Event) {
   input.value = ''
 }
 
-interface Toggle { key: string; label: string; hint: string; icon: Component; on: boolean; busy?: boolean; click: () => void }
+interface Toggle { key: string; label: string; hint: string; icon: Component; on: boolean; busy?: boolean; unavailable?: boolean; click: () => void }
 const toggles = computed<Toggle[]>(() => [
+  { key: 'think', label: 'Think', hint: canThink.value ? 'Show the model reasoning before it answers. Turn off for faster replies.' : 'The model for this size cannot show its reasoning.', icon: Lightbulb, on: !!props.think && canThink.value, unavailable: !canThink.value, click: () => emit('update:think', !props.think) },
   { key: 'suggest', label: 'Suggest', hint: 'Grey suggestions as you type. Tab accepts.', icon: TextCursorInput, on: suggestOn.value, click: () => (suggestOn.value = !suggestOn.value) },
   { key: 'dictate', label: 'Dictate', hint: 'Speak into the box. Does not send.', icon: Mic, on: props.voice.mic.value !== 'idle', busy: ['transcribing', 'structuring'].includes(props.voice.mic.value), click: () => void props.voice.listen(false) },
   { key: 'tidy', label: 'Tidy', hint: 'Clean up and structure what you say before sending', icon: Wand2, on: props.voice.rambler.value, click: () => (props.voice.rambler.value = !props.voice.rambler.value) },
@@ -312,7 +319,7 @@ defineExpose({ focus: () => (box.value?.$el as HTMLTextAreaElement | undefined)?
 
       <span class="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
       <Tooltip v-for="t in toggles" :key="t.key"><TooltipTrigger as-child>
-        <Button variant="ghost" size="icon" :aria-label="t.label" :aria-pressed="t.on" :disabled="t.busy" :class="cn('size-8', t.on && 'bg-accent text-accent-foreground')" @click="t.click">
+        <Button variant="ghost" size="icon" :aria-label="t.label" :aria-pressed="t.on" :disabled="t.busy || t.unavailable" :class="cn('size-8', t.on && 'bg-accent text-accent-foreground')" @click="t.click">
           <Loader2 v-if="t.busy" class="size-4 animate-spin" /><component :is="t.icon" v-else class="size-4" />
         </Button>
       </TooltipTrigger><TooltipContent>{{ t.label }}: {{ t.hint }}</TooltipContent></Tooltip>

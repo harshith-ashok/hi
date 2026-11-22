@@ -65,6 +65,7 @@ export interface AskOptions {
   session?: string
   visualize?: boolean
   parent?: string // the turn this one follows; set for an edit or "ask again"
+  think?: boolean // false: answer without streamed reasoning
   style?: string // a writing style id from GET /styles ('normal' or none = how hi usually writes)
   tier?: string // haiku | sonnet | opus, or 'auto' to let the router choose
 }

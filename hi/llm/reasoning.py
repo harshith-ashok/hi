@@ -61,6 +61,11 @@ def _save_cache() -> None:
 _load_cache()
 
 
+def supports(model_name: str) -> bool | None:
+    """Whether `model_name` streams reasoning: True or False once known, None if it has not been probed yet."""
+    return _reasoning_supported.get(model_name)
+
+
 def make_chat_model(model_name: str, **kwargs) -> BaseChatModel:
     """Build a chat model for `model_name` on the active provider, with
     streamed reasoning enabled if (and only if) it actually works.

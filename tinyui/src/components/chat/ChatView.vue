@@ -43,6 +43,8 @@ localStorage.removeItem('persona') // an older version chose an agent here; what
 const visualize = ref(localStorage.getItem('visualize') === '1')
 const style = ref(localStorage.getItem('style') || 'normal') // the writing style (GET /styles)
 watch(style, (v) => localStorage.setItem('style', v))
+const think = ref(localStorage.getItem('think') !== '0') // stream the model's reasoning (off = faster)
+watch(think, (v) => localStorage.setItem('think', v ? '1' : '0'))
 watch(tier, (v) => localStorage.setItem('tier', v))
 watch(visualize, (v) => localStorage.setItem('visualize', v ? '1' : '0'))
 const composer = ref<InstanceType<typeof Composer> | null>(null)
@@ -171,7 +173,7 @@ async function submit(override?: string, branch?: { parent: string }) {
   const ids = files.map((f) => f.id!)
   attached.clear()
   stick.value = true
-  await chat.ask(message, { tier: tier.value, attachments: ids, names, session, visualize: visualize.value, parent: branch?.parent, style: style.value })
+  await chat.ask(message, { tier: tier.value, attachments: ids, names, session, visualize: visualize.value, parent: branch?.parent, style: style.value, think: think.value })
   if (branch) await reload() // the other attempts at this point are listed with the saved chat
 }
 
@@ -386,6 +388,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
           v-model="input"
           v-model:tier="tier"
           v-model:style="style"
+          v-model:think="think"
           :models="status.models.value"
           v-model:visualize="visualize"
           :busy="chat.busy.value"

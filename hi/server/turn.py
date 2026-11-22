@@ -60,11 +60,12 @@ MAX_CACHED_AGENTS = 16  # one per (persona, tier, session) in use; the least rec
 ARTIFACT_SHARE = 0.6  # at most this much of what is left of the context window goes to the chat's artifacts
 
 
-def _get_agent(persona_name: str, tier: str, isolated: bool = False, session: str = ""):
+def _get_agent(persona_name: str, tier: str, isolated: bool = False, session: str = "", think: bool = True):
     """The cached agent for (persona, tier, session). term remembers its conversation, so each chat session gets its
-    own, and `isolated` gives background runs theirs: a background run must neither read your chat nor reset it."""
-    model = get_tier_model(tier)
-    key = (persona_name, tier, llm.model_name(model), llm.signature(), isolated, session)
+    own, and `isolated` gives background runs theirs: a background run must neither read your chat nor reset it.
+    `think=False` builds it on the tier's model without streamed reasoning (the "Think" switch in the composer)."""
+    model = get_tier_model(tier) if think else get_tier_model_fast(tier)
+    key = (persona_name, tier, llm.model_name(model), llm.signature(), isolated, session, think)
     with _cache_lock:
         if key in _agent_cache:
             _agent_cache[key] = _agent_cache.pop(key)  # most recently used goes last
@@ -87,13 +88,13 @@ def _context_used(text: str) -> dict | None:
 def stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
     origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
-    parent: str | None = None, style: str = "",
+    parent: str | None = None, style: str = "", think: bool | None = None,
 ):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
     (unreachable Ollama, missing model) reaches the client
     as a RUN_ERROR event instead of a silently dropped connection."""
     try:
-        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier, session, visualize, parent, style)
+        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier, session, visualize, parent, style, think)
     except Exception as e:
         records.record_turn(records.TurnRecord(
             forced_persona or "", "", text, error=llm.friendly_error(e), detail=repr(e), origin=origin, session=session,
@@ -105,7 +106,7 @@ def stream_query_as_agui(
 def _stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
     origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
-    parent: str | None = None, style: str = "",
+    parent: str | None = None, style: str = "", think: bool | None = None,
 ):
     """Yields AG-UI events for one query — a `persona_selected` CUSTOM
     event first (this project's own extension; AG-UI has no built-in
@@ -170,7 +171,7 @@ def _stream_query_as_agui(
         events = stream_orchestrated_as_agui_sync(text + context + prof.style + style_note, thread_id)
         log_persona = "orchestrator"
     else:
-        agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS, session=session)
+        agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS, session=session, **({"think": False} if think is False else {}))
         if fresh and hasattr(agent, "reset"):
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
         if session and not fresh:
