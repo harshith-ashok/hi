@@ -264,12 +264,15 @@ def _stream_query_as_agui(
         },
     )
 
-    records.record_turn(records.TurnRecord(
+    record = records.TurnRecord(
         log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started, needs_plan,
         error="" if final_answer else run_error, detail=run_error, origin=origin, session=session, visual=visual,
         id=turn_id, parent=parent,
-    ))
+    )
+    records.record_turn(record)
     yield ag.CustomEvent(name="turn", value={"id": turn_id, "parent": parent})
+    for saved in record.artifacts:
+        yield ag.CustomEvent(name="artifact", value=saved)
     if dropped and origin not in BACKGROUND_ORIGINS:
         summary.summarise_async(session, parent, dropped)  # for the next turn: what fell out of the window
     if final_answer and speaks:

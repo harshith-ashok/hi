@@ -8,6 +8,7 @@ or stops the other sinks.
     conversation only when there is an answer, and not for background runs: the readable Markdown log
     journal      an activity entry for an answered turn, or an "error" event for a failed one
     extraction   only for an answered turn you were part of: learn durable facts in the background
+    artifacts    pages, documents and diagrams the answer marked with `artifact`, saved as versions
     session      the chat session the turn belongs to: its count, time and title
 """
 
@@ -19,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from hi.core.runpolicy import BACKGROUND_ORIGINS
-from hi.memory import extraction, journal, sessions, transcript, vault
+from hi.memory import artifacts, extraction, journal, sessions, transcript, vault
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class TurnRecord:
     visual: str = ""  # a mermaid diagram drawn for the answer
     id: str = ""  # this turn's id ("" = made when it is written)
     parent: str | None = None  # the id of the turn it follows in its session; None = the session's current head, "" = none
+    artifacts: list[dict] = field(default_factory=list)  # filled in when the turn is recorded: {slug, title, kind, version}
 
 
 def _transcript(rec: TurnRecord) -> None:
@@ -49,6 +51,11 @@ def _transcript(rec: TurnRecord) -> None:
         rec.persona, rec.tier, rec.ask, rec.answer, rec.tools, rec.seconds, rec.plan, rec.detail or rec.error, rec.origin,
         rec.session, rec.visual, rec.id, rec.parent,
     )
+
+
+def _artifacts(rec: TurnRecord) -> None:
+    if rec.session and rec.answer and not rec.error and rec.origin not in BACKGROUND_ORIGINS:
+        rec.artifacts = [artifacts.save(rec.session, rec.id, a) for a in artifacts.extract(rec.answer)]
 
 
 def _conversation(rec: TurnRecord) -> None:
@@ -78,7 +85,7 @@ def _session(rec: TurnRecord) -> None:
         sessions.retitle_async(rec.session, rec.ask, rec.answer)
 
 
-SINKS: list[Callable[[TurnRecord], None]] = [_transcript, _conversation, _journal, _extraction, _session]
+SINKS: list[Callable[[TurnRecord], None]] = [_transcript, _artifacts, _conversation, _journal, _extraction, _session]
 
 
 def record_turn(rec: TurnRecord) -> None:

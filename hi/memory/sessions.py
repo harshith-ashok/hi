@@ -18,7 +18,7 @@ from pathlib import Path
 
 import hi.config as config
 from hi.core import jobs
-from hi.memory import transcript
+from hi.memory import artifacts, transcript
 from hi.memory.frontmatter import dump_frontmatter, parse_frontmatter
 
 log = logging.getLogger(__name__)
@@ -172,6 +172,7 @@ def delete(session_id: str) -> bool:
         return False
     _path(session_id).unlink(missing_ok=True)
     transcript.delete_session(session_id)
+    artifacts.delete_session(session_id)
     return True
 
 

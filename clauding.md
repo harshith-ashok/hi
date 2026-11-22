@@ -169,7 +169,7 @@ Built on 0.2. Nothing is deleted: a new attempt is a sibling in the turn tree.
 The existing `PreviewPane` becomes a proper artifact panel. Artifacts are files in the vault, versioned, and the model
 always sees the latest version in full.
 
-### - [ ] 2.1 Store artifacts in the vault
+### - [x] 2.1 Store artifacts in the vault
 
 - New `hi/memory/artifacts.py` (memory layer: imports only `core`, `config`, `llm`):
   - `extract(answer) -> list[Artifact]`: fenced blocks with an `artifact` marker on the fence line, e.g.
