@@ -343,8 +343,15 @@ class _StatefulAgent:
     def reset(self) -> None:
         self._messages = []
 
+    def _incoming(self, messages: list) -> list:
+        """The messages to add to memory. The server (hi/server/turn.py) sends the chat's saved history followed by the
+        new message on every turn. Once this agent remembers the conversation, only that last message is new: adding the
+        history again would repeat every earlier exchange in each prompt. Right after a reset or a restart the memory is
+        empty, so the history is taken from the transcript instead."""
+        return messages[-1:] if self._messages and len(messages) > 1 else messages
+
     def invoke(self, input: dict, *args, **kwargs) -> dict:
-        self._messages.extend(input["messages"])
+        self._messages.extend(self._incoming(input["messages"]))
         result = self._agent.invoke(
             {"messages": self._messages}, *args, **kwargs)
         self._messages = _trim_history(result["messages"], self._max_history)
@@ -357,7 +364,7 @@ class _StatefulAgent:
         it goes — the last one seen by the time the caller finishes
         consuming the stream is the final state, same as .invoke() would
         have returned, with no redundant second call."""
-        self._messages.extend(input["messages"])
+        self._messages.extend(self._incoming(input["messages"]))
         for item in self._agent.stream({"messages": self._messages}, *args, **kwargs):
             _ns, mode, payload = item
             if mode == "values":
