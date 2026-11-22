@@ -290,6 +290,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
           :wake-phrase="getWakePhrase()"
           :attachments="attached.items.value"
           :history="history"
+          :context-window="chat.contextWindow.value"
           @submit="submit()"
           @cancel="chat.cancel"
           @recall="recall"

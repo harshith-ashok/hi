@@ -40,6 +40,8 @@ class Session:
     turns: int = 0
     title_auto: bool = True  # False once you rename it: a model never overwrites your title
     head: str = ""  # the id of the newest turn on the branch that is showing ("" = the newest turn written)
+    summary: str = ""  # a running summary of the turns that no longer fit the context window (the file's body)
+    summary_through: str = ""  # the id of the last turn the summary covers
 
 
 def sessions_dir() -> Path:
@@ -73,16 +75,18 @@ def _write(s: Session) -> None:
     }
     if s.head:
         fields["head"] = s.head
+    if s.summary_through:
+        fields["summary_through"] = s.summary_through
     path = _path(s.id)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(f"{dump_frontmatter(fields)}\n")
+    tmp.write_text(f"{dump_frontmatter(fields)}\n" + (f"{s.summary.strip()}\n" if s.summary.strip() else ""))
     tmp.replace(path)
 
 
 def _load(path: Path) -> Session | None:
     try:
-        fields, _ = parse_frontmatter(path.read_text())
+        fields, body = parse_frontmatter(path.read_text())
     except OSError:
         return None
     if not valid_id(str(fields.get("id", ""))):
@@ -92,6 +96,7 @@ def _load(path: Path) -> Session | None:
         updated=str(fields.get("updated", "")), pinned=fields.get("pinned") == "true",
         archived=fields.get("archived") == "true", turns=int(str(fields.get("turns", "0")) or 0),
         title_auto=fields.get("title_auto") != "false", head=str(fields.get("head", "")),
+        summary=body.strip(), summary_through=str(fields.get("summary_through", "")),
     )
 
 
@@ -146,6 +151,16 @@ def update(session_id: str, title: str | None = None, pinned: bool | None = None
         s.archived = archived
     _write(s)
     return s
+
+
+def set_summary(session_id: str, summary: str, through: str) -> bool:
+    """Store the running summary of the turns up to the one with id `through`."""
+    s = get(session_id)
+    if s is None:
+        return False
+    s.summary, s.summary_through = summary.strip(), through
+    _write(s)
+    return True
 
 
 def delete(session_id: str) -> bool:

@@ -99,7 +99,7 @@ estimate(system prompt + this message + attached context)`. Use a plain estimate
   dropped.
 - **Done when:** a long chat keeps as much as fits, and the UI is told what was left out.
 
-### - [ ] 0.4 Show context use, and summarise what fell out
+### - [x] 0.4 Show context use, and summarise what fell out
 
 - Composer: a small ring next to the model picker showing `used / limit`, with a tooltip ("12 earlier messages are
   not in context"). Hidden while under 50%.

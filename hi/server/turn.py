@@ -20,7 +20,7 @@ from hi.core import runpolicy
 from hi.core.runpolicy import BACKGROUND_ORIGINS
 from hi.llm.registry import TIERS, get_tier_model, get_tier_model_fast
 from hi.memory import extraction as memory
-from hi.memory import records, reflection as reflection_agent, sessions, transcript
+from hi.memory import records, reflection as reflection_agent, sessions, summary, transcript
 from hi.memory.skills import expand_slash
 from hi.orchestrator.complexity import classify_or_default
 from hi.personas import PERSONAS, get_agent_builder
@@ -153,6 +153,7 @@ def _stream_query_as_agui(
     thread_id = uuid.uuid4().hex
     turn_id = uuid.uuid4().hex[:12]
     parent = sessions.head_of(session) if session else ""  # the turn this one follows in its chat
+    dropped = 0  # earlier turns of the chat that did not fit the context window
     if needs_plan:
         events = stream_orchestrated_as_agui_sync(text + context + prof.style, thread_id)
         log_persona = "orchestrator"
@@ -164,7 +165,11 @@ def _stream_query_as_agui(
         if fresh:
             earlier: list[dict] = []
         elif session:
-            earlier, dropped = transcript.history_within(transcript.history_budget(message), session, parent)
+            saved = (sessions.get(session) or sessions.Session(session)).summary
+            budget = transcript.history_budget(message) - (transcript.estimate_tokens(saved) + 40 if saved else 0)
+            earlier, dropped = transcript.history_within(budget, session, parent)
+            if dropped and saved:
+                earlier = summary.messages(saved) + earlier
             used = transcript.PROMPT_OVERHEAD_TOKENS + transcript.estimate_tokens(message) + sum(transcript.estimate_tokens(m["content"]) for m in earlier)
             yield ag.CustomEvent(name="context_window", value={"used": used, "limit": config.CONTEXT_TOKENS, "dropped_turns": dropped})
         else:
@@ -257,6 +262,8 @@ def _stream_query_as_agui(
         id=turn_id, parent=parent,
     ))
     yield ag.CustomEvent(name="turn", value={"id": turn_id, "parent": parent})
+    if dropped and origin not in BACKGROUND_ORIGINS:
+        summary.summarise_async(session, parent, dropped)  # for the next turn: what fell out of the window
     if final_answer and speaks:
         if not speaker.has_spoken:  # nothing sayable streamed (tool-only answer, one-liner): summarize
             yield ag.CustomEvent(name="spoken_summary", value={"text": make_spoken_summary(final_answer)})

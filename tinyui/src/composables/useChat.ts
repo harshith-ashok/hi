@@ -47,6 +47,9 @@ export interface StoredTurn {
   plan: boolean
 }
 
+/** How full the model's context window was for the latest turn (the backend estimates tokens). */
+export interface ContextWindow { used: number; limit: number; dropped_turns: number }
+
 export interface AskOptions {
   persona?: string | null
   attachments?: string[]
@@ -77,6 +80,7 @@ export function fromStored(stored: StoredTurn): Turn {
 export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (turn: Turn) => void } = {}) {
   const turns = ref<Turn[]>([])
   const busy = ref(false)
+  const contextWindow = ref<ContextWindow | null>(null)
   let controller: AbortController | null = null
 
   const current = () => turns.value[turns.value.length - 1]
@@ -97,6 +101,8 @@ export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (tu
         } else if (e.name === 'context_used') {
           const v = e.value as { memory: number; notes: string[] }
           turn.context = { memory: v.memory, notes: v.notes, at: now }
+        } else if (e.name === 'context_window') {
+          contextWindow.value = e.value as unknown as ContextWindow
         } else if (e.name === 'turn') {
           const v = e.value as { id: string; parent: string }
           turn.serverId = v.id
@@ -197,8 +203,8 @@ export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (tu
   }
 
   const cancel = () => controller?.abort()
-  const clear = () => (turns.value = [])
-  const load = (stored: StoredTurn[]) => (turns.value = stored.map(fromStored))
+  const clear = () => { turns.value = []; contextWindow.value = null }
+  const load = (stored: StoredTurn[]) => { turns.value = stored.map(fromStored); contextWindow.value = null }
 
-  return { turns, busy, ask, cancel, clear, load }
+  return { turns, busy, contextWindow, ask, cancel, clear, load }
 }

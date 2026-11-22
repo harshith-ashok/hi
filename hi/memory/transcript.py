@@ -257,11 +257,16 @@ def history_budget(message: str) -> int:
     return config.CONTEXT_TOKENS - ANSWER_RESERVE_TOKENS - PROMPT_OVERHEAD_TOKENS - estimate_tokens(message)
 
 
+def counted_turns(session: str, head: str = "") -> list[dict]:
+    """The turns on the branch ending at `head` that go into the history, oldest first."""
+    return [e for e in session_path(session, head, SESSION_DAYS) if _counts_as_history(e)]
+
+
 def history_within(budget_tokens: int, session: str, head: str = "") -> tuple[list[dict], int]:
     """The newest turns of `session` (on the branch ending at `head`) that fit in `budget_tokens`, as chat messages, and
     how many earlier turns had to be left out. Oldest turns go first; the newest exchange is always kept. A turn is
     clipped only when it alone is bigger than a quarter of the budget (and never below the usual per-turn limits)."""
-    entries = [e for e in session_path(session, head, SESSION_DAYS) if _counts_as_history(e)]
+    entries = counted_turns(session, head)
     cap = max(budget_tokens, 0) // 4 * 3  # characters
     kept: list[list[dict]] = []
     used = 0

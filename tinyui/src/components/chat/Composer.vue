@@ -3,6 +3,7 @@ import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Gauge, Loa
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { getJson, postJson } from '@/backend'
 import type { Attachment } from '@/attachments'
+import type { ContextWindow } from '@/composables/useChat'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -31,6 +32,7 @@ const props = defineProps<{
   wakePhrase: string
   attachments: Attachment[]
   history?: string[]
+  contextWindow?: ContextWindow | null
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -46,6 +48,16 @@ const emit = defineEmits<{
 
 const box = ref<InstanceType<typeof Textarea> | null>(null)
 const picker = ref<HTMLInputElement>()
+// How full the model's context window is: shown from half full, or as soon as earlier messages have been left out.
+const RING = 2 * Math.PI * 7
+const fill = computed(() => Math.min(1, (props.contextWindow?.used ?? 0) / (props.contextWindow?.limit || 1)))
+const showRing = computed(() => !!props.contextWindow && (fill.value >= 0.5 || props.contextWindow.dropped_turns > 0))
+const ringHint = computed(() => {
+  const c = props.contextWindow
+  if (!c) return ''
+  const left = c.dropped_turns ? ` ${c.dropped_turns} earlier ${c.dropped_turns === 1 ? 'message is' : 'messages are'} not in context.` : ''
+  return `Context: about ${c.used.toLocaleString()} of ${c.limit.toLocaleString()} tokens.${left}`
+})
 const current = computed(() => TIERS.find((t) => t.id === props.tier) ?? TIERS[0])
 const canSend = computed(() => props.modelValue.trim().length > 0 || props.attachments.some((a) => a.status === 'ready'))
 
@@ -213,6 +225,12 @@ defineExpose({ focus: () => (box.value?.$el as HTMLTextAreaElement | undefined)?
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <Tooltip v-if="showRing"><TooltipTrigger as-child>
+        <span class="flex size-8 items-center justify-center" role="img" :aria-label="ringHint">
+          <svg viewBox="0 0 20 20" class="size-5 -rotate-90"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" class="text-muted" stroke-width="2.5" /><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" :class="fill > 0.9 ? 'text-destructive' : 'text-primary'" :stroke-dasharray="RING" :stroke-dashoffset="RING * (1 - fill)" /></svg>
+        </span>
+      </TooltipTrigger><TooltipContent>{{ ringHint }}</TooltipContent></Tooltip>
 
       <Tooltip><TooltipTrigger as-child>
         <Button variant="ghost" size="sm" :aria-pressed="visualize" :class="cn('h-8 gap-1.5 px-2 text-xs', visualize && 'bg-accent text-accent-foreground')" @click="emit('update:visualize', !visualize)"><Workflow class="size-4" /> Visualize</Button>
