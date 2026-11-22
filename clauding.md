@@ -215,7 +215,7 @@ always sees the latest version in full.
 
 ## Phase 3 — Projects
 
-### - [ ] 3.1 Projects as vault folders
+### - [x] 3.1 Projects as vault folders
 
 - `hi/memory/projects.py`: a project is `<vault>/hi/projects/<slug>/PROJECT.md` (frontmatter `name`, `description`;
   body = instructions) plus any files in that folder.

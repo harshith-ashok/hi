@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from hi import visuals
-from hi.memory import artifacts, sessions, transcript
+from hi.memory import artifacts, projects, sessions, transcript
 from hi.server.http import json_body, require_client
 
 TURN_FIELDS = ("id", "parent", "time", "ask", "answer", "tools", "persona", "tier", "seconds", "visual", "error", "plan")
@@ -42,7 +42,10 @@ async def list_sessions(request: Request) -> JSONResponse:
 async def create_session(request: Request) -> JSONResponse:
     require_client(request)
     body = await json_body(request)
-    return JSONResponse(asdict(await run_in_threadpool(sessions.create, str(body.get("title") or ""))), status_code=201)
+    project = str(body.get("project") or "")
+    if project and projects.get(project) is None:
+        raise HTTPException(400, "No such project")
+    return JSONResponse(asdict(await run_in_threadpool(sessions.create, str(body.get("title") or ""), project)), status_code=201)
 
 
 async def get_session(request: Request) -> JSONResponse:
@@ -62,13 +65,16 @@ async def patch_session(request: Request) -> JSONResponse:
         if value is not None and not isinstance(value, bool):
             raise HTTPException(400, "pinned and archived must be true or false")
     session_id = request.path_params["session_id"]
+    project = body.get("project")
+    if project is not None and (not isinstance(project, str) or (project and projects.get(project) is None)):
+        raise HTTPException(400, "project must be the slug of an existing project, or an empty string")
     head = body.get("head")
     if head is not None:
         # Switching to another attempt: show the newest branch that goes through the turn chosen.
         if not isinstance(head, str) or not await run_in_threadpool(transcript.has_turn, session_id, head):
             raise HTTPException(400, "head must be the id of a turn in this chat")
         head = await run_in_threadpool(transcript.newest_leaf, session_id, head)
-    s = await run_in_threadpool(sessions.update, session_id, body.get("title"), pinned, archived, head)
+    s = await run_in_threadpool(sessions.update, session_id, body.get("title"), pinned, archived, head, project)
     if s is None:
         raise HTTPException(404, "No such session")
     return JSONResponse(asdict(s))

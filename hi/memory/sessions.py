@@ -40,6 +40,7 @@ class Session:
     turns: int = 0
     title_auto: bool = True  # False once you rename it: a model never overwrites your title
     head: str = ""  # the id of the newest turn on the branch that is showing ("" = the newest turn written)
+    project: str = ""  # the slug of the project this chat belongs to ("" = none; hi/memory/projects.py)
     summary: str = ""  # a running summary of the turns that no longer fit the context window (the file's body)
     summary_through: str = ""  # the id of the last turn the summary covers
 
@@ -73,6 +74,8 @@ def _write(s: Session) -> None:
         "pinned": str(s.pinned).lower(), "archived": str(s.archived).lower(), "turns": str(s.turns),
         "title_auto": str(s.title_auto).lower(), "tags": ["hi", "session"],
     }
+    if s.project:
+        fields["project"] = s.project
     if s.head:
         fields["head"] = s.head
     if s.summary_through:
@@ -96,7 +99,7 @@ def _load(path: Path) -> Session | None:
         updated=str(fields.get("updated", "")), pinned=fields.get("pinned") == "true",
         archived=fields.get("archived") == "true", turns=int(str(fields.get("turns", "0")) or 0),
         title_auto=fields.get("title_auto") != "false", head=str(fields.get("head", "")),
-        summary=body.strip(), summary_through=str(fields.get("summary_through", "")),
+        project=str(fields.get("project", "")), summary=body.strip(), summary_through=str(fields.get("summary_through", "")),
     )
 
 
@@ -108,9 +111,9 @@ def new_id() -> str:
     return f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
 
 
-def create(title: str = "") -> Session:
+def create(title: str = "", project: str = "") -> Session:
     s = Session(id=new_id(), title=_clean_title(title) if title.strip() else DEFAULT_TITLE, created=_now(), updated=_now(),
-                title_auto=not title.strip())
+                title_auto=not title.strip(), project=project)
     _write(s)
     return s
 
@@ -140,7 +143,7 @@ def list_sessions(include_archived: bool = False) -> list[Session]:
 
 
 def update(session_id: str, title: str | None = None, pinned: bool | None = None, archived: bool | None = None,
-           head: str | None = None) -> Session | None:
+           head: str | None = None, project: str | None = None) -> Session | None:
     s = get(session_id)
     if s is None:
         return None
@@ -152,8 +155,21 @@ def update(session_id: str, title: str | None = None, pinned: bool | None = None
         s.archived = archived
     if head:
         s.head = head  # the caller has checked that the turn exists in this session
+    if project is not None:
+        s.project = project  # "" takes the chat out of its project; the caller has checked the project exists
     _write(s)
     return s
+
+
+def unassign_project(slug: str) -> int:
+    """Take every chat out of project `slug` (it was deleted). Returns how many were changed."""
+    changed = 0
+    for path in sessions_dir().glob("*.md") if sessions_dir().exists() else []:  # every note, also empty ones list_sessions hides
+        if (s := _load(path)) and s.project == slug:
+            s.project = ""
+            _write(s)
+            changed += 1
+    return changed
 
 
 def set_summary(session_id: str, summary: str, through: str) -> bool:
