@@ -1,8 +1,12 @@
-// Splits Markdown into pieces the chat draws differently: prose (HTML), code blocks, and Mermaid diagrams.
+// Splits Markdown into pieces the chat draws differently: prose (HTML, with math), code blocks, and Mermaid diagrams.
 
 import DOMPurify from 'dompurify'
 import { marked, type Token, type TokensList } from 'marked'
 import { BASE_URL } from '@/backend'
+import { mathExtensions } from '@/lib/math'
+import 'katex/dist/katex.min.css'
+
+marked.use({ extensions: mathExtensions }) // $…$ and $$…$$ (hi's replies, KaTeX)
 
 export type Segment =
   | { kind: 'html'; html: string }

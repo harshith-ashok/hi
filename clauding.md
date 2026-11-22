@@ -149,7 +149,7 @@ Built on 0.2. Nothing is deleted: a new attempt is a sibling in the turn tree.
   sends it when the reply ends. One queued message at most; a second Enter replaces it.
 - **Done when:** typing ahead no longer produces a "still replying" toast.
 
-### - [ ] 1.4 Math rendering
+### - [x] 1.4 Math rendering
 
 - Add KaTeX (`katex` package) to `lib/markdown.ts`: `$…$` inline and `$$…$$` display, rendered before DOMPurify.
   Skip `$` inside code. Render errors show the source, not an exception.
