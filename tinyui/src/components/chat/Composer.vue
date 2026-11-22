@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Gauge, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, Volume2, Wand2, Workflow, X, Zap } from '@lucide/vue'
-import { computed, ref, type Component } from 'vue'
+import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Gauge, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, TextCursorInput, Volume2, Wand2, Workflow, X, Zap } from '@lucide/vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
+import { getJson, postJson } from '@/backend'
 import type { Attachment } from '@/attachments'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,7 @@ const props = defineProps<{
   voice: Voice
   wakePhrase: string
   attachments: Attachment[]
+  history?: string[]
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -47,7 +49,82 @@ const picker = ref<HTMLInputElement>()
 const current = computed(() => TIERS.find((t) => t.id === props.tier) ?? TIERS[0])
 const canSend = computed(() => props.modelValue.trim().length > 0 || props.attachments.some((a) => a.status === 'ready'))
 
+// "/" at the start of the box lists the vault skills; Tab or Enter completes the name.
+interface SkillCommand { name: string; description: string }
+const skills = ref<SkillCommand[]>([])
+const active = ref(0)
+const dismissed = ref(false)
+const list = ref<HTMLUListElement | null>(null)
+onMounted(async () => { skills.value = (await getJson<SkillCommand[]>('/skills')) ?? [] })
+const matches = computed(() => {
+  const m = /^\/([\w-]*)$/.exec(props.modelValue)
+  if (!m || dismissed.value) return []
+  return skills.value.filter((s) => s.name.toLowerCase().startsWith(m[1].toLowerCase()))
+})
+watch(() => props.modelValue, () => { active.value = 0; dismissed.value = false })
+watch(active, async () => {
+  await nextTick()
+  list.value?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+})
+// --- suggestions: grey text after the cursor, Tab accepts -----------------------------------------------------------
+// Instant: the most recent earlier message that starts with what is typed. Smarter: the model's guess, after a pause.
+const SUGGEST_MIN = 6
+const SUGGEST_DELAY_MS = 450
+const suggestOn = ref(localStorage.getItem('suggest') !== '0')
+watch(suggestOn, (v) => { localStorage.setItem('suggest', v ? '1' : '0'); if (!v) suggestion.value = '' })
+const suggestion = ref('')
+let suggestTimer: ReturnType<typeof setTimeout> | undefined
+let suggestSeq = 0
+
+const fromHistory = computed(() => {
+  const typed = props.modelValue
+  if (typed.length < 3 || typed.includes('\n') || typed.startsWith('/')) return ''
+  const hit = [...(props.history ?? [])].reverse().find((m) => m.length > typed.length && m.toLowerCase().startsWith(typed.toLowerCase()))
+  return hit ? hit.slice(typed.length) : ''
+})
+const ghost = computed(() => (matches.value.length || !suggestOn.value ? '' : fromHistory.value || suggestion.value))
+
+watch(() => props.modelValue, (typed, before) => {
+  clearTimeout(suggestTimer)
+  suggestSeq++
+  const added = typed.slice(before.length)
+  if (suggestion.value && typed.startsWith(before) && suggestion.value.startsWith(added)) suggestion.value = suggestion.value.slice(added.length) // typed what was suggested
+  else suggestion.value = ''
+  if (suggestion.value || fromHistory.value || !suggestOn.value || props.busy) return
+  if (typed.trim().length < SUGGEST_MIN || typed.includes('\n') || typed.startsWith('/')) return
+  const mine = suggestSeq
+  suggestTimer = setTimeout(async () => {
+    const res = await postJson<{ suggestion: string }>('/suggest', { text: typed, recent: (props.history ?? []).slice(-5) })
+    if (mine === suggestSeq && res?.suggestion) suggestion.value = res.suggestion
+  }, SUGGEST_DELAY_MS)
+})
+onUnmounted(() => clearTimeout(suggestTimer))
+
+function complete(skill: SkillCommand) {
+  emit('update:modelValue', `/${skill.name} `)
+}
+
 function onKey(e: KeyboardEvent) {
+  if (matches.value.length) {
+    const n = matches.value.length
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      active.value = (active.value + (e.key === 'ArrowDown' ? 1 : n - 1)) % n
+      return
+    }
+    if ((e.key === 'Tab' || e.key === 'Enter') && !e.shiftKey && !e.isComposing) {
+      e.preventDefault()
+      complete(matches.value[active.value])
+      return
+    }
+    if (e.key === 'Escape') { dismissed.value = true; return }
+  }
+  if (e.key === 'Tab' && !e.shiftKey && ghost.value && !e.isComposing) {
+    e.preventDefault()
+    emit('update:modelValue', props.modelValue + ghost.value)
+    suggestion.value = ''
+    return
+  }
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault()
     if (!props.busy) emit('submit')
@@ -65,6 +142,7 @@ function pick(e: Event) {
 
 interface Toggle { key: string; label: string; hint: string; icon: Component; on: boolean; busy?: boolean; click: () => void }
 const toggles = computed<Toggle[]>(() => [
+  { key: 'suggest', label: 'Suggest', hint: 'Grey suggestions as you type. Tab accepts.', icon: TextCursorInput, on: suggestOn.value, click: () => (suggestOn.value = !suggestOn.value) },
   { key: 'dictate', label: 'Dictate', hint: 'Speak into the box. Does not send.', icon: Mic, on: props.voice.mic.value !== 'idle', busy: ['transcribing', 'structuring'].includes(props.voice.mic.value), click: () => void props.voice.listen(false) },
   { key: 'tidy', label: 'Tidy', hint: 'Clean up and structure what you say before sending', icon: Wand2, on: props.voice.rambler.value, click: () => (props.voice.rambler.value = !props.voice.rambler.value) },
   { key: 'speak', label: 'Speak', hint: 'Read replies aloud, even for typed requests', icon: Volume2, on: props.voice.speakReplies.value, click: () => (props.voice.speakReplies.value = !props.voice.speakReplies.value) },
@@ -87,18 +165,28 @@ defineExpose({ focus: () => (box.value?.$el as HTMLTextAreaElement | undefined)?
       </li>
     </ul>
 
-    <Textarea
-      ref="box"
-      :model-value="modelValue"
-      class="max-h-52 min-h-[52px] resize-none border-0 bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0"
-      :placeholder="voice.mic.value === 'listening' ? 'Listening… speak now' : voice.wake.value ? `Say “${wakePhrase}”, or type here` : 'Message hi…  (Enter to send, Shift+Enter for a new line)'"
-      aria-label="Message"
-      rows="1"
-      spellcheck="false"
-      autocomplete="off"
-      @update:model-value="emit('update:modelValue', String($event))"
-      @keydown="onKey"
-    />
+    <ul v-if="matches.length" ref="list" class="mx-2 mt-2 max-h-56 overflow-y-auto rounded-lg border bg-popover text-sm shadow-sm" role="listbox" aria-label="Skills">
+      <li v-for="(skill, i) in matches" :key="skill.name" role="option" :aria-selected="i === active" :class="cn('flex cursor-pointer items-baseline gap-2 px-3 py-1.5', i === active && 'bg-accent text-accent-foreground')" @mousedown.prevent="complete(skill)" @mousemove="active = i">
+        <span class="font-mono text-xs">/{{ skill.name }}</span>
+        <span class="truncate text-xs text-muted-foreground">{{ skill.description }}</span>
+      </li>
+    </ul>
+
+    <div class="relative">
+      <div v-if="ghost" class="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 py-3 text-sm" aria-hidden="true"><span class="invisible">{{ modelValue }}</span><span class="text-muted-foreground/60">{{ ghost }}</span><kbd class="ml-2 rounded border px-1 align-middle text-[10px] text-muted-foreground/70">Tab</kbd></div>
+      <Textarea
+        ref="box"
+        :model-value="modelValue"
+        class="max-h-52 min-h-[52px] resize-none border-0 bg-transparent px-4 py-3 text-sm shadow-none focus-visible:ring-0"
+        :placeholder="voice.mic.value === 'listening' ? 'Listening… speak now' : voice.wake.value ? `Say “${wakePhrase}”, or type here` : 'Message hi…  (Enter to send, Shift+Enter for a new line)'"
+        aria-label="Message"
+        rows="1"
+        spellcheck="false"
+        autocomplete="off"
+        @update:model-value="emit('update:modelValue', String($event))"
+        @keydown="onKey"
+      />
+    </div>
 
     <div class="flex flex-wrap items-center gap-1 px-2 pb-2">
       <input ref="picker" type="file" multiple class="sr-only" tabindex="-1" aria-hidden="true" @change="pick" />

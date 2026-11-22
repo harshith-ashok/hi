@@ -21,6 +21,7 @@ from hi.core.runpolicy import BACKGROUND_ORIGINS
 from hi.llm.registry import TIERS, get_tier_model, get_tier_model_fast
 from hi.memory import extraction as memory
 from hi.memory import records, reflection as reflection_agent, transcript
+from hi.memory.skills import expand_slash
 from hi.orchestrator.complexity import classify_or_default
 from hi.personas import PERSONAS, get_agent_builder
 from hi.router import collapse, fast_route, remember_route
@@ -116,6 +117,10 @@ def _stream_query_as_agui(
     too, and (see module docstring) never triggers an orchestrated plan.
     """
     started = time.monotonic()
+    if slash := expand_slash(text):  # "/skill-name request": the skill's instructions ride along as context
+        skill_name, _rest, instructions = slash
+        context += f"\n\nThe user invoked the '{skill_name}' skill. Follow these instructions for their request:\n\n{instructions}"
+        forced_persona = forced_persona or "term"
     reflection_agent.maybe_reflect_yesterday()  # background, at most once a day
     if forced_persona in PERSONAS:
         persona_name, tier, needs_plan = forced_persona, _FORCED_PERSONA_TIER, False

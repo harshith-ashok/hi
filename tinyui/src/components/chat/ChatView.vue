@@ -7,6 +7,7 @@ import { drawVisual, fetchPending, fileAttachment, resolvePending, type Pending 
 import { useAttachments, type Attachment } from '@/attachments'
 import ApprovalBar from '@/components/chat/ApprovalBar.vue'
 import Composer from '@/components/chat/Composer.vue'
+import PreviewPane from '@/components/chat/PreviewPane.vue'
 import TurnView from '@/components/chat/TurnView.vue'
 import VoiceOverlay from '@/components/chat/VoiceOverlay.vue'
 import { Button } from '@/components/ui/button'
@@ -229,7 +230,8 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col">
+  <div class="flex h-full min-h-0">
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col">
     <header class="flex h-14 shrink-0 items-center gap-2 border-b px-3">
       <SidebarTrigger />
       <div class="min-w-0 flex-1">
@@ -287,6 +289,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
           :voice="voice"
           :wake-phrase="getWakePhrase()"
           :attachments="attached.items.value"
+          :history="history"
           @submit="submit()"
           @cancel="chat.cancel"
           @recall="recall"
@@ -294,7 +297,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
           @remove-attachment="attached.remove($event)"
           @file-it="fileIt"
         />
-        <p class="text-center text-[11px] text-muted-foreground">Esc stops a reply · ↑ recalls your last message · drop files anywhere to add context</p>
+        <p class="text-center text-[11px] text-muted-foreground">Esc stops a reply · ↑ recalls your last message · Tab accepts a suggestion · drop files anywhere to add context</p>
       </div>
     </div>
 
@@ -303,5 +306,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
     </div>
 
     <VoiceOverlay v-if="voice.voiceMode.value" :state="voice.state.value" :caption="voice.caption.value" :pending="pending" @leave="voice.toggleVoiceMode" @answer="answerPending" />
+  </div>
+  <PreviewPane />
   </div>
 </template>

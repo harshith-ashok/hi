@@ -22,7 +22,7 @@ const sceneOf = (text: string) => parseScene(text)
         class="prose prose-sm max-w-none break-words dark:prose-invert prose-headings:font-semibold prose-pre:bg-muted prose-img:rounded-lg prose-table:block prose-table:overflow-x-auto prose-a:text-primary"
         v-html="part.html"
       />
-      <CodeBlock v-else-if="part.kind === 'code'" :lang="part.lang" :text="part.text" />
+      <CodeBlock v-else-if="part.kind === 'code'" :lang="part.lang" :text="part.text" :previewable="!streaming" />
       <template v-else-if="part.kind === 'scene3d'">
         <template v-if="part.closed || !streaming">
           <Viewer3D v-if="'scene' in sceneOf(part.text)" :scene="(sceneOf(part.text) as { scene: import('@/lib/scene3d').SceneData }).scene" />

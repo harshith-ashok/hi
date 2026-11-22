@@ -7,6 +7,7 @@ the body, optional bundled files next to it). Progressive loading keeps the prom
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -25,13 +26,61 @@ def skills_dir() -> Path:
     return config.VAULT_PATH / "skills"
 
 
-def list_skills() -> dict[str, str]:
-    """{skill name: description} for every skill folder that has a SKILL.md."""
-    found = {}
-    for path in sorted(skills_dir().glob("*/SKILL.md")):
-        fields, _body = parse_frontmatter(path.read_text(errors="ignore"))
-        found[str(fields.get("name") or path.parent.name)] = str(fields.get("description") or "")
+# Names the chat UI handles itself. A skill with one of these names is still loadable by the model, but `/name` runs
+# the built-in, so it is left out of the slash list.
+BUILTIN_COMMANDS = frozenset({"new", "clear", "help", "skills", "config", "model", "tier", "persona"})
+_SLASH_RE = re.compile(r"\A/([A-Za-z0-9][\w-]*)(?:\s+(.*))?\Z", re.DOTALL)
+
+
+def _skill_files() -> list[Path]:
+    """Every SKILL.md under the skills folder, at any depth (a cloned skills repo nests them). A skill's own
+    subfolders are not searched, so a bundled example is not mistaken for another skill."""
+    found: list[Path] = []
+    for root, dirs, files in os.walk(skills_dir()):
+        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        if "SKILL.md" in files:
+            found.append(Path(root) / "SKILL.md")
+            dirs.clear()
     return found
+
+
+def _folders(include_hidden: bool = False) -> dict[str, Path]:
+    """{skill name: its folder}. The first one found wins when two share a name."""
+    found: dict[str, Path] = {}
+    for path in _skill_files():
+        fields, _body = parse_frontmatter(path.read_text(errors="ignore"))
+        if not include_hidden and str(fields.get("invoke", "true")).lower() == "false":
+            continue
+        found.setdefault(str(fields.get("name") or path.parent.name), path.parent)
+    return found
+
+
+def list_skills(include_hidden: bool = False) -> dict[str, str]:
+    """{skill name: description} for every skill folder that has a SKILL.md.
+    A skill with `invoke: false` in its frontmatter is hidden unless `include_hidden`."""
+    return {
+        name: str(parse_frontmatter((folder / "SKILL.md").read_text(errors="ignore"))[0].get("description") or "")
+        for name, folder in _folders(include_hidden).items()
+    }
+
+
+def slash_commands() -> list[dict[str, str]]:
+    """The skills `/name` can run: [{name, description}], built-in command names excluded."""
+    return [{"name": n, "description": d} for n, d in list_skills().items() if n.lower() not in BUILTIN_COMMANDS]
+
+
+def expand_slash(text: str) -> tuple[str, str, str] | None:
+    """For a message like `/pdf merge these`, (skill name, the rest of the message, the skill's instructions).
+    None when the message is not a slash command, names a built-in, or names no skill (so `/Users/me/x` is
+    left alone)."""
+    match = _SLASH_RE.match(text.strip())
+    if not match:
+        return None
+    name = match.group(1)
+    skills = {n.lower(): n for n in list_skills() if n.lower() not in BUILTIN_COMMANDS}
+    if name.lower() not in skills:
+        return None
+    return skills[name.lower()], (match.group(2) or "").strip(), skill_text(skills[name.lower()])
 
 
 def index() -> str:
@@ -65,9 +114,14 @@ def use_skill(name: str, file: str = "") -> str:
         name: The skill name from the skills list.
         file: Optional path of a bundled file inside the skill folder, e.g. "reference.md". Empty loads SKILL.md.
     """
-    folder = skills_dir() / name
-    if name not in list_skills() and not (folder / "SKILL.md").exists():
-        return f"No skill named '{name}'. Available: {', '.join(list_skills()) or 'none'}."
+    return skill_text(name, file)
+
+
+def skill_text(name: str, file: str = "") -> str:
+    """A skill's instructions (frontmatter removed), or one bundled file; an explanatory message when missing."""
+    folder = _folders(include_hidden=True).get(name)
+    if folder is None:
+        return f"No skill named '{name}'. Available: {', '.join(list_skills(include_hidden=True)) or 'none'}."
     target = (folder / (file or "SKILL.md")).resolve()
     if not target.is_relative_to(folder.resolve()) or not target.is_file():
         bundled = sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file())
