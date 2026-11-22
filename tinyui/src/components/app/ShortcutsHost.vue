@@ -5,6 +5,7 @@ import { nextTick, ref, watch } from 'vue'
 import { getJson } from '@/backend'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useSidebar } from '@/components/ui/sidebar'
+import { COMMANDS } from '@/lib/commands'
 import { allowedIn, display, find, OTHER_KEYS, SHORTCUTS, type ShortcutId } from '@/lib/shortcuts'
 
 const emit = defineEmits<{ newChat: []; navigate: [view: 'settings'] }>()
@@ -45,7 +46,7 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
 
 <template>
   <Dialog v-model:open="help">
-    <DialogContent class="max-w-md">
+    <DialogContent class="max-h-[90vh] max-w-md overflow-y-auto">
       <DialogHeader>
         <DialogTitle>Shortcuts and commands</DialogTitle>
         <DialogDescription>Type <kbd class="rounded border px-1 font-mono text-xs">/</kbd> in the message box to run a skill.</DialogDescription>
@@ -54,6 +55,12 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
         <li v-for="s in SHORTCUTS" :key="s.id" class="flex items-center justify-between gap-4"><span>{{ s.label }}</span><kbd class="rounded border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">{{ display(s) }}</kbd></li>
         <li v-for="k in OTHER_KEYS" :key="k.keys" class="flex items-center justify-between gap-4"><span>{{ k.label }}</span><kbd class="rounded border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">{{ k.keys }}</kbd></li>
       </ul>
+      <div class="border-t pt-3">
+        <p class="mb-1.5 text-xs font-medium text-muted-foreground">Commands</p>
+        <ul class="space-y-1 text-sm">
+          <li v-for="c in COMMANDS" :key="c.name" class="flex items-baseline gap-2"><span class="font-mono text-xs">/{{ c.name }}</span><span class="truncate text-xs text-muted-foreground">{{ c.description }}</span></li>
+        </ul>
+      </div>
       <div v-if="skills.length" class="max-h-40 overflow-y-auto border-t pt-3">
         <p class="mb-1.5 text-xs font-medium text-muted-foreground">Skills</p>
         <ul class="space-y-1 text-sm">
