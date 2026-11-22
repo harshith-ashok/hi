@@ -165,6 +165,17 @@ def listing(session: str) -> list[dict]:
     return [{k: v for k, v in a.items() if k != "_time"} for a in out]
 
 
+def by_turn(session: str) -> dict[str, list[dict]]:
+    """{turn id: [{slug, title, kind, version}]}: what each turn of the chat saved, for showing the chat again."""
+    out: dict[str, list[dict]] = {}
+    for path in sorted(artifacts_dir(session).glob("*/index.json")):
+        index = _read_index(session, path.parent.name) or {"versions": []}
+        for v in index["versions"]:
+            out.setdefault(v.get("turn", ""), []).append(
+                {"slug": path.parent.name, "title": index["title"], "kind": index["kind"], "version": v["n"]})
+    return out
+
+
 def read(session: str, slug: str, version: int) -> dict | None:
     """{title, kind, lang, version, versions, content} for one version, or None."""
     if not SLUG.fullmatch(slug):

@@ -87,7 +87,7 @@ async function copy() {
             </template>
             <ToolCall v-else :block="block" :running="running" :restored="turn.restored" @send="emit('answer', $event)" />
           </template>
-          <MarkdownContent v-else :source="block.text" :streaming="running && i === turn.blocks.length - 1" />
+          <MarkdownContent v-else :source="block.text" :streaming="running && i === turn.blocks.length - 1" :artifacts="turn.artifacts" />
         </template>
         <span v-if="running && lastBlock?.kind === 'text'" class="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-foreground/60 align-middle" aria-hidden="true" />
 

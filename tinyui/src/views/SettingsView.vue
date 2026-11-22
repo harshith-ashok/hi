@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { autoOpen } from '@/composables/useArtifact'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { fetchConfig, fetchModels, fetchVoices, saveConfig, saveConfigChecked } from '@/backend'
@@ -135,7 +136,7 @@ onMounted(async () => {
     <PageHeader title="Settings" />
     <div class="min-h-0 flex-1 overflow-y-auto p-4">
       <div class="mx-auto max-w-4xl space-y-4">
-        <Tabs v-model="tab"><TabsList><TabsTrigger value="connection">Connection</TabsTrigger><TabsTrigger value="models">Models</TabsTrigger><TabsTrigger value="voice">Voice</TabsTrigger><TabsTrigger value="images">Images</TabsTrigger><TabsTrigger value="automation">Automation</TabsTrigger></TabsList></Tabs>
+        <Tabs v-model="tab"><TabsList><TabsTrigger value="connection">Connection</TabsTrigger><TabsTrigger value="models">Models</TabsTrigger><TabsTrigger value="voice">Voice</TabsTrigger><TabsTrigger value="images">Images</TabsTrigger><TabsTrigger value="interface">Interface</TabsTrigger><TabsTrigger value="automation">Automation</TabsTrigger></TabsList></Tabs>
 
         <Card v-if="tab === 'connection'">
           <CardHeader><CardTitle>Where the language model runs</CardTitle><CardDescription>{{ MODES.find((m) => m.id === mode)?.hint }}<template v-if="mode !== active"> · not active until saved</template></CardDescription></CardHeader>
@@ -196,6 +197,15 @@ onMounted(async () => {
         </div>
 
         <ImagesTab v-else-if="tab === 'images'" />
+
+        <div v-else-if="tab === 'interface'" class="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle>Artifacts</CardTitle><CardDescription>Pages, documents and diagrams a reply writes for you to keep.</CardDescription></CardHeader>
+            <CardContent class="space-y-4">
+              <div class="flex items-center justify-between gap-4"><div><Label for="auto-artifact">Open artifacts automatically</Label><p class="text-xs text-muted-foreground">Show each one beside the chat as soon as it is written. This browser only.</p></div><Switch id="auto-artifact" v-model="autoOpen" /></div>
+            </CardContent>
+          </Card>
+        </div>
 
         <div v-else class="grid gap-4 md:grid-cols-2">
           <Card>

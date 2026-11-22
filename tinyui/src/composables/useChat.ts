@@ -3,6 +3,7 @@
 
 import { reactive, ref } from 'vue'
 import { streamQuery, type AguiEvent } from '@/backend'
+import type { SavedArtifact } from '@/composables/useArtifact'
 
 export interface ToolBlock { kind: 'tool'; id: string; name: string; args: string; result?: string; t0: number; t1?: number }
 export interface ThinkBlock { kind: 'thinking'; text: string; t0: number; t1?: number }
@@ -18,6 +19,7 @@ export interface Turn {
   id: number
   serverId?: string // the backend's id for this turn (hi/memory/transcript.py); known once the turn is saved
   parent?: string // the id of the turn it follows in its chat
+  artifacts?: SavedArtifact[] // pages, documents and diagrams this turn made (saved by the backend)
   versions?: Versions // other attempts at this point (after an edit or "ask again")
   ask: string
   files: string[]
@@ -40,6 +42,7 @@ export interface StoredTurn {
   id: string
   parent: string
   versions?: Versions | null
+  artifacts?: SavedArtifact[]
   time: string
   ask: string
   answer: string
@@ -75,7 +78,7 @@ export function fromStored(stored: StoredTurn): Turn {
   const blocks: Block[] = stored.tools.map((t, i) => ({ kind: 'tool', id: `r${nextId}-${i}`, name: t.name, args: t.args, result: t.result, t0: at, t1: at }))
   if (stored.answer) blocks.push({ kind: 'text', text: stored.answer, t0: at, t1: at })
   return reactive<Turn>({
-    id: nextId++, serverId: stored.id || undefined, parent: stored.parent || undefined, versions: stored.versions ?? undefined, ask: stored.ask, files: [], t0: at, t1: at + (stored.seconds || 0) * 1000,
+    id: nextId++, serverId: stored.id || undefined, parent: stored.parent || undefined, versions: stored.versions ?? undefined, artifacts: stored.artifacts?.length ? stored.artifacts : undefined, ask: stored.ask, files: [], t0: at, t1: at + (stored.seconds || 0) * 1000,
     status: stored.error === 'stopped' ? 'cancelled' : stored.error && !stored.answer ? 'error' : 'done',
     route: stored.persona ? { persona: stored.persona, tier: stored.tier, plan: stored.plan, at } : undefined,
     blocks, visual: { state: stored.visual ? 'ready' : 'none', mermaid: stored.visual },
@@ -83,7 +86,7 @@ export function fromStored(stored: StoredTurn): Turn {
   })
 }
 
-export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (turn: Turn) => void } = {}) {
+export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (turn: Turn) => void; onArtifact?: (saved: SavedArtifact) => void } = {}) {
   const turns = ref<Turn[]>([])
   const busy = ref(false)
   const contextWindow = ref<ContextWindow | null>(null)
@@ -107,6 +110,10 @@ export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (tu
         } else if (e.name === 'context_used') {
           const v = e.value as { memory: number; notes: string[] }
           turn.context = { memory: v.memory, notes: v.notes, at: now }
+        } else if (e.name === 'artifact') {
+          const saved = e.value as unknown as SavedArtifact
+          turn.artifacts = [...(turn.artifacts ?? []).filter((a) => a.slug !== saved.slug), saved]
+          hooks.onArtifact?.(saved)
         } else if (e.name === 'context_window') {
           contextWindow.value = e.value as unknown as ContextWindow
         } else if (e.name === 'turn') {

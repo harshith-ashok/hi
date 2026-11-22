@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from hi import visuals
-from hi.memory import sessions, transcript
+from hi.memory import artifacts, sessions, transcript
 from hi.server.http import json_body, require_client
 
 TURN_FIELDS = ("id", "parent", "time", "ask", "answer", "tools", "persona", "tier", "seconds", "visual", "error", "plan")
@@ -49,7 +49,9 @@ async def get_session(request: Request) -> JSONResponse:
     s = _session_or_404(request.path_params["session_id"])
     turns = await run_in_threadpool(transcript.session_turns, s.id, s.head)
     versions = await run_in_threadpool(transcript.versions, s.id)
-    return JSONResponse({**asdict(s), "turns": [{**{k: t.get(k, "") for k in TURN_FIELDS}, "versions": versions.get(t["id"])} for t in turns]})
+    made = await run_in_threadpool(artifacts.by_turn, s.id)
+    return JSONResponse({**asdict(s), "turns": [
+        {**{k: t.get(k, "") for k in TURN_FIELDS}, "versions": versions.get(t["id"]), "artifacts": made.get(t["id"], [])} for t in turns]})
 
 
 async def patch_session(request: Request) -> JSONResponse:

@@ -198,7 +198,7 @@ always sees the latest version in full.
 - **Tests:** context contains the latest version only; old answers get the placeholder.
 - **Done when:** "make the button blue" on a 10 KB page produces a correct v2.
 
-### - [ ] 2.3 The artifact panel
+### - [x] 2.3 The artifact panel
 
 - Rename `usePreview` → `useArtifact` and `PreviewPane.vue` → `ArtifactPanel.vue`. State: `{session, slug, version}`;
   content is fetched from the route.

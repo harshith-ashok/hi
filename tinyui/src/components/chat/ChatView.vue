@@ -7,12 +7,13 @@ import { drawVisual, fetchPending, fileAttachment, patchJson, resolvePending, ty
 import { useAttachments, type Attachment } from '@/attachments'
 import ApprovalBar from '@/components/chat/ApprovalBar.vue'
 import Composer from '@/components/chat/Composer.vue'
-import PreviewPane from '@/components/chat/PreviewPane.vue'
+import ArtifactPanel from '@/components/chat/ArtifactPanel.vue'
 import TurnView from '@/components/chat/TurnView.vue'
 import VoiceOverlay from '@/components/chat/VoiceOverlay.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { useArtifact } from '@/composables/useArtifact'
 import { answerOf, toolsOf, useChat, type Turn } from '@/composables/useChat'
 import { useSessions } from '@/composables/useSessions'
 import { useStatus } from '@/composables/useStatus'
@@ -43,7 +44,9 @@ const composer = ref<InstanceType<typeof Composer> | null>(null)
 
 const notify = (text: string, kind: 'info' | 'error' = 'info') => (kind === 'error' ? toast.error(text) : toast(text))
 
+const artifact = useArtifact()
 const chat = useChat({
+  onArtifact: (saved) => { if (artifact.autoOpen.value && sessions.currentId.value) void artifact.openSaved(sessions.currentId.value, saved.slug, saved.version) },
   onSpoken: (text) => void voice.reply(text),
   onDone: () => {
     void sessions.refresh()
@@ -365,6 +368,6 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
 
     <VoiceOverlay v-if="voice.voiceMode.value" :state="voice.state.value" :caption="voice.caption.value" :pending="pending" @leave="voice.toggleVoiceMode" @answer="answerPending" />
   </div>
-  <PreviewPane />
+  <ArtifactPanel />
   </div>
 </template>

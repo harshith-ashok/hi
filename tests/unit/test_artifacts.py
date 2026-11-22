@@ -130,3 +130,13 @@ def test_older_answers_show_a_placeholder_instead_of_the_page(tmp_vault):
     texts = [m["content"] for m in messages if m["role"] == "assistant"]
     assert '[artifact "Budget" v1]' in texts[0] and "<h1>" not in texts[0] and "Anything else?" in texts[0]
     assert '[artifact "Budget"]' in texts[1] and "<h1>" not in texts[1]
+
+
+def test_a_chat_reloaded_from_the_server_lists_what_each_turn_made(tmp_vault):
+    client = TestClient(create_app())
+    s = sessions.create().id
+    make(s, "make a page", "<h1>one</h1>")
+    make(s, "no page this time", "<h1>one</h1>")  # an identical repeat: no new version
+    first, second = client.get(f"/sessions/{s}").json()["turns"]
+    assert first["artifacts"] == [{"slug": "budget", "title": "Budget", "kind": "html", "version": 1}]
+    assert second["artifacts"] == []
