@@ -277,7 +277,7 @@ always sees the latest version in full.
 - Replace the paperclip with a `+` menu: Upload files (existing), Add from vault (a note picker over `GET /memory` or
   the vault file list; adds the note as an attachment), Use a skill (inserts `/`), Use a project (assigns the chat).
 
-### - [ ] 4.5 Writing styles
+### - [x] 4.5 Writing styles
 
 - Add `STYLES` to `hi/automation/profiles.py`: `normal` (empty), `concise`, `explanatory`, `formal`, each a short
   instruction block. User styles: `<vault>/hi/styles/*.md` (frontmatter `name`; body = instruction).

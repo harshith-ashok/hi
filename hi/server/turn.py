@@ -87,13 +87,13 @@ def _context_used(text: str) -> dict | None:
 def stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
     origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
-    parent: str | None = None,
+    parent: str | None = None, style: str = "",
 ):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
     (unreachable Ollama, missing model) reaches the client
     as a RUN_ERROR event instead of a silently dropped connection."""
     try:
-        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier, session, visualize, parent)
+        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier, session, visualize, parent, style)
     except Exception as e:
         records.record_turn(records.TurnRecord(
             forced_persona or "", "", text, error=llm.friendly_error(e), detail=repr(e), origin=origin, session=session,
@@ -105,7 +105,7 @@ def stream_query_as_agui(
 def _stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
     origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
-    parent: str | None = None,
+    parent: str | None = None, style: str = "",
 ):
     """Yields AG-UI events for one query — a `persona_selected` CUSTOM
     event first (this project's own extension; AG-UI has no built-in
@@ -138,6 +138,7 @@ def _stream_query_as_agui(
         persona_name, tier, needs_plan = (*routed, False) if routed else classify_or_default(text)
         persona_name = collapse(persona_name)
     prof = profiles.profile(origin)
+    style_note = profiles.style_text(style) if style and origin not in BACKGROUND_ORIGINS else ""  # the style chosen in the chat
     routed_tier = tier  # what the router chose, before the user's choice is applied
     if forced_tier in TIERS:  # the user (or a background run) asked for a specific tier
         tier = forced_tier
@@ -166,7 +167,7 @@ def _stream_query_as_agui(
     if session and (project_info := projects.context_block(session)):
         context += "\n\n" + project_info  # the chat's project: its instructions and files
     if needs_plan:
-        events = stream_orchestrated_as_agui_sync(text + context + prof.style, thread_id)
+        events = stream_orchestrated_as_agui_sync(text + context + prof.style + style_note, thread_id)
         log_persona = "orchestrator"
     else:
         agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS, session=session)
@@ -174,10 +175,10 @@ def _stream_query_as_agui(
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
         if session and not fresh:
             on_branch = set() if branched and not parent else {e["id"] for e in transcript.session_path(session, parent)}
-            share = int(max(transcript.history_budget(text + context + prof.style), 0) * ARTIFACT_SHARE)
+            share = int(max(transcript.history_budget(text + context + prof.style + style_note), 0) * ARTIFACT_SHARE)
             if block := artifacts.context_block(session, share, on_branch):
                 context += "\n\n" + block
-        message = text + context + prof.style
+        message = text + context + prof.style + style_note
         if branched and hasattr(agent, "reset"):
             agent.reset()  # its memory holds the other branch; the transcript has the right one
         if fresh or (branched and not parent):

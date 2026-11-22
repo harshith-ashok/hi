@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Folder, NotebookText, Plus, Slash, Gauge, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, TextCursorInput, Volume2, Wand2, Workflow, X, Zap } from '@lucide/vue'
+import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Folder, NotebookText, PenLine, Plus, Slash, Gauge, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, TextCursorInput, Volume2, Wand2, Workflow, X, Zap } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { getJson, postJson } from '@/backend'
 import type { Attachment } from '@/attachments'
@@ -37,10 +37,12 @@ const props = defineProps<{
   history?: string[]
   contextWindow?: ContextWindow | null
   projectSlug?: string
+  style?: string
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'update:tier': [value: string]
+  'update:style': [value: string]
   'update:visualize': [value: boolean]
   submit: []
   cancel: []
@@ -54,6 +56,12 @@ const emit = defineEmits<{
 
 const box = ref<InstanceType<typeof Textarea> | null>(null)
 const picker = ref<HTMLInputElement>()
+// writing styles: how hi should write (built in, plus your own files in <vault>/hi/styles)
+interface StyleInfo { id: string; label: string; description: string; source: string }
+const styles = ref<StyleInfo[]>([])
+const currentStyle = computed(() => styles.value.find((x) => x.id === (props.style || 'normal')))
+async function loadStyles() { styles.value = (await getJson<StyleInfo[]>('/styles')) ?? styles.value }
+onMounted(loadStyles)
 const notePicker = ref(false)
 const NO_PROJECT = '__none' // a radio item needs a value; "no project" is the empty slug
 const projectStore = useProjects()
@@ -271,6 +279,24 @@ defineExpose({ focus: () => (box.value?.$el as HTMLTextAreaElement | undefined)?
               </span>
             </DropdownMenuRadioItem>
           </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu @update:open="(open: boolean) => open && loadStyles()">
+        <DropdownMenuTrigger as-child>
+          <Button variant="ghost" size="sm" :class="cn('h-8 gap-1.5 px-2 text-xs', style && style !== 'normal' && 'bg-accent text-accent-foreground')" aria-label="Writing style" :title="`Writing style: ${currentStyle?.label ?? 'Normal'}`">
+            <PenLine class="size-3.5" /><span v-if="style && style !== 'normal'">{{ currentStyle?.label ?? style }}</span><ChevronDown class="size-3 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" class="w-64">
+          <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">How hi writes</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuRadioGroup :model-value="style || 'normal'" @update:model-value="emit('update:style', String($event))">
+            <DropdownMenuRadioItem v-for="x in styles" :key="x.id" :value="x.id" class="items-start gap-2 py-2">
+              <span class="min-w-0"><span class="block text-sm font-medium">{{ x.label }}</span><span class="block truncate text-xs text-muted-foreground">{{ x.description }}</span></span>
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <p class="px-2 pb-1.5 pt-1 text-[11px] text-muted-foreground">Add your own as notes in hi/styles in the vault.</p>
         </DropdownMenuContent>
       </DropdownMenu>
 

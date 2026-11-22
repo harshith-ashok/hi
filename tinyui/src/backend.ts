@@ -121,7 +121,7 @@ export async function uploadContext(file: Blob, name: string, kind = ''): Promis
   return body
 }
 
-export interface QueryOptions { attachments?: string[]; session?: string; visualize?: boolean; tier?: string; parent?: string }
+export interface QueryOptions { attachments?: string[]; session?: string; visualize?: boolean; tier?: string; parent?: string; style?: string }
 
 export async function* streamQuery(text: string, persona: string | null, signal: AbortSignal, options: QueryOptions = {}): AsyncGenerator<AguiEvent> {
   const res = await fetch(`${BASE_URL}/query`, {
@@ -133,6 +133,7 @@ export async function* streamQuery(text: string, persona: string | null, signal:
       attachments: options.attachments?.length ? options.attachments : undefined,
       session: options.session || undefined,
       visualize: options.visualize || undefined,
+      style: options.style && options.style !== 'normal' ? options.style : undefined, // a writing style from GET /styles
       parent: options.parent, // set for an edit or "ask again": the turn it follows ('' = the start of the chat)
       tier: options.tier && options.tier !== 'auto' ? options.tier : undefined, // fast, balanced or deep; omitted = the router chooses
     }),
