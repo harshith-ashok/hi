@@ -70,7 +70,16 @@ const skills = ref<SkillCommand[]>([])
 const active = ref(0)
 const dismissed = ref(false)
 const list = ref<HTMLUListElement | null>(null)
-onMounted(async () => { skills.value = (await getJson<SkillCommand[]>('/skills')) ?? [] })
+let skillsAt = 0
+async function loadSkills() {
+  skillsAt = Date.now()
+  skills.value = (await getJson<SkillCommand[]>('/skills')) ?? skills.value // a failed fetch keeps the list we have
+}
+onMounted(loadSkills)
+// A skill made while the page was open (hi can write one) shows up the next time "/" is typed.
+watch(() => props.modelValue, (typed, before) => {
+  if (typed === '/' && before !== '/' && Date.now() - skillsAt > 1000) void loadSkills()
+})
 const matches = computed<Entry[]>(() => {
   const m = /^\/([\w-]*)$/.exec(props.modelValue)
   if (!m || dismissed.value) return []

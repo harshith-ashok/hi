@@ -259,7 +259,7 @@ always sees the latest version in full.
 - A built-in command never reaches `/query`.
 - **Done when:** every listed command works, and `/pdf …` still runs the skill.
 
-### - [ ] 4.2 Skills that appear without a reload
+### - [x] 4.2 Skills that appear without a reload
 
 - Refetch `GET /skills` each time the composer text becomes `/` (debounced), instead of once on mount.
 
