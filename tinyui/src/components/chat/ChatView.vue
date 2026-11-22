@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, BarChart3, FolderGit2, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow, X } from '@lucide/vue'
+import { ArrowDown, BarChart3, Folder, FolderGit2, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow, X } from '@lucide/vue'
 import { useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { toast } from 'vue-sonner'
@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { useArtifact } from '@/composables/useArtifact'
 import { answerOf, toolsOf, useChat, type Turn } from '@/composables/useChat'
+import { useProjects } from '@/composables/useProjects'
 import { useSessions } from '@/composables/useSessions'
 import { useStatus } from '@/composables/useStatus'
 import { useVoice } from '@/composables/useVoice'
@@ -32,6 +33,7 @@ const SUGGESTIONS: { icon: Component; title: string; text: string }[] = [
 ]
 
 const sessions = useSessions()
+const projectStore = useProjects()
 const status = useStatus()
 const attached = useAttachments()
 const input = ref('')
@@ -66,6 +68,13 @@ const voice = useVoice({
 // --- sessions ------------------------------------------------------------------------------------------------------
 let loadedId = sessions.currentId.value
 const title = computed(() => sessions.titles[sessions.currentId.value] ?? (chat.turns.value.length ? 'Chat' : 'New chat'))
+// the project this chat belongs to (or, before the first message, the one it will be made in)
+const projectSlug = computed(() => (sessions.currentId.value ? sessions.sessions.value.find((s) => s.id === sessions.currentId.value)?.project : projectStore.startIn.value) ?? '')
+const projectName = computed(() => projectStore.projects.value.find((p) => p.slug === projectSlug.value)?.name ?? '')
+async function leaveProject() {
+  if (sessions.currentId.value) await sessions.setProject(sessions.currentId.value, '')
+  else projectStore.startIn.value = ''
+}
 const editing = ref(false)
 const draft = ref('')
 
@@ -117,7 +126,8 @@ async function submit(override?: string, branch?: { parent: string }) {
   historyPos = history.length
   let session = sessions.currentId.value
   if (!session) {
-    const made = await sessions.create()
+    const made = await sessions.create('', projectStore.startIn.value)
+    projectStore.startIn.value = ''
     if (!made) return notify('Could not start a chat: is the backend running?', 'error')
     session = made.id
     loadedId = session // so selecting it below does not reload an empty chat over this one
@@ -295,6 +305,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
           <Pencil v-if="sessions.currentId.value" class="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
         </button>
         <p v-if="lastTurn?.route" class="truncate text-xs text-muted-foreground">{{ lastTurn.route.persona }} · {{ lastTurn.route.tier }}</p>
+        <button v-if="projectName" class="mt-0.5 flex w-fit max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent" :title="`In the project ${projectName}. Click to take this chat out.`" @click="leaveProject"><Folder class="size-3 shrink-0" /><span class="truncate">{{ projectName }}</span><X class="size-3 shrink-0" /></button>
       </div>
       <span v-if="!['ready', 'thinking', 'acting'].includes(voice.state.value)" class="rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground" role="status">{{ voice.state.value }}</span>
     </header>

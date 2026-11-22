@@ -12,6 +12,7 @@ export interface SessionInfo {
   pinned: boolean
   archived: boolean
   turns: number
+  project?: string // the slug of the project the chat belongs to
   snippet?: string
 }
 
@@ -39,8 +40,8 @@ async function refresh() {
 }
 
 /** Make a session. It is not opened: the caller does that with `select`, once it has set up the chat for it. */
-async function create(title = ''): Promise<SessionInfo | null> {
-  const made = await postJson<SessionInfo>('/sessions', title ? { title } : {})
+async function create(title = '', project = ''): Promise<SessionInfo | null> {
+  const made = await postJson<SessionInfo>('/sessions', { ...(title ? { title } : {}), ...(project ? { project } : {}) })
   if (made) {
     sessions.value = [made, ...sessions.value]
     titles[made.id] = made.title
@@ -115,6 +116,13 @@ const grouped = computed(() => {
   return GROUPS.map((name) => ({ name, items: buckets[name] })).filter((g) => g.items.length)
 })
 
+/** Put a chat in a project, or ('') take it out. */
+async function setProject(id: string, project: string): Promise<boolean> {
+  const row = await patchJson<SessionInfo>(`/sessions/${id}`, { project })
+  if (row) sessions.value = sessions.value.map((s) => (s.id === id ? { ...s, ...row } : s))
+  return !!row
+}
+
 export function useSessions() {
-  return { sessions, titles, query, loaded, currentId, grouped, refresh, create, select, preview, open, startNew, rename, pin, archive, remove }
+  return { sessions, titles, query, loaded, currentId, grouped, refresh, create, select, preview, open, startNew, rename, pin, archive, remove, setProject }
 }

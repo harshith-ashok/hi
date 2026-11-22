@@ -233,7 +233,7 @@ always sees the latest version in full.
   `hi/projects/` (check `hi/agents/term/vault_files.py`).
 - **Done when:** a chat in a project follows the project's instructions and can open its files on request.
 
-### - [ ] 3.3 Projects in the UI
+### - [x] 3.3 Projects in the UI
 
 - Sidebar section "Projects" above the chat list; a project page lists its chats, its instructions (editable) and its
   files (upload, remove). "New chat" from a project page creates the session inside it. Add `'projects'` to
