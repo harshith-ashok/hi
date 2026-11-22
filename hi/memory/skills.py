@@ -28,7 +28,7 @@ def skills_dir() -> Path:
 
 # Names the chat UI handles itself. A skill with one of these names is still loadable by the model, but `/name` runs
 # the built-in, so it is left out of the slash list.
-BUILTIN_COMMANDS = frozenset({"new", "clear", "help", "skills", "config", "model", "tier", "persona"})
+BUILTIN_COMMANDS = frozenset({"new", "clear", "help", "skills", "config", "model", "tier"})
 _SLASH_RE = re.compile(r"\A/([A-Za-z0-9][\w-]*)(?:\s+(.*))?\Z", re.DOTALL)
 
 

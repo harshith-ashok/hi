@@ -52,3 +52,17 @@ def test_nested_skills_are_found_and_loadable(tmp_vault):
     assert list(skills.list_skills()) == ["pdf"]
     assert skills.expand_slash("/pdf go")[2].startswith("Nested body.")
     assert "Nested body." in skills.use_skill.invoke({"name": "pdf"})
+
+
+def test_the_reserved_names_are_exactly_the_commands_tinyui_handles(tmp_vault):
+    import re
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[2] / "tinyui" / "src" / "lib" / "commands.ts").read_text()
+    in_ui = set(re.findall(r"\{ name: '([a-z]+)', description:", source))
+    assert in_ui == set(skills.BUILTIN_COMMANDS)
+
+
+def test_a_skill_called_persona_can_be_run_now(tmp_vault):
+    _skill(config.VAULT_PATH, "persona")  # /persona is not a command any more
+    assert skills.expand_slash("/persona write a bio")[0] == "persona"

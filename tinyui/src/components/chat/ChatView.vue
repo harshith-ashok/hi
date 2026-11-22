@@ -19,6 +19,7 @@ import { useProjects } from '@/composables/useProjects'
 import { useSessions } from '@/composables/useSessions'
 import { useStatus } from '@/composables/useStatus'
 import { useVoice } from '@/composables/useVoice'
+import { parseCommand, TIER_NAMES } from '@/lib/commands'
 import { getWakePhrase } from '@/voice'
 
 const props = defineProps<{ active: boolean }>()
@@ -110,7 +111,27 @@ let historyPos = 0
 let suggested: string | null = null
 const queued = ref('') // a message typed while a reply was streaming; it goes out when that reply ends
 
+/** Run a built-in "/" command. None of them is sent to the model. */
+function runCommand(name: string, arg: string) {
+  if (name === 'new' || name === 'clear') {
+    projectStore.startIn.value = ''
+    sessions.select('')
+  } else if (name === 'help' || name === 'skills') window.dispatchEvent(new CustomEvent('hi:help'))
+  else if (name === 'config') window.dispatchEvent(new CustomEvent('hi:go', { detail: 'settings' }))
+  else if (name === 'model' || name === 'tier') {
+    const picked = TIER_NAMES[arg.toLowerCase()]
+    if (!picked) return notify(`Use /${name} fast, balanced, deep or auto. It is ${TIER_NAMES[tier.value]?.label ?? 'Auto'} now.`)
+    tier.value = picked.id
+    notify(`Model size: ${picked.label}.`)
+  }
+}
+
 async function submit(override?: string, branch?: { parent: string }) {
+  const command = override === undefined ? parseCommand(input.value) : null
+  if (command) {
+    input.value = ''
+    return runCommand(command.name, command.arg)
+  }
   const files = attached.ready()
   const text = (override ?? input.value).trim() || (files.length ? 'Look at the attached files.' : '')
   if (!text) return

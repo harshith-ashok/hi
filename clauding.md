@@ -250,7 +250,7 @@ always sees the latest version in full.
 
 ## Phase 4 — Composer and commands
 
-### - [ ] 4.1 Built-in `/` commands
+### - [x] 4.1 Built-in `/` commands
 
 - Implement the reserved names client-side: `/new`, `/clear` (new chat), `/help` (shortcut sheet), `/skills` (list),
   `/model <fast|balanced|deep|auto>`, `/tier` (alias), `/config` (Settings). Remove `persona` from

@@ -31,6 +31,10 @@ const actions: Record<ShortcutId, () => void> = {
   help: () => (help.value = !help.value),
 }
 
+// the message box's /help and /config commands
+useEventListener(window, 'hi:help', () => (help.value = true))
+useEventListener(window, 'hi:go', (e: Event) => { if ((e as CustomEvent).detail === 'settings') emit('navigate', 'settings') })
+
 useEventListener(window, 'keydown', (e: KeyboardEvent) => {
   const shortcut = find(e)
   if (!shortcut || !allowedIn(shortcut, e.target)) return

@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadio
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { useVoice } from '@/composables/useVoice'
+import { COMMANDS } from '@/lib/commands'
 import { cn } from '@/lib/utils'
 
 type Voice = ReturnType<typeof useVoice>
@@ -61,17 +62,24 @@ const ringHint = computed(() => {
 const current = computed(() => TIERS.find((t) => t.id === props.tier) ?? TIERS[0])
 const canSend = computed(() => props.modelValue.trim().length > 0 || props.attachments.some((a) => a.status === 'ready'))
 
-// "/" at the start of the box lists the vault skills; Tab or Enter completes the name.
+// "/" at the start of the box lists the commands, then the vault skills; Tab completes the name, Enter also runs a command
+// that takes no argument.
 interface SkillCommand { name: string; description: string }
+interface Entry { kind: 'command' | 'skill'; name: string; description: string; usage?: string }
 const skills = ref<SkillCommand[]>([])
 const active = ref(0)
 const dismissed = ref(false)
 const list = ref<HTMLUListElement | null>(null)
 onMounted(async () => { skills.value = (await getJson<SkillCommand[]>('/skills')) ?? [] })
-const matches = computed(() => {
+const matches = computed<Entry[]>(() => {
   const m = /^\/([\w-]*)$/.exec(props.modelValue)
   if (!m || dismissed.value) return []
-  return skills.value.filter((s) => s.name.toLowerCase().startsWith(m[1].toLowerCase()))
+  const typed = m[1].toLowerCase()
+  const entries: Entry[] = [
+    ...COMMANDS.map((c): Entry => ({ kind: 'command', ...c })),
+    ...skills.value.map((s): Entry => ({ kind: 'skill', ...s })),
+  ]
+  return entries.filter((e) => e.name.toLowerCase().startsWith(typed))
 })
 watch(() => props.modelValue, () => { active.value = 0; dismissed.value = false })
 watch(active, async () => {
@@ -112,8 +120,10 @@ watch(() => props.modelValue, (typed, before) => {
 })
 onUnmounted(() => clearTimeout(suggestTimer))
 
-function complete(skill: SkillCommand) {
-  emit('update:modelValue', `/${skill.name} `)
+function complete(entry: Entry, run = false) {
+  const runs = run && entry.kind === 'command' && !entry.usage // /new and /help need nothing more: Enter or a click does it
+  emit('update:modelValue', runs ? `/${entry.name}` : `/${entry.name} `)
+  if (runs) emit('submit')
 }
 
 function onKey(e: KeyboardEvent) {
@@ -126,7 +136,7 @@ function onKey(e: KeyboardEvent) {
     }
     if ((e.key === 'Tab' || e.key === 'Enter') && !e.shiftKey && !e.isComposing) {
       e.preventDefault()
-      complete(matches.value[active.value])
+      complete(matches.value[active.value], e.key === 'Enter')
       return
     }
     if (e.key === 'Escape') { dismissed.value = true; return }
@@ -177,10 +187,11 @@ defineExpose({ focus: () => (box.value?.$el as HTMLTextAreaElement | undefined)?
       </li>
     </ul>
 
-    <ul v-if="matches.length" ref="list" class="mx-2 mt-2 max-h-56 overflow-y-auto rounded-lg border bg-popover text-sm shadow-sm" role="listbox" aria-label="Skills">
-      <li v-for="(skill, i) in matches" :key="skill.name" role="option" :aria-selected="i === active" :class="cn('flex cursor-pointer items-baseline gap-2 px-3 py-1.5', i === active && 'bg-accent text-accent-foreground')" @mousedown.prevent="complete(skill)" @mousemove="active = i">
-        <span class="font-mono text-xs">/{{ skill.name }}</span>
-        <span class="truncate text-xs text-muted-foreground">{{ skill.description }}</span>
+    <ul v-if="matches.length" ref="list" class="mx-2 mt-2 max-h-56 overflow-y-auto rounded-lg border bg-popover text-sm shadow-sm" role="listbox" aria-label="Commands and skills">
+      <li v-for="(entry, i) in matches" :key="`${entry.kind}-${entry.name}`" role="option" :aria-selected="i === active" :class="cn('flex cursor-pointer items-baseline gap-2 px-3 py-1.5', i === active && 'bg-accent text-accent-foreground')" @mousedown.prevent="complete(entry, true)" @mousemove="active = i">
+        <span class="font-mono text-xs">/{{ entry.name }}</span>
+        <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{{ entry.description }}<template v-if="entry.usage">: {{ entry.usage }}</template></span>
+        <span class="shrink-0 rounded border px-1 text-[10px] text-muted-foreground">{{ entry.kind === 'command' ? 'Command' : 'Skill' }}</span>
       </li>
     </ul>
 
