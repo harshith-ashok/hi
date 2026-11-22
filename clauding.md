@@ -240,7 +240,7 @@ always sees the latest version in full.
   `View` in `lib/views.ts`.
 - **Done when:** a project can be created, given instructions and files, and chatted in, all from tinyui.
 
-### - [ ] 3.4 Personal preferences editor
+### - [x] 3.4 Personal preferences editor
 
 - `knowledge/preferences.md` already goes into the term prompt (`term.py`). Add a text area for it in Settings, with
   `GET/PUT /preferences`.

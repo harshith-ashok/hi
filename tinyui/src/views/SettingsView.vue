@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Check, Loader2 } from '@lucide/vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import PageHeader from '@/components/app/PageHeader.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,10 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { autoOpen } from '@/composables/useArtifact'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import { fetchConfig, fetchModels, fetchVoices, saveConfig, saveConfigChecked } from '@/backend'
+import { BASE_URL, fetchConfig, fetchModels, fetchVoices, getJson, saveConfig, saveConfigChecked } from '@/backend'
 import ImagesTab from '@/views/ImagesTab.vue'
 import { getWakePhrase, setWakePhrase, speak, unlockAudio } from '@/voice'
 
@@ -29,6 +30,29 @@ const BACKENDS: [string, string][] = [['ollama', 'phonon (Ollama)'], ['huggingfa
 const AUTO_KEYS = ['HEARTBEAT', 'HEARTBEAT_EVERY', 'HEARTBEAT_HOURS', 'SCREENSHOT_WATCH', 'MAX_BACKGROUND_RUNS_PER_HOUR', 'MAX_HOSTED_CALLS_PER_DAY', 'MAX_NOTIFICATIONS_PER_HOUR', 'PROPOSAL_TTL_DAYS'] as const
 
 const tab = ref('connection')
+
+// personal preferences: standing instructions that go with every message (hi/knowledge/preferences.md)
+const prefs = ref('')
+const prefsSaved = ref('')
+const prefsMax = ref(8000)
+const prefsStatus = ref('')
+async function loadPrefs() {
+  const found = await getJson<{ text: string; max_chars: number }>('/preferences')
+  if (!found) return void (prefsStatus.value = 'Could not load: is the backend running?')
+  prefs.value = prefsSaved.value = found.text
+  prefsMax.value = found.max_chars
+}
+async function savePrefs() {
+  try {
+    const res = await fetch(`${BASE_URL}/preferences`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Hi-Client': 'tinyui' }, body: JSON.stringify({ text: prefs.value }) })
+    if (!res.ok) return void (prefsStatus.value = (await res.json().catch(() => ({})))?.detail ?? 'Could not save.')
+    prefsSaved.value = prefs.value.trim()
+    prefsStatus.value = 'Saved. The next reply uses it.'
+  } catch {
+    prefsStatus.value = 'Could not save: is the backend running?'
+  }
+}
+watch(tab, (t) => { if (t === 'interface') void loadPrefs() })
 const active = ref<Mode>('local')
 const mode = ref<Mode>('local')
 const endpoints = reactive<Record<string, string>>({ OLLAMA_HOST: '', TAILSCALE_OLLAMA_URL: '' })
@@ -203,6 +227,13 @@ onMounted(async () => {
             <CardHeader><CardTitle>Artifacts</CardTitle><CardDescription>Pages, documents and diagrams a reply writes for you to keep.</CardDescription></CardHeader>
             <CardContent class="space-y-4">
               <div class="flex items-center justify-between gap-4"><div><Label for="auto-artifact">Open artifacts automatically</Label><p class="text-xs text-muted-foreground">Show each one beside the chat as soon as it is written. This browser only.</p></div><Switch id="auto-artifact" v-model="autoOpen" /></div>
+            </CardContent>
+          </Card>
+          <Card class="md:col-span-2">
+            <CardHeader><CardTitle>Personal preferences</CardTitle><CardDescription>Standing instructions hi sees with every message: how you like answers, what to always do. Plain text or Markdown.</CardDescription></CardHeader>
+            <CardContent class="space-y-3">
+              <Textarea v-model="prefs" class="min-h-40" aria-label="Personal preferences" placeholder="- Keep answers short.&#10;- I use metric units." :maxlength="prefsMax" />
+              <div class="flex items-center gap-3"><Button :disabled="prefs.trim() === prefsSaved.trim()" @click="savePrefs">Save</Button><span class="text-sm text-muted-foreground" role="status">{{ prefsStatus }}</span><span class="ml-auto text-xs text-muted-foreground">{{ prefs.length.toLocaleString() }} / {{ prefsMax.toLocaleString() }}</span></div>
             </CardContent>
           </Card>
         </div>
