@@ -19,7 +19,7 @@ const sceneOf = (text: string) => parseScene(text)
     <template v-for="(part, i) in parts" :key="i">
       <div
         v-if="part.kind === 'html'"
-        class="prose prose-sm max-w-none break-words dark:prose-invert prose-headings:font-semibold prose-pre:bg-muted prose-img:rounded-lg prose-table:block prose-table:overflow-x-auto prose-a:text-primary"
+        class="reply-prose prose prose-sm max-w-none break-words dark:prose-invert prose-headings:font-semibold prose-pre:bg-muted prose-img:rounded-lg prose-table:block prose-table:overflow-x-auto prose-a:text-primary"
         v-html="part.html"
       />
       <CodeBlock v-else-if="part.kind === 'code'" :lang="part.lang" :text="part.text" :previewable="!streaming" />

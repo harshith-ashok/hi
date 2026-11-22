@@ -113,3 +113,21 @@
   body { @apply bg-background text-foreground antialiased; font-family: var(--font-sans); }
   button:not(:disabled), [role='button']:not(:disabled) { cursor: pointer; }
 }
+
+/* How a reply reads: 15px text at a 1.65 line height inside a narrow column (the column width is set in ChatView). */
+.reply-prose.prose {
+  font-size: 15px;
+  line-height: 1.65;
+}
+.reply-prose.prose :where(p, li, blockquote) {
+  line-height: 1.65;
+}
+.reply-prose.prose :where(p) {
+  margin-top: 0.85em;
+  margin-bottom: 0.85em;
+}
+.math-block {
+  overflow-x: auto;
+  margin: 0.9em 0;
+  text-align: center;
+}

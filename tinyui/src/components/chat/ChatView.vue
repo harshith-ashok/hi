@@ -297,7 +297,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
     </header>
 
     <div ref="scroller" class="relative min-h-0 flex-1 overflow-y-auto" @scroll.passive="onScroll">
-      <div ref="content" class="mx-auto w-full max-w-3xl space-y-8 px-4 py-6">
+      <div ref="content" class="mx-auto w-full max-w-[46rem] space-y-8 px-4 py-6">
         <div v-if="!chat.turns.value.length" class="flex flex-col items-center gap-6 py-10 text-center">
           <div class="flex size-12 items-center justify-center rounded-2xl bg-primary text-lg font-bold text-primary-foreground">hi</div>
           <div>
@@ -330,7 +330,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
     </div>
 
     <div class="shrink-0 border-t bg-background/80 px-4 pb-4 pt-3 backdrop-blur">
-      <div class="mx-auto w-full max-w-3xl space-y-2">
+      <div class="mx-auto w-full max-w-[46rem] space-y-2">
         <ApprovalBar :pending="pending" @answer="answerPending" />
         <div v-if="queued" class="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground" role="status">
           <span class="shrink-0">Sends when the reply ends:</span><span class="truncate text-foreground">{{ queued }}</span>

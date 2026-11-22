@@ -156,7 +156,7 @@ Built on 0.2. Nothing is deleted: a new attempt is a sibling in the turn tree.
 - **Done when:** `$e^{i\pi}+1=0$` renders, and a price like `$5 and $10` does not turn into math (require no space
   after the opening `$` and before the closing one).
 
-### - [ ] 1.5 Reading layout
+### - [ ] 1.5 Reading layout (applied; waiting for a visual check in light and dark at laptop width and 390px)
 
 - Reply column at most 46rem, body text 15px, line height 1.65. User messages in a soft rounded panel aligned right;
   replies plain, no container. Keep the sticky "Latest" button.
