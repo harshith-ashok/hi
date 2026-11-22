@@ -221,8 +221,8 @@ def _waiting_note(tool: dict) -> str:
     return ""
 
 
-def _assistant_text(entry: dict) -> str:
-    answer = _clip(entry.get("answer") or "", ANSWER_CHARS)
+def _assistant_text(entry: dict, limit: int = ANSWER_CHARS) -> str:
+    answer = _clip(entry.get("answer") or "", limit)
     notes = [n for t in entry.get("tools", []) if (n := _waiting_note(t))]
     if notes and not answer:
         answer = "[" + "; ".join(notes) + "]"
@@ -239,3 +239,40 @@ def history(turns: int = HISTORY_TURNS, session: str = "", head: str = "") -> li
         messages.append({"role": "user", "content": _clip(entry["ask"], ASK_CHARS)})
         messages.append({"role": "assistant", "content": _assistant_text(entry)})
     return messages
+
+
+# --- a history that fits the model's context window -------------------------------------------------------------------
+
+ANSWER_RESERVE_TOKENS = 4096    # left free for the model's reply
+PROMPT_OVERHEAD_TOKENS = 7000   # the system prompt, tool definitions and vault context: a rough allowance, not measured
+
+
+def estimate_tokens(text: str) -> int:
+    """A cheap token count (about three characters a token, a little generous for code). No tokenizer dependency."""
+    return len(text) // 3 + 1
+
+
+def history_budget(message: str) -> int:
+    """Tokens left for earlier turns once the prompt, this message (with any attached context) and the reply are paid for."""
+    return config.CONTEXT_TOKENS - ANSWER_RESERVE_TOKENS - PROMPT_OVERHEAD_TOKENS - estimate_tokens(message)
+
+
+def history_within(budget_tokens: int, session: str, head: str = "") -> tuple[list[dict], int]:
+    """The newest turns of `session` (on the branch ending at `head`) that fit in `budget_tokens`, as chat messages, and
+    how many earlier turns had to be left out. Oldest turns go first; the newest exchange is always kept. A turn is
+    clipped only when it alone is bigger than a quarter of the budget (and never below the usual per-turn limits)."""
+    entries = [e for e in session_path(session, head, SESSION_DAYS) if _counts_as_history(e)]
+    cap = max(budget_tokens, 0) // 4 * 3  # characters
+    kept: list[list[dict]] = []
+    used = 0
+    for entry in reversed(entries):
+        pair = [
+            {"role": "user", "content": _clip(entry["ask"], max(ASK_CHARS, cap))},
+            {"role": "assistant", "content": _assistant_text(entry, max(ANSWER_CHARS, cap))},
+        ]
+        cost = sum(estimate_tokens(m["content"]) for m in pair)
+        if kept and used + cost > budget_tokens:
+            break
+        kept.append(pair)
+        used += cost
+    return [m for pair in reversed(kept) for m in pair], len(entries) - len(kept)

@@ -86,14 +86,14 @@ Phase 0 fixes both before anything is built on top.
 - **Tests:** ids and parents are written; legacy entries read as a chain; `session_path` follows `head`.
 - **Done when:** behaviour is unchanged for the user, and every turn in a session has an id the UI knows.
 
-### - [ ] 0.3 Budget history by tokens, not by turn count
+### - [x] 0.3 Budget history by tokens, not by turn count
 
 - Replace the fixed count with a budget: `history_budget = CONTEXT_TOKENS - RESERVED_FOR_ANSWER (4096) -
 estimate(system prompt + this message + attached context)`. Use a plain estimate (`len(text) // 3`, a little
   generous for code); do not add a tokenizer dependency.
 - Fill from the newest turn backwards along `session_path`. Clip only a turn that alone exceeds a quarter of the
   budget. Keep `ASK_CHARS`/`ANSWER_CHARS` only as that per-turn ceiling.
-- Return how many turns were left out. `turn.py` emits `CustomEvent(name="context", value={"used": n, "limit": m,
+- Return how many turns were left out. `turn.py` emits `CustomEvent(name="context_window", value={"used": n, "limit": m,
 "dropped_turns": k})`.
 - **Tests:** a short chat is sent whole; a long one drops the oldest turns first; one huge answer is clipped, not
   dropped.

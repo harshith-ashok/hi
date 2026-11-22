@@ -160,7 +160,16 @@ def _stream_query_as_agui(
         agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS, session=session)
         if fresh and hasattr(agent, "reset"):
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
-        events = stream_agent_as_agui(agent, text + context + prof.style, thread_id, [] if fresh else transcript.history(session=session, head=parent))
+        message = text + context + prof.style
+        if fresh:
+            earlier: list[dict] = []
+        elif session:
+            earlier, dropped = transcript.history_within(transcript.history_budget(message), session, parent)
+            used = transcript.PROMPT_OVERHEAD_TOKENS + transcript.estimate_tokens(message) + sum(transcript.estimate_tokens(m["content"]) for m in earlier)
+            yield ag.CustomEvent(name="context_window", value={"used": used, "limit": config.CONTEXT_TOKENS, "dropped_turns": dropped})
+        else:
+            earlier = transcript.history()
+        events = stream_agent_as_agui(agent, message, thread_id, earlier)
         log_persona = persona_name
 
     final_answer = ""
