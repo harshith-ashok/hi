@@ -76,6 +76,13 @@ from hi.tracking.team_ops import (
     team_status_draft,
 )
 from hi.watchdogs.dev_servers import check_dev_servers
+from hi.agents.term.vault_files import (
+    append_vault_note,
+    edit_vault_note,
+    list_vault_folder,
+    move_vault_note,
+    write_vault_note,
+)
 from hi.memory.vault import (
     launch_cwd,
     append_note,
@@ -236,6 +243,11 @@ TOOLS = passthrough([
     generate_image,
     search_vault,
     read_vault_note,
+    list_vault_folder,
+    write_vault_note,
+    edit_vault_note,
+    append_vault_note,
+    move_vault_note,
     run_shell_command,
     run_mac_shell,
     list_background_tasks,

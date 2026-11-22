@@ -10,6 +10,7 @@ import { useProjects } from '@/composables/useProjects'
 import { useSessions } from '@/composables/useSessions'
 import type { View } from '@/lib/views'
 import { unlockAudio } from '@/voice'
+import DropboxView from '@/views/DropboxView.vue'
 import InboxView from '@/views/InboxView.vue'
 import LogsView from '@/views/LogsView.vue'
 import MemoryView from '@/views/MemoryView.vue'
@@ -53,6 +54,7 @@ onMounted(() => {
         <ChatView v-show="view === 'chat'" :active="view === 'chat'" />
         <InboxView v-if="view === 'inbox'" />
         <ProjectsView v-else-if="view === 'projects'" @open="openSession" @new-chat="chatIn" />
+        <DropboxView v-else-if="view === 'dropbox'" />
         <TasksView v-else-if="view === 'tasks'" />
         <MemoryView v-else-if="view === 'memory'" />
         <LogsView v-else-if="view === 'logs'" />

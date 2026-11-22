@@ -52,6 +52,13 @@ def test_cors_preflight(client):
     assert r.status_code == 200 and "POST" in r.headers["access-control-allow-methods"]
 
 
+def test_cors_preflight_allows_every_method_tinyui_uses(client):
+    """tinyui is on another origin than the API, so each method it sends is preflighted. PUT saves the preferences."""
+    for method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
+        r = client.options("/preferences", headers={"Origin": ORIGIN, "Access-Control-Request-Method": method, "Access-Control-Request-Headers": "content-type,x-hi-client"})
+        assert r.status_code == 200 and method in r.headers["access-control-allow-methods"], method
+
+
 def test_memory_routes_validate_input(client):
     assert client.post("/memory/add", json={}).status_code == 400
     assert client.post("/memory/forget", content=b"nope").status_code == 400
