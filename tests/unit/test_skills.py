@@ -1,3 +1,5 @@
+import pytest
+
 import hi.config as config
 from hi.memory import skills
 
@@ -66,3 +68,49 @@ def test_the_reserved_names_are_exactly_the_commands_tinyui_handles(tmp_vault):
 def test_a_skill_called_persona_can_be_run_now(tmp_vault):
     _skill(config.VAULT_PATH, "persona")  # /persona is not a command any more
     assert skills.expand_slash("/persona write a bio")[0] == "persona"
+
+
+# --- writing skills ----------------------------------------------------------------------------------------------
+
+def test_a_created_skill_is_listed_and_can_be_run_with_a_slash(tmp_vault):
+    from hi.agents.term.skill_tools import create_skill
+
+    out = create_skill.invoke({"name": "weekly-report", "description": "Write the weekly report.\nUse on Fridays.", "instructions": "1. Gather the week's notes."})
+    assert "/weekly-report" in out
+    assert skills.list_skills() == {"weekly-report": "Write the weekly report. Use on Fridays."}
+    assert skills.expand_slash("/weekly-report now")[2].startswith("1. Gather")
+
+
+@pytest.mark.parametrize("name", ["A", "x", "Has Space", "../up", "a" * 41, "-lead", "new", "model"])
+def test_bad_and_reserved_names_are_refused(tmp_vault, name):
+    from hi.agents.term.skill_tools import create_skill
+
+    assert "Created" not in create_skill.invoke({"name": name, "description": "d", "instructions": "i"})
+    assert skills.list_skills() == {}
+
+
+def test_creating_never_overwrites_and_needs_a_description_and_instructions(tmp_vault):
+    from hi.agents.term.skill_tools import create_skill
+
+    _skill(config.VAULT_PATH, "pdf", body="original")
+    assert "already exists" in create_skill.invoke({"name": "pdf", "description": "d", "instructions": "new"})
+    assert "original" in skills.skill_text("pdf")
+    assert "description" in create_skill.invoke({"name": "fresh", "description": "  ", "instructions": "i"})
+    assert "instructions" in create_skill.invoke({"name": "fresh", "description": "d", "instructions": " "})
+
+
+def test_updating_asks_first_backs_up_and_keeps_other_frontmatter(tmp_vault, monkeypatch):
+    from hi.agents.term import skill_tools
+
+    _skill(config.VAULT_PATH, "pdf", extra="invoke: false\n", body="old steps")
+    update = lambda **kw: skill_tools.update_skill.invoke({"name": "pdf", "instructions": "new steps", **kw})
+    monkeypatch.setattr(skill_tools, "confirm_destructive", lambda description: False)
+    assert "Cancelled" in update() and "old steps" in skills.skill_text("pdf")
+    monkeypatch.setattr(skill_tools, "confirm_destructive", lambda description: True)
+    assert "Updated" in update(description="Handle PDFs")
+    assert "new steps" in skills.skill_text("pdf")
+    text = (config.VAULT_PATH / "skills" / "pdf" / "SKILL.md").read_text()
+    assert "invoke: false" in text and "description: Handle PDFs" in text
+    (backup,) = (config.VAULT_PATH / "hi" / "backups").glob("*/skills/pdf/SKILL.md")
+    assert "old steps" in backup.read_text()
+    assert "No skill named" in skill_tools.update_skill.invoke({"name": "ghost", "instructions": "x"})

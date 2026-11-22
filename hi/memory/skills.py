@@ -14,7 +14,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 import hi.config as config
-from hi.memory.frontmatter import parse_frontmatter
+from hi.memory.frontmatter import dump_frontmatter, parse_frontmatter
 from hi.memory.context import _words
 
 MAX_BODY_CHARS = 12000
@@ -64,6 +64,56 @@ def list_skills(include_hidden: bool = False) -> dict[str, str]:
     }
 
 
+NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]{1,39}")
+MAX_DESCRIPTION = 300
+
+
+def name_problem(name: str) -> str:
+    """Why `name` cannot be used for a new skill ("" when it can)."""
+    if not NAME_RE.fullmatch(name):
+        return "A skill name is 2 to 40 characters: lower-case letters, digits and hyphens, starting with a letter or digit."
+    if name in BUILTIN_COMMANDS:
+        return f"'{name}' is a built-in command, so '/{name}' would run the command. Pick another name."
+    if name in _folders(include_hidden=True) or (skills_dir() / name).exists():
+        return f"A skill named '{name}' already exists. Use update_skill to change it."
+    return ""
+
+
+def _one_line(text: str, limit: int) -> str:
+    return re.sub(r"\s+", " ", text).strip()[:limit]
+
+
+def create(name: str, description: str, instructions: str) -> Path:
+    """Write a new skill. Raises ValueError (with a message to show) when the name, description or instructions are no good."""
+    if problem := name_problem(name):
+        raise ValueError(problem)
+    if not _one_line(description, MAX_DESCRIPTION):
+        raise ValueError("A skill needs a description: one line saying what it does and when to use it.")
+    if not instructions.strip():
+        raise ValueError("A skill needs instructions.")
+    path = skills_dir() / name / "SKILL.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{dump_frontmatter({'name': name, 'description': _one_line(description, MAX_DESCRIPTION)})}\n{instructions.strip()}\n")
+    return path
+
+
+def update(name: str, instructions: str, description: str = "") -> Path:
+    """Replace a skill's instructions (and its description, when given), keeping any other frontmatter it has. The caller
+    backs up the old file first. Raises ValueError when there is no such skill."""
+    folder = _folders(include_hidden=True).get(name)
+    if folder is None:
+        raise ValueError(f"No skill named '{name}'.")
+    if not instructions.strip():
+        raise ValueError("A skill needs instructions.")
+    path = folder / "SKILL.md"
+    fields, _body = parse_frontmatter(path.read_text(errors="ignore"))
+    fields.setdefault("name", name)
+    if description.strip():
+        fields["description"] = _one_line(description, MAX_DESCRIPTION)
+    path.write_text(f"{dump_frontmatter(fields)}\n{instructions.strip()}\n")
+    return path
+
+
 def slash_commands() -> list[dict[str, str]]:
     """The skills `/name` can run: [{name, description}], built-in command names excluded."""
     return [{"name": n, "description": d} for n, d in list_skills().items() if n.lower() not in BUILTIN_COMMANDS]
@@ -89,7 +139,8 @@ def index() -> str:
     if not skills:
         return ""
     lines = [f"- {name}: {re.sub(r'\s+', ' ', desc)[:INDEX_DESCRIPTION_CHARS]}" for name, desc in skills.items()]
-    return "Skills (instructions for specific kinds of task; call use_skill(name) to load one before starting):\n" + "\n".join(lines)
+    return ("Skills (instructions for specific kinds of task; call use_skill(name) to load one before starting. To save a new "
+            "skill the user asks for, call create_skill):\n" + "\n".join(lines))
 
 
 def hint_for(message: str) -> str:

@@ -263,7 +263,7 @@ always sees the latest version in full.
 
 - Refetch `GET /skills` each time the composer text becomes `/` (debounced), instead of once on mount.
 
-### - [ ] 4.3 `create_skill` tool
+### - [x] 4.3 `create_skill` tool
 
 - In `hi/memory/skills.py`: `create_skill(name, description, instructions)`, writing
   `<vault>/skills/<name>/SKILL.md`. Name must match `[a-z0-9-]{2,40}`, must not be a built-in command and must not

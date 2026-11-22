@@ -38,6 +38,18 @@ A chat is a session: a note in `hi/sessions/` plus the turns in the transcript t
 `/scenes/<name>.json`; the chat draws it with three.js. The sandbox image has `trimesh` and returns mesh files.
 Decisions: [adr/0003-tinyui-redesign.md](adr/0003-tinyui-redesign.md).
 
+## Skills
+
+A skill is `<vault>/skills/<name>/SKILL.md` (name and description in the frontmatter, instructions in the body), found at any
+depth under `skills/`, so a cloned skills repo works as it is. The model sees only a one-line index and loads a skill with
+`use_skill`; in tinyui, `/name request` loads it for that turn (`hi/memory/skills.py`). `create_skill` and `update_skill`
+(`hi/agents/term/skill_tools.py`) let `hi` write them; updating asks first and keeps the old file in `hi/backups`. A skill
+with `invoke: false` in its frontmatter is hidden from `/` and from the index. Built-in command names (`/new`, `/help`, ...)
+win over a skill of the same name.
+
+The `skill-creator` skill's evaluation scripts (`run_eval.py`, `run_loop.py`, the eval viewer) assume Claude Code and
+subagents. `hi` does not provide those, so they are not supported; the writing guidance in that skill is.
+
 ## Background work
 
 Runs nobody asked for (schedules, the heartbeat, the drop folder) go through `hi/server/headless.py`: the same turn

@@ -90,7 +90,7 @@ GROUPS: tuple[Group, ...] = (
     Group("core", 1, (
         "run_shell_command", "run_mac_shell", "search_vault", "read_vault_note", "read_project_file", "list_project_files", "search_files",
         "edit_project_file", "write_project_file",
-        "read_note", "list_notes", "create_note", "append_note", "current_context", "use_skill", "read_workspace_file", "git_on_mac", "git_push",
+        "read_note", "list_notes", "create_note", "append_note", "current_context", "use_skill", "read_workspace_file", "create_skill", "update_skill", "git_on_mac", "git_push",
     )),
     # ---- term: native, on keyword ----------------------------------------
     Group("background", 2, ("list_background_tasks", "check_background_task", "stop_background_task", "check_dev_servers"),

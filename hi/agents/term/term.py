@@ -49,6 +49,7 @@ from hi.context.now import describe as screen_context
 from hi.agents.term.host_git import git_on_mac, git_push
 from hi.memory.skills import hint_for, index as skills_index, use_skill
 from hi.agents.term.project_files import read_workspace_file
+from hi.agents.term.skill_tools import create_skill, update_skill
 from hi.memory.context import build_context, search_vault
 from hi.agents.docs.vault_rag import read_vault_note
 from hi.orchestrator.graph import latest_run_trace
@@ -222,6 +223,8 @@ TOOLS = passthrough([
     git_push,
     use_skill,
     read_workspace_file,
+    create_skill,
+    update_skill,
     current_context,
     pause_screen_context,
     resume_screen_context,
