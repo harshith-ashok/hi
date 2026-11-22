@@ -186,7 +186,7 @@ always sees the latest version in full.
 - Validate `session` with `sessions.valid_id` and `slug` with `[a-z0-9-]+`.
 - **Tests:** extraction (marker required, title optional → "Untitled"), versioning by title, path safety.
 
-### - [ ] 2.2 Put the latest artifacts into context
+### - [x] 2.2 Put the latest artifacts into context
 
 - In `turn.py`, when the session has artifacts, add "Current artifacts" to the context: each latest version in full,
   newest first, within the 0.3 budget (an artifact that does not fit is listed by title with a note to ask for it).

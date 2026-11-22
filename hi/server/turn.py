@@ -20,7 +20,7 @@ from hi.core import runpolicy
 from hi.core.runpolicy import BACKGROUND_ORIGINS
 from hi.llm.registry import TIERS, get_tier_model, get_tier_model_fast
 from hi.memory import extraction as memory
-from hi.memory import records, reflection as reflection_agent, sessions, summary, transcript
+from hi.memory import artifacts, records, reflection as reflection_agent, sessions, summary, transcript
 from hi.memory.skills import expand_slash
 from hi.orchestrator.complexity import classify_or_default
 from hi.personas import PERSONAS, get_agent_builder
@@ -55,6 +55,9 @@ _cache_lock = threading.Lock()
 
 
 MAX_CACHED_AGENTS = 16  # one per (persona, tier, session) in use; the least recently used is dropped
+
+
+ARTIFACT_SHARE = 0.6  # at most this much of what is left of the context window goes to the chat's artifacts
 
 
 def _get_agent(persona_name: str, tier: str, isolated: bool = False, session: str = ""):
@@ -167,6 +170,11 @@ def _stream_query_as_agui(
         agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS, session=session)
         if fresh and hasattr(agent, "reset"):
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
+        if session and not fresh:
+            on_branch = set() if branched and not parent else {e["id"] for e in transcript.session_path(session, parent)}
+            share = int(max(transcript.history_budget(text + context + prof.style), 0) * ARTIFACT_SHARE)
+            if block := artifacts.context_block(session, share, on_branch):
+                context += "\n\n" + block
         message = text + context + prof.style
         if branched and hasattr(agent, "reset"):
             agent.reset()  # its memory holds the other branch; the transcript has the right one

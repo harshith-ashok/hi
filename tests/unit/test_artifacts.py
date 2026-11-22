@@ -78,3 +78,55 @@ def test_routes_return_json_and_refuse_bad_paths(tmp_vault):
     assert client.get(f"/artifacts/{s}/budget/x").status_code == 404
     assert client.get(f"/artifacts/{s}/..%2Fsessions/1").status_code == 404
     assert client.get("/artifacts/..%2F..%2Fetc/x/1").status_code == 404
+
+
+# --- artifacts in the model's context ----------------------------------------------------------------------------
+
+def make(s, ask, body, **kw):
+    rec = TurnRecord("term", "sonnet", ask, f'Here.\n```html artifact title="Budget"\n{body}\n```\nAnything else?', session=s, **kw)
+    record_turn(rec)
+    return rec
+
+
+def test_the_context_has_only_the_newest_version_in_full(tmp_vault):
+    s = sessions.create().id
+    make(s, "make a page", "<h1>one</h1>")
+    make(s, "change it", "<h1>two</h1>")
+    block = artifacts.context_block(s, 5000)
+    assert "<h1>two</h1>" in block and "<h1>one</h1>" not in block and "version 2" in block
+    assert artifacts.context_block(sessions.create().id, 5000) == ""
+
+
+def test_an_artifact_that_does_not_fit_is_named_not_included(tmp_vault):
+    s = sessions.create().id
+    make(s, "big", "<p>" + "x" * 3000 + "</p>")
+    block = artifacts.context_block(s, 100)
+    assert '"Budget"' in block and "xxxx" not in block and "too large" in block
+
+
+def test_only_versions_on_the_showing_branch_count(tmp_vault):
+    s = sessions.create().id
+    first = make(s, "page", "<h1>one</h1>")
+    make(s, "edit A", "<h1>from A</h1>", id="a", parent=first.id)
+    make(s, "edit B", "<h1>from B</h1>", id="b", parent=first.id)
+    on_a = artifacts.context_block(s, 5000, {first.id, "a"})
+    assert "from A" in on_a and "from B" not in on_a
+    assert artifacts.context_block(s, 5000, set()) == ""
+
+
+def test_a_longer_fence_is_used_when_the_artifact_contains_backticks(tmp_vault):
+    s = sessions.create().id
+    record_turn(TurnRecord("term", "sonnet", "doc", '````markdown artifact title="Doc"\n```py\nx\n```\n````', session=s))
+    assert "````markdown" in artifacts.context_block(s, 5000)
+
+
+def test_older_answers_show_a_placeholder_instead_of_the_page(tmp_vault):
+    from hi.memory import transcript
+
+    s = sessions.create().id
+    make(s, "make a page", "<h1>one</h1>")
+    make(s, "thanks", "<h1>one</h1>")  # an identical repeat makes no new version
+    messages, _ = transcript.history_within(100_000, s)
+    texts = [m["content"] for m in messages if m["role"] == "assistant"]
+    assert '[artifact "Budget" v1]' in texts[0] and "<h1>" not in texts[0] and "Anything else?" in texts[0]
+    assert '[artifact "Budget"]' in texts[1] and "<h1>" not in texts[1]

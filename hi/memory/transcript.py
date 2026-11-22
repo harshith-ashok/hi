@@ -23,6 +23,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import hi.config as config
+from hi.memory import artifacts
+from hi.memory.tokens import estimate_tokens
 from hi.core.runpolicy import BACKGROUND_ORIGINS
 
 HISTORY_TURNS = 8        # exchanges handed to the agent with each new message
@@ -246,8 +248,11 @@ def _waiting_note(tool: dict) -> str:
     return ""
 
 
-def _assistant_text(entry: dict, limit: int = ANSWER_CHARS) -> str:
-    answer = _clip(entry.get("answer") or "", limit)
+def _assistant_text(entry: dict, limit: int = ANSWER_CHARS, session: str = "") -> str:
+    answer = entry.get("answer") or ""
+    if session and "artifact" in answer:
+        answer = artifacts.collapse(session, entry.get("id", ""), answer)  # the newest version is sent in full elsewhere
+    answer = _clip(answer, limit)
     notes = [n for t in entry.get("tools", []) if (n := _waiting_note(t))]
     if notes and not answer:
         answer = "[" + "; ".join(notes) + "]"
@@ -272,11 +277,6 @@ ANSWER_RESERVE_TOKENS = 4096    # left free for the model's reply
 PROMPT_OVERHEAD_TOKENS = 7000   # the system prompt, tool definitions and vault context: a rough allowance, not measured
 
 
-def estimate_tokens(text: str) -> int:
-    """A cheap token count (about three characters a token, a little generous for code). No tokenizer dependency."""
-    return len(text) // 3 + 1
-
-
 def history_budget(message: str) -> int:
     """Tokens left for earlier turns once the prompt, this message (with any attached context) and the reply are paid for."""
     return config.CONTEXT_TOKENS - ANSWER_RESERVE_TOKENS - PROMPT_OVERHEAD_TOKENS - estimate_tokens(message)
@@ -298,7 +298,7 @@ def history_within(budget_tokens: int, session: str, head: str = "") -> tuple[li
     for entry in reversed(entries):
         pair = [
             {"role": "user", "content": _clip(entry["ask"], max(ASK_CHARS, cap))},
-            {"role": "assistant", "content": _assistant_text(entry, max(ANSWER_CHARS, cap))},
+            {"role": "assistant", "content": _assistant_text(entry, max(ANSWER_CHARS, cap), session)},
         ]
         cost = sum(estimate_tokens(m["content"]) for m in pair)
         if kept and used + cost > budget_tokens:

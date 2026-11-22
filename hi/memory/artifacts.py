@@ -23,6 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 import hi.config as config
+from hi.memory.tokens import estimate_tokens
 
 KINDS = ("html", "svg", "markdown", "mermaid", "code")
 _EXT = {"html": "html", "svg": "svg", "markdown": "md", "mermaid": "mmd"}
@@ -61,9 +62,8 @@ def kind_of(lang: str) -> str:
     return _LANG_KIND.get(lang.lower(), "code")
 
 
-def extract(answer: str) -> list[Artifact]:
-    """The fenced blocks of `answer` marked `artifact`, in order. An unclosed block is not one yet."""
-    found: list[Artifact] = []
+def _blocks(answer: str):
+    """(first line, last line, opening-line match) of every closed fenced block of `answer`, in order."""
     lines = answer.splitlines()
     i = 0
     while i < len(lines):
@@ -76,15 +76,42 @@ def extract(answer: str) -> list[Artifact]:
         while j < len(lines) and not re.match(rf"^{re.escape(fence[0])}{{{len(fence)},}}\s*$", lines[j]):
             j += 1
         if j >= len(lines):  # never closed
-            break
-        if _MARK.search(m["rest"]):
-            title = _TITLE.search(m["rest"])
-            name = ((title and (title[1] or title[2])) or "").strip()[:MAX_TITLE] or "Untitled"
-            content = "\n".join(lines[i + 1:j])
-            if content.strip() and len(content) <= MAX_CHARS:
-                found.append(Artifact(name, kind_of(m["lang"]), m["lang"], content))
+            return
+        yield lines, i, j, m
         i = j + 1
+
+
+def _title_of(rest: str) -> str:
+    title = _TITLE.search(rest)
+    return ((title and (title[1] or title[2])) or "").strip()[:MAX_TITLE] or "Untitled"
+
+
+def extract(answer: str) -> list[Artifact]:
+    """The fenced blocks of `answer` marked `artifact`, in order. An unclosed block is not one yet."""
+    found: list[Artifact] = []
+    for lines, i, j, m in _blocks(answer):
+        content = "\n".join(lines[i + 1:j])
+        if _MARK.search(m["rest"]) and content.strip() and len(content) <= MAX_CHARS:
+            found.append(Artifact(_title_of(m["rest"]), kind_of(m["lang"]), m["lang"], content))
     return found
+
+
+def collapse(session: str, turn: str, answer: str) -> str:
+    """`answer` with each artifact block replaced by `[artifact "Title" vN]` (N is the version that turn made, when it
+    made one): the history refers to an artifact instead of repeating it."""
+    out: list[str] = []
+    lines = answer.splitlines()
+    done = 0
+    for block_lines, i, j, m in _blocks(answer):
+        content = "\n".join(block_lines[i + 1:j])
+        if not (_MARK.search(m["rest"]) and content.strip() and len(content) <= MAX_CHARS):
+            continue
+        title = _title_of(m["rest"])
+        index = _read_index(session, slugify(title)) or {"versions": []}
+        n = next((v["n"] for v in index["versions"] if v.get("turn") == turn), None)
+        out += lines[done:i] + [f'[artifact "{title}"' + (f" v{n}" if n else "") + "]"]
+        done = j + 1
+    return "\n".join(out + lines[done:]) if out else answer
 
 
 # --- the store ---------------------------------------------------------------------------------------------------------
@@ -153,13 +180,38 @@ def read(session: str, slug: str, version: int) -> dict | None:
             "versions": [v["n"] for v in index["versions"]], "content": content}
 
 
-def latest(session: str) -> list[dict]:
-    """The newest version of every artifact in the chat, in full, most recently changed first."""
+def latest(session: str, only_turns: set[str] | None = None) -> list[dict]:
+    """The newest version of every artifact in the chat, in full, most recently changed first. With `only_turns`, only
+    versions written by those turns count (the branch of the chat that is showing)."""
     out = []
     for item in listing(session):
-        if (found := read(session, item["slug"], item["latest"])):
+        index = _read_index(session, item["slug"]) or {"versions": []}
+        versions = [v for v in index["versions"] if only_turns is None or v.get("turn") in only_turns]
+        if versions and (found := read(session, item["slug"], versions[-1]["n"])):
             out.append({**found, "slug": item["slug"]})
     return out
+
+
+def context_block(session: str, budget_tokens: int, only_turns: set[str] | None = None) -> str:
+    """The newest version of each artifact for the model, newest first, in full while they fit in `budget_tokens`.
+    One that does not fit is named with a note instead. "" when the chat has none."""
+    items = latest(session, only_turns)
+    if not items:
+        return ""
+    left, parts = budget_tokens, []
+    for a in items:
+        head = f'### "{a["title"]}" ({a["kind"]}, version {a["version"]})'
+        longest = max((len(r) for r in re.findall(r"`+", a["content"])), default=0)
+        fence = "`" * max(3, longest + 1)
+        label = a["ext"] if a["kind"] == "code" else a["kind"]
+        body = f'{head}\n{fence}{label}\n{a["content"]}\n{fence}'
+        if estimate_tokens(body) <= left:
+            parts.append(body)
+            left -= estimate_tokens(body)
+        else:
+            parts.append(f"{head}\n(too large to include here. Say you cannot see it right now and ask the user to paste the part to change.)")
+    return ("Current artifacts in this chat (the newest version of each). To change one, write the whole new version in a "
+            "block with the same title.\n\n" + "\n\n".join(parts))
 
 
 def delete_session(session: str) -> None:
