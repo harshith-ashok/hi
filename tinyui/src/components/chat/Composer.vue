@@ -139,7 +139,7 @@ function onKey(e: KeyboardEvent) {
   }
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault()
-    if (!props.busy) emit('submit')
+    emit('submit') // while a reply is streaming the message is queued (ChatView)
   } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !props.modelValue.includes('\n')) {
     e.preventDefault()
     emit('recall', e.key === 'ArrowUp' ? -1 : 1)

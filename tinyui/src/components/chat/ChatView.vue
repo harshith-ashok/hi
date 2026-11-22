@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, BarChart3, FolderGit2, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow } from '@lucide/vue'
+import { ArrowDown, BarChart3, FolderGit2, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow, X } from '@lucide/vue'
 import { useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { toast } from 'vue-sonner'
@@ -67,6 +67,7 @@ const editing = ref(false)
 const draft = ref('')
 
 async function switchTo(id: string) {
+  queued.value = ''
   if (chat.busy.value) {
     chat.cancel()
     toast('Stopped the reply that was running.')
@@ -95,13 +96,19 @@ async function commitTitle() {
 const history: string[] = []
 let historyPos = 0
 let suggested: string | null = null
+const queued = ref('') // a message typed while a reply was streaming; it goes out when that reply ends
 
 async function submit(override?: string, branch?: { parent: string }) {
   const files = attached.ready()
   const text = (override ?? input.value).trim() || (files.length ? 'Look at the attached files.' : '')
   if (!text) return
   if (attached.reading()) return notify('Still reading the attached files…')
-  if (chat.busy.value) return notify('Still replying. Press Esc or Stop to cancel.')
+  if (chat.busy.value) {
+    if (override !== undefined) return notify('Still replying. Press Esc or Stop to cancel.')
+    queued.value = text // typing ahead: one message waits, a newer one replaces it
+    input.value = ''
+    return
+  }
   input.value = ''
   history.push(text)
   historyPos = history.length
@@ -262,6 +269,14 @@ onUnmounted(() => {
   window.removeEventListener('drop', onDrop)
   window.removeEventListener('paste', onPaste)
 })
+// When a reply ends, send what was typed meanwhile. If the reply was stopped, give the text back instead.
+watch(chat.busy, (busy) => {
+  if (busy || !queued.value) return
+  const text = queued.value
+  queued.value = ''
+  if (lastTurn.value?.status === 'cancelled') input.value = input.value || text
+  else void submit(text)
+})
 watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
 </script>
 
@@ -317,6 +332,10 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
     <div class="shrink-0 border-t bg-background/80 px-4 pb-4 pt-3 backdrop-blur">
       <div class="mx-auto w-full max-w-3xl space-y-2">
         <ApprovalBar :pending="pending" @answer="answerPending" />
+        <div v-if="queued" class="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground" role="status">
+          <span class="shrink-0">Sends when the reply ends:</span><span class="truncate text-foreground">{{ queued }}</span>
+          <button type="button" class="ml-auto rounded p-0.5 hover:bg-background" aria-label="Remove the queued message" @click="queued = ''"><X class="size-3.5" /></button>
+        </div>
         <Composer
           ref="composer"
           v-model="input"

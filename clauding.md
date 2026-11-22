@@ -143,7 +143,7 @@ Built on 0.2. Nothing is deleted: a new attempt is a sibling in the turn tree.
   `session_path`; deleting a session still removes every branch.
 - **Done when:** you can edit message 2 of 5, get a new answer, and flip back to the original conversation.
 
-### - [ ] 1.3 Queue a message while a reply is streaming
+### - [x] 1.3 Queue a message while a reply is streaming
 
 - In `ChatView.vue`, Enter while busy stores the message as "queued" (shown greyed above the composer, with an ×) and
   sends it when the reply ends. One queued message at most; a second Enter replaces it.
