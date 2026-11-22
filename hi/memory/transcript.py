@@ -148,6 +148,31 @@ def session_path(session: str, head: str = "", days: int | None = None) -> list[
     return path[::-1]
 
 
+def has_turn(session: str, turn_id: str) -> bool:
+    return any(e["id"] == turn_id for e in _session_entries(session))
+
+
+def versions(session: str) -> dict[str, dict]:
+    """For every turn of `session`: {index, count, ids}, where `ids` are the turns that follow the same parent (the
+    turn and its other attempts, oldest first) and `index` is its place among them."""
+    by_parent: dict[str, list[str]] = {}
+    for e in _session_entries(session):
+        by_parent.setdefault(e.get("parent", ""), []).append(e["id"])
+    return {i: {"index": ids.index(i), "count": len(ids), "ids": ids} for ids in by_parent.values() for i in ids}
+
+
+def newest_leaf(session: str, turn_id: str) -> str:
+    """The id of the last turn of the newest branch that starts at `turn_id` (itself when nothing follows it)."""
+    children: dict[str, list[str]] = {}
+    for e in _session_entries(session):
+        children.setdefault(e.get("parent", ""), []).append(e["id"])
+    node, seen = turn_id, set()
+    while children.get(node) and node not in seen:
+        seen.add(node)
+        node = children[node][-1]
+    return node
+
+
 def session_turns(session: str, head: str = "") -> list[dict]:
     """Every turn on the showing branch of `session`, oldest first (answered or not), for showing the conversation again."""
     return session_path(session, head)

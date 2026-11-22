@@ -125,7 +125,7 @@ estimate(system prompt + this message + attached context)`. Use a plain estimate
   and `Mod+K`).
 - **Done when:** every shortcut works and the help sheet lists them all.
 
-### - [ ] 1.2 Edit a message and regenerate any reply (with versions)
+### - [x] 1.2 Edit a message and regenerate any reply (with versions)
 
 Built on 0.2. Nothing is deleted: a new attempt is a sibling in the turn tree.
 

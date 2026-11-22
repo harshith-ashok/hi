@@ -84,15 +84,17 @@ def _context_used(text: str) -> dict | None:
 def stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
     origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
+    parent: str | None = None,
 ):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
     (unreachable Ollama, missing model) reaches the client
     as a RUN_ERROR event instead of a silently dropped connection."""
     try:
-        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier, session, visualize)
+        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier, session, visualize, parent)
     except Exception as e:
         records.record_turn(records.TurnRecord(
             forced_persona or "", "", text, error=llm.friendly_error(e), detail=repr(e), origin=origin, session=session,
+            parent=parent,
         ))
         yield ag.RunErrorEvent(message=llm.friendly_error(e))
 
@@ -100,6 +102,7 @@ def stream_query_as_agui(
 def _stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
     origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
+    parent: str | None = None,
 ):
     """Yields AG-UI events for one query — a `persona_selected` CUSTOM
     event first (this project's own extension; AG-UI has no built-in
@@ -152,7 +155,10 @@ def _stream_query_as_agui(
 
     thread_id = uuid.uuid4().hex
     turn_id = uuid.uuid4().hex[:12]
-    parent = sessions.head_of(session) if session else ""  # the turn this one follows in its chat
+    head = sessions.head_of(session) if session else ""
+    branched = parent is not None and parent != head  # an edit or "ask again": not a continuation of the latest turn
+    if parent is None:
+        parent = head  # the turn this one follows in its chat
     dropped = 0  # earlier turns of the chat that did not fit the context window
     if needs_plan:
         events = stream_orchestrated_as_agui_sync(text + context + prof.style, thread_id)
@@ -162,7 +168,9 @@ def _stream_query_as_agui(
         if fresh and hasattr(agent, "reset"):
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
         message = text + context + prof.style
-        if fresh:
+        if branched and hasattr(agent, "reset"):
+            agent.reset()  # its memory holds the other branch; the transcript has the right one
+        if fresh or (branched and not parent):
             earlier: list[dict] = []
         elif session:
             saved = (sessions.get(session) or sessions.Session(session)).summary

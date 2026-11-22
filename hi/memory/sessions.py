@@ -139,7 +139,8 @@ def list_sessions(include_archived: bool = False) -> list[Session]:
     return sorted(found, key=lambda s: not s.pinned)  # a stable sort: pinned first, each group newest first
 
 
-def update(session_id: str, title: str | None = None, pinned: bool | None = None, archived: bool | None = None) -> Session | None:
+def update(session_id: str, title: str | None = None, pinned: bool | None = None, archived: bool | None = None,
+           head: str | None = None) -> Session | None:
     s = get(session_id)
     if s is None:
         return None
@@ -149,6 +150,8 @@ def update(session_id: str, title: str | None = None, pinned: bool | None = None
         s.pinned = pinned
     if archived is not None:
         s.archived = archived
+    if head:
+        s.head = head  # the caller has checked that the turn exists in this session
     _write(s)
     return s
 

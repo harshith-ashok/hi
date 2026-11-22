@@ -546,3 +546,64 @@ def test_turns_written_before_ids_read_as_a_chain_and_new_turns_follow_them(tmp_
     turn(s, "new")
     assert [t["ask"] for t in transcript.session_turns(s)] == ["old 0", "old 1", "new"]
     assert transcript.session_turns(s)[-1]["parent"] == second["id"]
+
+
+# --- edit and "ask again": versions ------------------------------------------------------------------------------
+
+def two_attempts(client):
+    s = sessions.create().id
+    turn(s, "q1", id="a")
+    turn(s, "q2 first try", id="b1", parent="a")
+    turn(s, "q3", id="c", parent="b1")
+    turn(s, "q2 second try", id="b2", parent="a")  # an edit of q2: a sibling of b1, now showing
+    return s
+
+
+def test_versions_list_the_attempts_at_each_turn(tmp_vault, client):
+    s = two_attempts(client)
+    body = client.get(f"/sessions/{s}").json()
+    assert [t["ask"] for t in body["turns"]] == ["q1", "q2 second try"]
+    assert body["turns"][0]["versions"] == {"index": 0, "count": 1, "ids": ["a"]}
+    assert body["turns"][1]["versions"] == {"index": 1, "count": 2, "ids": ["b1", "b2"]}
+
+
+def test_switching_versions_shows_the_newest_branch_through_the_chosen_turn(tmp_vault, client):
+    s = two_attempts(client)
+    assert client.patch(f"/sessions/{s}", json={"head": "b1"}).status_code == 200
+    body = client.get(f"/sessions/{s}").json()
+    assert [t["ask"] for t in body["turns"]] == ["q1", "q2 first try", "q3"]  # b1's branch goes on to q3
+    assert body["head"] == "c"
+    assert sessions.head_of(s) == "c"  # the next turn follows what is showing
+
+
+def test_switching_to_a_turn_that_is_not_in_the_chat_is_refused(tmp_vault, client):
+    s = two_attempts(client)
+    assert client.patch(f"/sessions/{s}", json={"head": "nope"}).status_code == 400
+    assert client.patch(f"/sessions/{s}", json={"head": 5}).status_code == 400
+
+
+def test_deleting_a_chat_removes_every_branch(tmp_vault, client):
+    s = two_attempts(client)
+    assert client.delete(f"/sessions/{s}").status_code == 204
+    assert transcript.session_turns(s) == [] and transcript._session_entries(s) == []
+
+
+def test_query_passes_a_known_parent_on_and_refuses_an_unknown_one(tmp_vault, client, monkeypatch):
+    from hi.server import turn
+    from ag_ui import core as ag
+
+    s = two_attempts(client)
+    seen = {}
+
+    def fake(text, **kw):
+        seen.update(kw)
+        yield ag.RunStartedEvent(thread_id="t", run_id="r")
+        yield ag.RunFinishedEvent(thread_id="t", run_id="r", result="x")
+
+    monkeypatch.setattr(turn, "stream_query_as_agui", fake)
+    assert client.post("/query", json={"text": "q2 again", "session": s, "parent": "a"}).status_code == 200
+    assert seen["parent"] == "a"
+    seen.clear()
+    client.post("/query", json={"text": "plain", "session": s})
+    assert "parent" not in seen  # not sent: the turn follows the chat's latest turn
+    assert client.post("/query", json={"text": "x", "session": s, "parent": "nope"}).status_code == 400

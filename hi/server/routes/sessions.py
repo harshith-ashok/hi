@@ -48,7 +48,8 @@ async def create_session(request: Request) -> JSONResponse:
 async def get_session(request: Request) -> JSONResponse:
     s = _session_or_404(request.path_params["session_id"])
     turns = await run_in_threadpool(transcript.session_turns, s.id, s.head)
-    return JSONResponse({**asdict(s), "turns": [{k: t.get(k, "") for k in TURN_FIELDS} for t in turns]})
+    versions = await run_in_threadpool(transcript.versions, s.id)
+    return JSONResponse({**asdict(s), "turns": [{**{k: t.get(k, "") for k in TURN_FIELDS}, "versions": versions.get(t["id"])} for t in turns]})
 
 
 async def patch_session(request: Request) -> JSONResponse:
@@ -58,7 +59,14 @@ async def patch_session(request: Request) -> JSONResponse:
     for value in (pinned, archived):
         if value is not None and not isinstance(value, bool):
             raise HTTPException(400, "pinned and archived must be true or false")
-    s = await run_in_threadpool(sessions.update, request.path_params["session_id"], body.get("title"), pinned, archived)
+    session_id = request.path_params["session_id"]
+    head = body.get("head")
+    if head is not None:
+        # Switching to another attempt: show the newest branch that goes through the turn chosen.
+        if not isinstance(head, str) or not await run_in_threadpool(transcript.has_turn, session_id, head):
+            raise HTTPException(400, "head must be the id of a turn in this chat")
+        head = await run_in_threadpool(transcript.newest_leaf, session_id, head)
+    s = await run_in_threadpool(sessions.update, session_id, body.get("title"), pinned, archived, head)
     if s is None:
         raise HTTPException(404, "No such session")
     return JSONResponse(asdict(s))

@@ -9,12 +9,16 @@ export interface ThinkBlock { kind: 'thinking'; text: string; t0: number; t1?: n
 export interface TextBlock { kind: 'text'; text: string; t0: number; t1?: number }
 export type Block = ToolBlock | ThinkBlock | TextBlock
 
+/** The attempts at one point in a chat: this turn is number `index` of `count` (ids oldest first). */
+export interface Versions { index: number; count: number; ids: string[] }
+
 export interface Visual { state: 'none' | 'pending' | 'ready' | 'failed'; mermaid: string; t0?: number; t1?: number }
 
 export interface Turn {
   id: number
   serverId?: string // the backend's id for this turn (hi/memory/transcript.py); known once the turn is saved
   parent?: string // the id of the turn it follows in its chat
+  versions?: Versions // other attempts at this point (after an edit or "ask again")
   ask: string
   files: string[]
   t0: number
@@ -35,6 +39,7 @@ export interface Turn {
 export interface StoredTurn {
   id: string
   parent: string
+  versions?: Versions | null
   time: string
   ask: string
   answer: string
@@ -56,6 +61,7 @@ export interface AskOptions {
   names?: string[]
   session?: string
   visualize?: boolean
+  parent?: string // the turn this one follows; set for an edit or "ask again"
   tier?: string // haiku | sonnet | opus, or 'auto' to let the router choose
 }
 
@@ -69,7 +75,7 @@ export function fromStored(stored: StoredTurn): Turn {
   const blocks: Block[] = stored.tools.map((t, i) => ({ kind: 'tool', id: `r${nextId}-${i}`, name: t.name, args: t.args, result: t.result, t0: at, t1: at }))
   if (stored.answer) blocks.push({ kind: 'text', text: stored.answer, t0: at, t1: at })
   return reactive<Turn>({
-    id: nextId++, serverId: stored.id || undefined, parent: stored.parent || undefined, ask: stored.ask, files: [], t0: at, t1: at + (stored.seconds || 0) * 1000,
+    id: nextId++, serverId: stored.id || undefined, parent: stored.parent || undefined, versions: stored.versions ?? undefined, ask: stored.ask, files: [], t0: at, t1: at + (stored.seconds || 0) * 1000,
     status: stored.error === 'stopped' ? 'cancelled' : stored.error && !stored.answer ? 'error' : 'done',
     route: stored.persona ? { persona: stored.persona, tier: stored.tier, plan: stored.plan, at } : undefined,
     blocks, visual: { state: stored.visual ? 'ready' : 'none', mermaid: stored.visual },
@@ -203,8 +209,9 @@ export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (tu
   }
 
   const cancel = () => controller?.abort()
+  const truncate = (count: number) => { turns.value = turns.value.slice(0, count) } // drop this turn and the ones after it from view
   const clear = () => { turns.value = []; contextWindow.value = null }
   const load = (stored: StoredTurn[]) => { turns.value = stored.map(fromStored); contextWindow.value = null }
 
-  return { turns, busy, contextWindow, ask, cancel, clear, load }
+  return { turns, busy, contextWindow, ask, cancel, truncate, clear, load }
 }

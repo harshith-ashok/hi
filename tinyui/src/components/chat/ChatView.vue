@@ -3,7 +3,7 @@ import { ArrowDown, BarChart3, FolderGit2, Lightbulb, Network, Pencil, Search, S
 import { useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { toast } from 'vue-sonner'
-import { drawVisual, fetchPending, fileAttachment, resolvePending, type Pending } from '@/backend'
+import { drawVisual, fetchPending, fileAttachment, patchJson, resolvePending, type Pending } from '@/backend'
 import { useAttachments, type Attachment } from '@/attachments'
 import ApprovalBar from '@/components/chat/ApprovalBar.vue'
 import Composer from '@/components/chat/Composer.vue'
@@ -96,7 +96,7 @@ const history: string[] = []
 let historyPos = 0
 let suggested: string | null = null
 
-async function submit(override?: string) {
+async function submit(override?: string, branch?: { parent: string }) {
   const files = attached.ready()
   const text = (override ?? input.value).trim() || (files.length ? 'Look at the attached files.' : '')
   if (!text) return
@@ -120,7 +120,33 @@ async function submit(override?: string) {
   const ids = files.map((f) => f.id!)
   attached.clear()
   stick.value = true
-  await chat.ask(message, { tier: tier.value, attachments: ids, names, session, visualize: visualize.value })
+  await chat.ask(message, { tier: tier.value, attachments: ids, names, session, visualize: visualize.value, parent: branch?.parent })
+  if (branch) await reload() // the other attempts at this point are listed with the saved chat
+}
+
+/** Draw the open chat again from what the backend saved (so the attempt switchers are right). */
+async function reload() {
+  const id = sessions.currentId.value
+  const turns = id ? await sessions.open(id) : null
+  if (turns) chat.load(turns)
+}
+
+/** Edit a message, or ask for another answer: send it again as a new attempt after the turn before it. */
+async function again(index: number, text: string) {
+  if (chat.busy.value) return notify('Still replying. Press Esc or Stop to cancel.')
+  const target = chat.turns.value[index]
+  const draft = input.value
+  chat.truncate(index)
+  await submit(text, { parent: target.parent ?? '' })
+  if (chat.turns.value.length <= index) await reload() // it never started: put the turns back
+  input.value = draft // submit clears the box; what you were typing is still yours
+}
+
+async function switchVersion(id: string) {
+  const session = sessions.currentId.value
+  if (!session || chat.busy.value) return
+  if (await patchJson(`/sessions/${session}`, { head: id })) await reload()
+  else notify('Could not switch to that attempt.', 'error')
 }
 
 function recall(step: number) {
@@ -278,7 +304,9 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
           :busy="chat.busy.value"
           :answered="answeredForm(i)"
           @answer="submit($event)"
-          @regenerate="submit(turn.ask)"
+          @regenerate="again(i, turn.ask)"
+          @edit="again(i, $event)"
+          @switch-version="switchVersion"
           @draw="draw(turn)"
           @redraw="draw(turn, $event)"
         />
