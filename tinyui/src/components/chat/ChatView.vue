@@ -76,6 +76,18 @@ const voice = useVoice({
 
 // --- sessions ------------------------------------------------------------------------------------------------------
 let loadedId = sessions.currentId.value
+// the empty-state greeting: the time of day and, if your preferences say what to call you, your first name
+const firstName = ref('')
+const NAME_IN_PREFERENCES = /(?:[Mm]y name is|[Cc]all me|[Ii]'m called|[Nn]ame:)\s*\**(\p{Lu}[\p{L}'-]{1,24})/u
+onMounted(async () => {
+  const found = await getJson<{ text: string }>('/preferences')
+  firstName.value = (found && NAME_IN_PREFERENCES.exec(found.text)?.[1]) || ''
+})
+const greeting = computed(() => {
+  const hour = new Date().getHours()
+  const part = hour < 5 ? 'Up late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  return firstName.value ? `${part}, ${firstName.value}` : part
+})
 // incognito: not saved in the list, not remembered, deleted when you leave
 const incognito = computed(() => (sessions.currentId.value ? sessions.currentId.value === sessions.incognitoId.value : sessions.nextIncognito.value))
 /** Download the chat as Markdown (the backend sends it as an attachment). */
@@ -354,7 +366,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
       <div class="min-w-0 flex-1">
         <Input v-if="editing" v-model="draft" class="h-8 max-w-md" aria-label="Chat title" autofocus @keydown.enter.prevent="commitTitle" @keydown.esc.prevent="editing = false" @blur="commitTitle" />
         <button v-else class="group flex max-w-full items-center gap-2 text-left" :disabled="!sessions.currentId.value" title="Rename" @click="draft = title; editing = true">
-          <h1 class="truncate text-sm font-semibold">{{ title }}</h1>
+          <h1 class="truncate font-serif text-base font-semibold">{{ title }}</h1>
           <Pencil v-if="sessions.currentId.value" class="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
         </button>
         <p v-if="lastTurn?.route" class="truncate text-xs text-muted-foreground">{{ lastTurn.route.persona }} · {{ lastTurn.route.tier }}</p>
@@ -369,9 +381,9 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
     <div ref="scroller" class="relative min-h-0 flex-1 overflow-y-auto" @scroll.passive="onScroll">
       <div ref="content" class="mx-auto w-full max-w-[46rem] space-y-8 px-4 py-6">
         <div v-if="!chat.turns.value.length" class="flex flex-col items-center gap-6 py-10 text-center">
-          <div class="flex size-12 items-center justify-center rounded-2xl bg-primary text-lg font-bold text-primary-foreground">hi</div>
           <div>
-            <h2 class="text-2xl font-semibold tracking-tight">What can I do for you?</h2>
+            <h2 class="font-serif text-3xl font-medium tracking-tight">{{ greeting }}</h2>
+            <p class="mt-1 text-lg text-muted-foreground">What can I do for you?</p>
             <p class="mt-1 text-sm text-muted-foreground">Ask anything. Turn on <span class="inline-flex items-center gap-1 font-medium text-foreground"><Workflow class="size-3.5" /> Visualize</span> to see every answer as a diagram.</p>
           </div>
           <div class="grid w-full gap-2 sm:grid-cols-2">

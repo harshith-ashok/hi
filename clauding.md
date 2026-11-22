@@ -320,6 +320,10 @@ always sees the latest version in full.
 
 ## Phase 6 — Look and feel (last)
 
+Applied: warm-neutral palette with a teal accent (light and dark), a system serif for page titles and the greeting, and a
+time-of-day greeting with the first name from your preferences. Not done: centring the composer in the empty state. Not yet
+checked by eye in the browser, so issue #32 stays open.
+
 - A typography and colour pass in `tinyui/src/style.css` tokens: a serif for headings and the empty-state greeting, a
   sans for body, warm neutrals, one accent colour, matching dark mode.
 - Empty state: a time-of-day greeting ("Good evening") with the user's first name from preferences, the composer
