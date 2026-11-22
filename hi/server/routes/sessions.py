@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from hi import visuals
-from hi.memory import artifacts, projects, sessions, transcript
+from hi.memory import artifacts, export, projects, sessions, transcript
 from hi.server.http import json_body, require_client
 
 TURN_FIELDS = ("id", "parent", "time", "ask", "answer", "tools", "persona", "tier", "seconds", "visual", "error", "plan")
@@ -56,6 +56,14 @@ async def get_session(request: Request) -> JSONResponse:
     made = await run_in_threadpool(artifacts.by_turn, s.id)
     return JSONResponse({**asdict(s), "turns": [
         {**{k: t.get(k, "") for k in TURN_FIELDS}, "versions": versions.get(t["id"]), "artifacts": made.get(t["id"], [])} for t in turns]})
+
+
+async def export_session(request: Request) -> Response:
+    """GET /sessions/{id}/export: the chat as a Markdown download."""
+    s = _session_or_404(request.path_params["session_id"])
+    text = await run_in_threadpool(export.markdown, s.id)
+    return Response(text, media_type="text/markdown; charset=utf-8", headers={
+        "Content-Disposition": f'attachment; filename="{export.filename(s.title)}.md"', "X-Content-Type-Options": "nosniff"})
 
 
 async def patch_session(request: Request) -> JSONResponse:
@@ -103,6 +111,7 @@ routes = [
     Route("/sessions", list_sessions, methods=["GET"]),
     Route("/sessions", create_session, methods=["POST"]),
     Route("/sessions/{session_id}", get_session, methods=["GET"]),
+    Route("/sessions/{session_id}/export", export_session, methods=["GET"]),
     Route("/sessions/{session_id}", patch_session, methods=["PATCH"]),
     Route("/sessions/{session_id}", delete_session, methods=["DELETE"]),
     Route("/visual", draw, methods=["POST"]),

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ArrowDown, BarChart3, Folder, FolderGit2, Ghost, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow, X } from '@lucide/vue'
+import { ArrowDown, BarChart3, Download, Folder, FolderGit2, Ghost, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow, X } from '@lucide/vue'
 import { useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { toast } from 'vue-sonner'
-import { drawVisual, fetchPending, fileAttachment, getJson, patchJson, resolvePending, type Pending } from '@/backend'
+import { BASE_URL, drawVisual, fetchPending, fileAttachment, getJson, patchJson, resolvePending, type Pending } from '@/backend'
 import { useAttachments, type Attachment } from '@/attachments'
 import ApprovalBar from '@/components/chat/ApprovalBar.vue'
 import Composer from '@/components/chat/Composer.vue'
@@ -75,6 +75,11 @@ const voice = useVoice({
 let loadedId = sessions.currentId.value
 // incognito: not saved in the list, not remembered, deleted when you leave
 const incognito = computed(() => (sessions.currentId.value ? sessions.currentId.value === sessions.incognitoId.value : sessions.nextIncognito.value))
+/** Download the chat as Markdown (the backend sends it as an attachment). */
+function exportChat() {
+  const id = sessions.currentId.value
+  if (id) Object.assign(document.createElement('a'), { href: `${BASE_URL}/sessions/${id}/export` }).click()
+}
 function startIncognito() {
   projectStore.startIn.value = ''
   sessions.select('') // leaves the current chat; this also clears the flag, so set it after
@@ -348,6 +353,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
         <p v-if="lastTurn?.route" class="truncate text-xs text-muted-foreground">{{ lastTurn.route.persona }} · {{ lastTurn.route.tier }}</p>
         <button v-if="projectName" class="mt-0.5 flex w-fit max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent" :title="`In the project ${projectName}. Click to take this chat out.`" @click="leaveProject"><Folder class="size-3 shrink-0" /><span class="truncate">{{ projectName }}</span><X class="size-3 shrink-0" /></button>
       </div>
+      <Tooltip v-if="sessions.currentId.value && chat.turns.value.length"><TooltipTrigger as-child><Button variant="ghost" size="icon" class="size-8" aria-label="Export this chat as Markdown" @click="exportChat"><Download class="size-4" /></Button></TooltipTrigger><TooltipContent>Export as Markdown</TooltipContent></Tooltip>
       <span v-if="incognito" class="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground" role="status"><Ghost class="size-3.5" /> Incognito: not saved or remembered</span>
       <Tooltip v-else><TooltipTrigger as-child><Button variant="ghost" size="icon" class="size-8" aria-label="Start an incognito chat" @click="startIncognito"><Ghost class="size-4" /></Button></TooltipTrigger><TooltipContent>Incognito chat: not saved or remembered</TooltipContent></Tooltip>
       <span v-if="!['ready', 'thinking', 'acting'].includes(voice.state.value)" class="rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground" role="status">{{ voice.state.value }}</span>

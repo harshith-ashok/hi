@@ -306,7 +306,7 @@ always sees the latest version in full.
 - A ghost icon in the chat header starts one; the header says "Incognito: not saved or remembered".
 - **Tests:** no memory extraction, no conversation log, sweep deletes everything for the session.
 
-### - [ ] 5.2 Export a chat
+### - [x] 5.2 Export a chat
 
 - `GET /sessions/{id}/export` returns Markdown of the active path (questions, answers, artifact links). A header menu
   item downloads it.

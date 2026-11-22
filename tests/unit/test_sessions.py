@@ -645,3 +645,23 @@ def test_the_sweep_deletes_only_old_incognito_chats(tmp_vault):
     sessions._write(older_normal)
     assert sessions.sweep_incognito() == 1
     assert sessions.get(old.id) is None and sessions.get(fresh.id) is not None and sessions.get(normal.id) is not None
+
+
+# --- export ------------------------------------------------------------------------------------------------------
+
+def test_a_chat_exports_as_markdown_on_the_branch_showing(tmp_vault, client):
+    s = sessions.create(title="Trip plan").id
+    turn(s, "where to?", "Lisbon.", id="a")
+    turn(s, "how long? (first try)", "Three days.", id="b1", parent="a")
+    turn(s, "how long?", 'Five days.\n```html artifact title="Itinerary"\n<p>x</p>\n```', id="b2", parent="a")
+    r = client.get(f"/sessions/{s}/export")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/markdown")
+    assert r.headers["content-disposition"] == 'attachment; filename="Trip-plan.md"'
+    text = r.text
+    assert text.startswith("# Trip plan") and "## You\n\nwhere to?" in text and "## hi\n\nLisbon." in text
+    assert "Five days." in text and "first try" not in text and "Three days." not in text
+    assert "> Artifact: Itinerary (version 1)" in text and f"hi/artifacts/{s}/itinerary/v1" in text
+
+
+def test_exporting_an_unknown_chat_is_a_404(tmp_vault, client):
+    assert client.get("/sessions/20260101-000000-abcd/export").status_code == 404
