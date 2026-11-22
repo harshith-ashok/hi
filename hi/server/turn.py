@@ -20,7 +20,7 @@ from hi.core import runpolicy
 from hi.core.runpolicy import BACKGROUND_ORIGINS
 from hi.llm.registry import TIERS, get_tier_model, get_tier_model_fast
 from hi.memory import extraction as memory
-from hi.memory import artifacts, records, reflection as reflection_agent, sessions, summary, transcript
+from hi.memory import artifacts, projects, records, reflection as reflection_agent, sessions, summary, transcript
 from hi.memory.skills import expand_slash
 from hi.orchestrator.complexity import classify_or_default
 from hi.personas import PERSONAS, get_agent_builder
@@ -163,6 +163,8 @@ def _stream_query_as_agui(
     if parent is None:
         parent = head  # the turn this one follows in its chat
     dropped = 0  # earlier turns of the chat that did not fit the context window
+    if session and (project_info := projects.context_block(session)):
+        context += "\n\n" + project_info  # the chat's project: its instructions and files
     if needs_plan:
         events = stream_orchestrated_as_agui_sync(text + context + prof.style, thread_id)
         log_persona = "orchestrator"

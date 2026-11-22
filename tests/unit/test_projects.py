@@ -99,3 +99,34 @@ def test_a_project_holds_several_chats(client):
     client.post("/projects", json={"name": "Trip"})
     ids = {client.post("/sessions", json={"project": "trip"}).json()["id"] for _ in range(3)}
     assert {c["id"] for c in client.get("/projects/trip").json()["chats"]} == ids
+
+
+# --- a turn in a project -----------------------------------------------------------------------------------------
+
+def test_a_chat_in_a_project_is_told_its_instructions_and_files(tmp_vault):
+    p = projects.create("Trip", instructions="Plan in euros.")
+    projects.save_file(p.slug, "budget.csv", io.BytesIO(b"a,b"))
+    s = sessions.create(project=p.slug)
+    block = projects.context_block(s.id)
+    assert 'project "Trip"' in block and "Plan in euros." in block
+    assert "budget.csv (3 bytes)" in block and "read_workspace_file(project='trip'" in block
+
+
+def test_a_chat_with_no_project_gets_nothing_and_long_instructions_are_clipped(tmp_vault):
+    assert projects.context_block(sessions.create().id) == ""
+    p = projects.create("Long", instructions="x" * 20_000)
+    block = projects.context_block(sessions.create(project=p.slug).id)
+    assert "…[clipped]" in block and len(block) < projects.INSTRUCTION_CONTEXT_CHARS + 500
+    assert len(projects.get("long").instructions) == 20_000  # the file keeps everything
+
+
+def test_the_agent_can_read_a_project_file_but_nothing_outside_the_project(tmp_vault):
+    from hi.agents.term.project_files import read_workspace_file
+
+    p = projects.create("Trip")
+    projects.save_file(p.slug, "notes.txt", io.BytesIO(b"book the train"))
+    read = lambda project, name: read_workspace_file.invoke({"project": project, "name": name})
+    assert "book the train" in read("trip", "notes.txt")
+    assert "No file" in read("trip", "nope.txt") and "notes.txt" in read("trip", "nope.txt")
+    assert "not a file name" in read("trip", "../../PROJECT.md") and "No project" in read("nope", "notes.txt")
+    assert "not a file name" in read("trip", "PROJECT.md")

@@ -226,7 +226,7 @@ always sees the latest version in full.
   sessions; it does not delete them.
 - **Tests:** create, rename, assign a session, delete keeps sessions.
 
-### - [ ] 3.2 Project context in a turn
+### - [x] 3.2 Project context in a turn
 
 - In `turn.py`, when the session has a project, add its instructions and a list of its files (names and sizes, not
   contents) to the context. The agent reads a file with the existing note tools; make sure those tools can read under

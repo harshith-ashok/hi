@@ -154,3 +154,28 @@ def delete_file(slug: str, name: str) -> bool:
         return False
     target.unlink()
     return True
+
+
+# --- what a turn in a project is told ----------------------------------------------------------------------------------
+
+INSTRUCTION_CONTEXT_CHARS = 6000  # the context window is small: long instructions are clipped here (never in the file)
+FILE_LIST_LIMIT = 40
+
+
+def context_block(session: str) -> str:
+    """The project's instructions and file list for a turn in `session`, or "" when the chat is in no project."""
+    s = sessions.get(session)
+    p = get(s.project) if s and s.project else None
+    if p is None:
+        return ""
+    lines = [f'This chat is in the project "{p.name}" (slug: {p.slug}).']
+    if p.instructions.strip():
+        text = p.instructions.strip()
+        clipped = text[:INSTRUCTION_CONTEXT_CHARS] + (" …[clipped]" if len(text) > INSTRUCTION_CONTEXT_CHARS else "")
+        lines.append(f"Follow these project instructions:\n{clipped}")
+    listed = files(p.slug)
+    if listed:
+        names = "\n".join(f"- {f['name']} ({f['size']:,} bytes)" for f in listed[:FILE_LIST_LIMIT])
+        more = f"\n(and {len(listed) - FILE_LIST_LIMIT} more)" if len(listed) > FILE_LIST_LIMIT else ""
+        lines.append(f"Project files. Open one with read_workspace_file(project='{p.slug}', name=...) when it is relevant:\n{names}{more}")
+    return "\n\n".join(lines)
