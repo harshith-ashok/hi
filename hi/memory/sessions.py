@@ -39,6 +39,7 @@ class Session:
     archived: bool = False
     turns: int = 0
     title_auto: bool = True  # False once you rename it: a model never overwrites your title
+    head: str = ""  # the id of the newest turn on the branch that is showing ("" = the newest turn written)
 
 
 def sessions_dir() -> Path:
@@ -70,6 +71,8 @@ def _write(s: Session) -> None:
         "pinned": str(s.pinned).lower(), "archived": str(s.archived).lower(), "turns": str(s.turns),
         "title_auto": str(s.title_auto).lower(), "tags": ["hi", "session"],
     }
+    if s.head:
+        fields["head"] = s.head
     path = _path(s.id)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -88,7 +91,7 @@ def _load(path: Path) -> Session | None:
         id=str(fields["id"]), title=str(fields.get("title") or DEFAULT_TITLE), created=str(fields.get("created", "")),
         updated=str(fields.get("updated", "")), pinned=fields.get("pinned") == "true",
         archived=fields.get("archived") == "true", turns=int(str(fields.get("turns", "0")) or 0),
-        title_auto=fields.get("title_auto") != "false",
+        title_auto=fields.get("title_auto") != "false", head=str(fields.get("head", "")),
     )
 
 
@@ -154,14 +157,28 @@ def delete(session_id: str) -> bool:
     return True
 
 
-def touch(session_id: str, ask: str) -> Session | None:
-    """Record a turn in `session_id` (created if the id is valid but unknown): bump its count and time, and give it a
-    provisional title from the first question. Returns None for an invalid id."""
+def head_of(session_id: str) -> str:
+    """The id of the turn a new turn in this session follows: the session's head, else (a chat from before turns had ids)
+    its newest turn, else ""."""
+    if not valid_id(session_id):
+        return ""
+    s = get(session_id)
+    if s is not None and s.head:
+        return s.head
+    path = transcript.session_path(session_id)
+    return path[-1]["id"] if path else ""
+
+
+def touch(session_id: str, ask: str, head: str = "") -> Session | None:
+    """Record a turn in `session_id` (created if the id is valid but unknown): bump its count and time, make `head` (the
+    turn's id) the head, and give it a provisional title from the first question. Returns None for an invalid id."""
     if not valid_id(session_id):
         return None
     s = get(session_id) or Session(id=session_id, created=_now())
     s.turns += 1
     s.updated = _now()
+    if head:
+        s.head = head
     if s.title_auto and s.title == DEFAULT_TITLE:
         s.title = auto_title(ask)
     _write(s)

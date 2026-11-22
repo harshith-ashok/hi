@@ -13,6 +13,8 @@ export interface Visual { state: 'none' | 'pending' | 'ready' | 'failed'; mermai
 
 export interface Turn {
   id: number
+  serverId?: string // the backend's id for this turn (hi/memory/transcript.py); known once the turn is saved
+  parent?: string // the id of the turn it follows in its chat
   ask: string
   files: string[]
   t0: number
@@ -31,6 +33,8 @@ export interface Turn {
 
 /** A turn as the backend saves it (hi/memory/transcript.py). */
 export interface StoredTurn {
+  id: string
+  parent: string
   time: string
   ask: string
   answer: string
@@ -62,7 +66,7 @@ export function fromStored(stored: StoredTurn): Turn {
   const blocks: Block[] = stored.tools.map((t, i) => ({ kind: 'tool', id: `r${nextId}-${i}`, name: t.name, args: t.args, result: t.result, t0: at, t1: at }))
   if (stored.answer) blocks.push({ kind: 'text', text: stored.answer, t0: at, t1: at })
   return reactive<Turn>({
-    id: nextId++, ask: stored.ask, files: [], t0: at, t1: at + (stored.seconds || 0) * 1000,
+    id: nextId++, serverId: stored.id || undefined, parent: stored.parent || undefined, ask: stored.ask, files: [], t0: at, t1: at + (stored.seconds || 0) * 1000,
     status: stored.error === 'stopped' ? 'cancelled' : stored.error && !stored.answer ? 'error' : 'done',
     route: stored.persona ? { persona: stored.persona, tier: stored.tier, plan: stored.plan, at } : undefined,
     blocks, visual: { state: stored.visual ? 'ready' : 'none', mermaid: stored.visual },
@@ -93,6 +97,10 @@ export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (tu
         } else if (e.name === 'context_used') {
           const v = e.value as { memory: number; notes: string[] }
           turn.context = { memory: v.memory, notes: v.notes, at: now }
+        } else if (e.name === 'turn') {
+          const v = e.value as { id: string; parent: string }
+          turn.serverId = v.id
+          turn.parent = v.parent || undefined
         } else if (e.name === 'timing') {
           turn.server = e.value as Turn['server']
         } else if (e.name === 'phase' && e.value?.name === 'visualizing') {

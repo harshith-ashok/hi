@@ -14,7 +14,7 @@ from hi import visuals
 from hi.memory import sessions, transcript
 from hi.server.http import json_body, require_client
 
-TURN_FIELDS = ("time", "ask", "answer", "tools", "persona", "tier", "seconds", "visual", "error", "plan")
+TURN_FIELDS = ("id", "parent", "time", "ask", "answer", "tools", "persona", "tier", "seconds", "visual", "error", "plan")
 
 
 def _session_or_404(session_id: str) -> sessions.Session:
@@ -47,7 +47,7 @@ async def create_session(request: Request) -> JSONResponse:
 
 async def get_session(request: Request) -> JSONResponse:
     s = _session_or_404(request.path_params["session_id"])
-    turns = await run_in_threadpool(transcript.session_turns, s.id)
+    turns = await run_in_threadpool(transcript.session_turns, s.id, s.head)
     return JSONResponse({**asdict(s), "turns": [{k: t.get(k, "") for k in TURN_FIELDS} for t in turns]})
 
 

@@ -15,7 +15,9 @@ Plain files, no index. Kept out of the vault search because it only reads .md no
 
 from __future__ import annotations
 
+import hashlib
 import json
+import uuid
 from collections import deque
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -41,9 +43,16 @@ def _day_file(day: date) -> Path:
 def record_turn(
     persona: str, tier: str, ask: str, answer: str, tools: list[dict], seconds: float,
     plan: bool = False, error: str = "", origin: str = "", session: str = "", visual: str = "",
-) -> None:
-    """tools: [{"name", "args" (JSON string), "result"}] in call order, kept in full."""
+    turn_id: str = "", parent: str = "",
+) -> str:
+    """Append one turn and return its id. tools: [{"name", "args" (JSON string), "result"}] in call order, kept in full.
+
+    `parent` is the id of the turn this one follows in its session ("" for the first). Turns of one session form a tree:
+    a second attempt at the same question is a sibling with the same parent, and the session's `head` says which branch
+    is showing."""
+    turn_id = turn_id or uuid.uuid4().hex[:12]
     entry = {
+        "id": turn_id, "parent": parent,
         "time": datetime.now().isoformat(timespec="seconds"),
         "persona": persona, "tier": tier, "plan": plan, "seconds": round(seconds, 2),
         "ask": ask, "tools": tools, "answer": answer, "error": error, "origin": origin,
@@ -53,6 +62,7 @@ def record_turn(
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return turn_id
 
 
 SESSION_DAYS = 90        # how far back a session's history is looked for (it may be resumed after weeks)
@@ -72,33 +82,75 @@ def _entries_on(day: date) -> list[dict]:
     return found
 
 
-def _recent_entries(limit: int, session: str = "") -> list[dict]:
-    """The newest `limit` answered turns of `session` ("" = turns that belong to no session), oldest first."""
+def _counts_as_history(entry: dict) -> bool:
+    # A turn that ended by showing a form or asking a question has tools but no answer text: it still belongs in
+    # the history, or the assistant could not see what it had asked when the reply comes back.
+    failed = entry.get("error") not in ("", None, "stopped")  # a stopped turn is not a failed one
+    spoke = entry.get("answer") or (entry.get("tools") and not failed)
+    return bool(spoke) and entry.get("origin") not in BACKGROUND_ORIGINS
+
+
+def _recent_entries(limit: int, session: str = "", head: str = "") -> list[dict]:
+    """The newest `limit` answered turns of `session` (on the branch ending at `head`), oldest first. With no session
+    ("") these are the turns that belong to no session, from the last HISTORY_DAYS days."""
+    if session:
+        return [e for e in session_path(session, head, SESSION_DAYS) if _counts_as_history(e)][-limit:]
     found: deque[dict] = deque(maxlen=limit)
-    days = SESSION_DAYS if session else HISTORY_DAYS
-    for offset in range(days - 1, -1, -1):
+    for offset in range(HISTORY_DAYS - 1, -1, -1):
         for entry in _entries_on(date.today() - timedelta(days=offset)):
-            # A turn that ended by showing a form or asking a question has tools but no answer text: it still belongs in
-            # the history, or the assistant could not see what it had asked when the reply comes back.
-            failed = entry.get("error") not in ("", None, "stopped")  # a stopped turn is not a failed one
-            spoke = entry.get("answer") or (entry.get("tools") and not failed)
-            if spoke and entry.get("origin") not in BACKGROUND_ORIGINS and entry.get("session", "") == session:
+            if _counts_as_history(entry) and entry.get("session", "") == "":
                 found.append(entry)
     return list(found)
 
 
-def session_turns(session: str) -> list[dict]:
-    """Every turn of `session`, oldest first (answered or not), for showing the conversation again."""
-    turns = []
+def _legacy_id(entry: dict) -> str:
+    """A stable id for a turn written before turns had ids: its time plus a hash of its question."""
+    return f"{entry.get('time', '')}-{hashlib.sha1(str(entry.get('ask', '')).encode()).hexdigest()[:6]}"
+
+
+def _session_entries(session: str, days: int | None = None) -> list[dict]:
+    """Every turn of `session` as written, oldest first, each with an `id` and a `parent`. Turns from before ids existed
+    get a made-up id and are chained one after another."""
+    found: list[dict] = []
+    previous = ""
     if not transcript_dir().exists():
-        return turns
+        return found
+    oldest = date.today() - timedelta(days=days) if days else None
     for path in sorted(transcript_dir().glob("*.jsonl")):
         try:
             day = date.fromisoformat(path.stem)
         except ValueError:
             continue
-        turns += [e for e in _entries_on(day) if e.get("session", "") == session]
-    return turns
+        if oldest and day < oldest:
+            continue
+        for entry in _entries_on(day):
+            if entry.get("session", "") != session:
+                continue
+            if not entry.get("id"):
+                entry = {**entry, "id": _legacy_id(entry), "parent": previous}
+            found.append(entry)
+            previous = entry["id"]
+    return found
+
+
+def session_path(session: str, head: str = "", days: int | None = None) -> list[dict]:
+    """The turns on the branch of `session` that ends at `head`, oldest first. With no `head` (or an unknown one) the
+    newest turn is the head. Other branches (earlier attempts at a question) are not included."""
+    entries = _session_entries(session, days)
+    by_id = {e["id"]: e for e in entries}
+    node = by_id.get(head) or (entries[-1] if entries else None)
+    path: list[dict] = []
+    seen: set[str] = set()
+    while node is not None and node["id"] not in seen:
+        seen.add(node["id"])
+        path.append(node)
+        node = by_id.get(node.get("parent", ""))
+    return path[::-1]
+
+
+def session_turns(session: str, head: str = "") -> list[dict]:
+    """Every turn on the showing branch of `session`, oldest first (answered or not), for showing the conversation again."""
+    return session_path(session, head)
 
 
 def delete_session(session: str) -> int:
@@ -180,10 +232,10 @@ def _assistant_text(entry: dict) -> str:
     return f"{answer}\n\n[tools used this turn: {_clip(', '.join(names), TOOLS_CHARS)}]"
 
 
-def history(turns: int = HISTORY_TURNS, session: str = "") -> list[dict]:
-    """The latest exchanges of `session` as chat messages, ready to go in front of a new user message."""
+def history(turns: int = HISTORY_TURNS, session: str = "", head: str = "") -> list[dict]:
+    """The latest exchanges of `session` (up to `head`) as chat messages, ready to go in front of a new user message."""
     messages: list[dict] = []
-    for entry in _recent_entries(turns, session):
+    for entry in _recent_entries(turns, session, head):
         messages.append({"role": "user", "content": _clip(entry["ask"], ASK_CHARS)})
         messages.append({"role": "assistant", "content": _assistant_text(entry)})
     return messages

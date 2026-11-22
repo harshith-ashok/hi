@@ -20,7 +20,7 @@ from hi.core import runpolicy
 from hi.core.runpolicy import BACKGROUND_ORIGINS
 from hi.llm.registry import TIERS, get_tier_model, get_tier_model_fast
 from hi.memory import extraction as memory
-from hi.memory import records, reflection as reflection_agent, transcript
+from hi.memory import records, reflection as reflection_agent, sessions, transcript
 from hi.memory.skills import expand_slash
 from hi.orchestrator.complexity import classify_or_default
 from hi.personas import PERSONAS, get_agent_builder
@@ -151,6 +151,8 @@ def _stream_query_as_agui(
         yield ag.CustomEvent(name="context_used", value=used)
 
     thread_id = uuid.uuid4().hex
+    turn_id = uuid.uuid4().hex[:12]
+    parent = sessions.head_of(session) if session else ""  # the turn this one follows in its chat
     if needs_plan:
         events = stream_orchestrated_as_agui_sync(text + context + prof.style, thread_id)
         log_persona = "orchestrator"
@@ -158,7 +160,7 @@ def _stream_query_as_agui(
         agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS, session=session)
         if fresh and hasattr(agent, "reset"):
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
-        events = stream_agent_as_agui(agent, text + context + prof.style, thread_id, [] if fresh else transcript.history(session=session))
+        events = stream_agent_as_agui(agent, text + context + prof.style, thread_id, [] if fresh else transcript.history(session=session, head=parent))
         log_persona = persona_name
 
     final_answer = ""
@@ -213,7 +215,7 @@ def _stream_query_as_agui(
         # The client pressed Stop (or went away). Keep what was said: a stopped turn stays in its chat session.
         records.record_turn(records.TurnRecord(
             log_persona, tier, text, "".join(streamed), list(journal_tools.values()), time.monotonic() - started,
-            needs_plan, error=records.STOPPED, origin=origin, session=session,
+            needs_plan, error=records.STOPPED, origin=origin, session=session, id=turn_id, parent=parent,
         ))
         raise
 
@@ -243,7 +245,9 @@ def _stream_query_as_agui(
     records.record_turn(records.TurnRecord(
         log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started, needs_plan,
         error="" if final_answer else run_error, detail=run_error, origin=origin, session=session, visual=visual,
+        id=turn_id, parent=parent,
     ))
+    yield ag.CustomEvent(name="turn", value={"id": turn_id, "parent": parent})
     if final_answer and speaks:
         if not speaker.has_spoken:  # nothing sayable streamed (tool-only answer, one-liner): summarize
             yield ag.CustomEvent(name="spoken_summary", value={"text": make_spoken_summary(final_answer)})

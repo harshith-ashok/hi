@@ -509,3 +509,40 @@ def test_a_stopped_turn_with_tools_is_still_remembered(tmp_vault):
     sid = sessions.create().id
     turn(sid, "go", "", tools=[{"name": "show_ui", "args": json.dumps({"ui": {"type": "form", "title": "T"}}), "result": "x"}], error="stopped")
     assert len(transcript.history(session=sid)) == 2
+
+
+# --- turn ids and parents ----------------------------------------------------------------------------------------
+
+def test_turns_get_ids_chained_by_parent_and_the_session_head_follows(tmp_vault):
+    s = sessions.create().id
+    turn(s, "first")
+    turn(s, "second")
+    a, b = transcript.session_turns(s)
+    assert a["id"] and b["id"] and a["id"] != b["id"]
+    assert a["parent"] == "" and b["parent"] == a["id"]
+    assert sessions.get(s).head == b["id"] and sessions.head_of(s) == b["id"]
+
+
+def test_a_sibling_turn_is_left_out_of_the_branch_that_is_showing(tmp_vault):
+    s = sessions.create().id
+    turn(s, "q1")
+    (first,) = transcript.session_turns(s)
+    turn(s, "q2 v1", id="v1", parent=first["id"])
+    turn(s, "q2 v2", id="v2", parent=first["id"])  # a second attempt at the same question
+    assert [t["ask"] for t in transcript.session_turns(s)] == ["q1", "q2 v2"]
+    assert [t["ask"] for t in transcript.session_turns(s, head="v1")] == ["q1", "q2 v1"]
+    assert [m["content"] for m in transcript.history(session=s, head="v1") if m["role"] == "user"] == ["q1", "q2 v1"]
+
+
+def test_turns_written_before_ids_read_as_a_chain_and_new_turns_follow_them(tmp_vault):
+    s = sessions.create().id
+    day = transcript._day_file(transcript.date.today())
+    day.parent.mkdir(parents=True, exist_ok=True)
+    old = [{"time": f"2026-01-01T10:0{i}:00", "ask": f"old {i}", "answer": "ok", "tools": [], "session": s} for i in range(2)]
+    day.write_text("".join(json.dumps(e) + "\n" for e in old))
+    first, second = transcript.session_turns(s)
+    assert first["parent"] == "" and second["parent"] == first["id"]
+    assert sessions.head_of(s) == second["id"]  # no head saved yet: the newest turn is it
+    turn(s, "new")
+    assert [t["ask"] for t in transcript.session_turns(s)] == ["old 0", "old 1", "new"]
+    assert transcript.session_turns(s)[-1]["parent"] == second["id"]

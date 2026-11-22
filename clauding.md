@@ -72,7 +72,7 @@ Phase 0 fixes both before anything is built on top.
 - **Test:** `build_chat_model` passes `num_ctx`; a caller's explicit value wins.
 - **Done when:** every chat model is built with a known window, visible in the UI.
 
-### - [ ] 0.2 Give every turn an id and a parent
+### - [x] 0.2 Give every turn an id and a parent
 
 - In `transcript.record_turn`, add `id` (`uuid4().hex[:12]`) and `parent` (the id of the session's current head, or
   `""`). Return the new id; thread it back through `records.TurnRecord` so `turn.py` can emit it.

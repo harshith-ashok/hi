@@ -14,6 +14,7 @@ or stops the other sinks.
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -39,12 +40,14 @@ class TurnRecord:
     origin: str = "ui"  # ui | island | voice | schedule | heartbeat | drop
     session: str = ""  # the chat session this turn belongs to ("" for none)
     visual: str = ""  # a mermaid diagram drawn for the answer
+    id: str = ""  # this turn's id ("" = made when it is written)
+    parent: str | None = None  # the id of the turn it follows in its session; None = the session's current head, "" = none
 
 
 def _transcript(rec: TurnRecord) -> None:
     transcript.record_turn(
         rec.persona, rec.tier, rec.ask, rec.answer, rec.tools, rec.seconds, rec.plan, rec.detail or rec.error, rec.origin,
-        rec.session, rec.visual,
+        rec.session, rec.visual, rec.id, rec.parent,
     )
 
 
@@ -70,7 +73,7 @@ def _extraction(rec: TurnRecord) -> None:
 def _session(rec: TurnRecord) -> None:
     if not rec.session:
         return
-    s = sessions.touch(rec.session, rec.ask)
+    s = sessions.touch(rec.session, rec.ask, head=rec.id)
     if s is not None and s.turns == 1 and s.title_auto and rec.answer and not rec.error:
         sessions.retitle_async(rec.session, rec.ask, rec.answer)
 
@@ -79,6 +82,9 @@ SINKS: list[Callable[[TurnRecord], None]] = [_transcript, _conversation, _journa
 
 
 def record_turn(rec: TurnRecord) -> None:
+    rec.id = rec.id or uuid.uuid4().hex[:12]
+    if rec.parent is None:
+        rec.parent = sessions.head_of(rec.session) if rec.session else ""
     for sink in SINKS:
         try:
             sink(rec)
