@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, BarChart3, Folder, FolderGit2, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow, X } from '@lucide/vue'
+import { ArrowDown, BarChart3, Folder, FolderGit2, Ghost, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow, X } from '@lucide/vue'
 import { useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { toast } from 'vue-sonner'
@@ -13,6 +13,7 @@ import VoiceOverlay from '@/components/chat/VoiceOverlay.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useArtifact } from '@/composables/useArtifact'
 import { answerOf, toolsOf, useChat, type Turn } from '@/composables/useChat'
 import { useProjects } from '@/composables/useProjects'
@@ -72,6 +73,13 @@ const voice = useVoice({
 
 // --- sessions ------------------------------------------------------------------------------------------------------
 let loadedId = sessions.currentId.value
+// incognito: not saved in the list, not remembered, deleted when you leave
+const incognito = computed(() => (sessions.currentId.value ? sessions.currentId.value === sessions.incognitoId.value : sessions.nextIncognito.value))
+function startIncognito() {
+  projectStore.startIn.value = ''
+  sessions.select('') // leaves the current chat; this also clears the flag, so set it after
+  sessions.nextIncognito.value = true
+}
 const title = computed(() => sessions.titles[sessions.currentId.value] ?? (chat.turns.value.length ? 'Chat' : 'New chat'))
 // the project this chat belongs to (or, before the first message, the one it will be made in)
 const projectSlug = computed(() => (sessions.currentId.value ? sessions.sessions.value.find((s) => s.id === sessions.currentId.value)?.project : projectStore.startIn.value) ?? '')
@@ -159,7 +167,7 @@ async function submit(override?: string, branch?: { parent: string }) {
   historyPos = history.length
   let session = sessions.currentId.value
   if (!session) {
-    const made = await sessions.create('', projectStore.startIn.value)
+    const made = await sessions.create('', projectStore.startIn.value, sessions.nextIncognito.value)
     projectStore.startIn.value = ''
     if (!made) return notify('Could not start a chat: is the backend running?', 'error')
     session = made.id
@@ -340,6 +348,8 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
         <p v-if="lastTurn?.route" class="truncate text-xs text-muted-foreground">{{ lastTurn.route.persona }} · {{ lastTurn.route.tier }}</p>
         <button v-if="projectName" class="mt-0.5 flex w-fit max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent" :title="`In the project ${projectName}. Click to take this chat out.`" @click="leaveProject"><Folder class="size-3 shrink-0" /><span class="truncate">{{ projectName }}</span><X class="size-3 shrink-0" /></button>
       </div>
+      <span v-if="incognito" class="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground" role="status"><Ghost class="size-3.5" /> Incognito: not saved or remembered</span>
+      <Tooltip v-else><TooltipTrigger as-child><Button variant="ghost" size="icon" class="size-8" aria-label="Start an incognito chat" @click="startIncognito"><Ghost class="size-4" /></Button></TooltipTrigger><TooltipContent>Incognito chat: not saved or remembered</TooltipContent></Tooltip>
       <span v-if="!['ready', 'thinking', 'acting'].includes(voice.state.value)" class="rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground" role="status">{{ voice.state.value }}</span>
     </header>
 

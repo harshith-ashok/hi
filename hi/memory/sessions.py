@@ -40,6 +40,7 @@ class Session:
     turns: int = 0
     title_auto: bool = True  # False once you rename it: a model never overwrites your title
     head: str = ""  # the id of the newest turn on the branch that is showing ("" = the newest turn written)
+    incognito: bool = False  # not listed, not remembered, and deleted when you leave it (or a day passes)
     project: str = ""  # the slug of the project this chat belongs to ("" = none; hi/memory/projects.py)
     summary: str = ""  # a running summary of the turns that no longer fit the context window (the file's body)
     summary_through: str = ""  # the id of the last turn the summary covers
@@ -74,6 +75,8 @@ def _write(s: Session) -> None:
         "pinned": str(s.pinned).lower(), "archived": str(s.archived).lower(), "turns": str(s.turns),
         "title_auto": str(s.title_auto).lower(), "tags": ["hi", "session"],
     }
+    if s.incognito:
+        fields["incognito"] = "true"
     if s.project:
         fields["project"] = s.project
     if s.head:
@@ -99,7 +102,7 @@ def _load(path: Path) -> Session | None:
         updated=str(fields.get("updated", "")), pinned=fields.get("pinned") == "true",
         archived=fields.get("archived") == "true", turns=int(str(fields.get("turns", "0")) or 0),
         title_auto=fields.get("title_auto") != "false", head=str(fields.get("head", "")),
-        project=str(fields.get("project", "")), summary=body.strip(), summary_through=str(fields.get("summary_through", "")),
+        incognito=fields.get("incognito") == "true", project=str(fields.get("project", "")), summary=body.strip(), summary_through=str(fields.get("summary_through", "")),
     )
 
 
@@ -111,9 +114,9 @@ def new_id() -> str:
     return f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(2)}"
 
 
-def create(title: str = "", project: str = "") -> Session:
+def create(title: str = "", project: str = "", incognito: bool = False) -> Session:
     s = Session(id=new_id(), title=_clean_title(title) if title.strip() else DEFAULT_TITLE, created=_now(), updated=_now(),
-                title_auto=not title.strip(), project=project)
+                title_auto=not title.strip(), project=project, incognito=incognito)
     _write(s)
     return s
 
@@ -137,7 +140,7 @@ def _abandoned(s: Session) -> bool:
 def list_sessions(include_archived: bool = False) -> list[Session]:
     """Pinned first, then most recently used. Abandoned empty chats are left out."""
     folder = sessions_dir()
-    found = [s for p in folder.glob("*.md") if (s := _load(p)) and (include_archived or not s.archived) and not _abandoned(s)] if folder.exists() else []
+    found = [s for p in folder.glob("*.md") if (s := _load(p)) and not s.incognito and (include_archived or not s.archived) and not _abandoned(s)] if folder.exists() else []
     found.sort(key=lambda s: s.updated, reverse=True)
     return sorted(found, key=lambda s: not s.pinned)  # a stable sort: pinned first, each group newest first
 
@@ -159,6 +162,25 @@ def update(session_id: str, title: str | None = None, pinned: bool | None = None
         s.project = project  # "" takes the chat out of its project; the caller has checked the project exists
     _write(s)
     return s
+
+
+INCOGNITO_MAX_AGE_S = 86_400
+
+
+def sweep_incognito(max_age_s: float = INCOGNITO_MAX_AGE_S) -> int:
+    """Delete incognito chats (note, turns, artifacts) that were last used more than `max_age_s` ago. Returns how many."""
+    removed = 0
+    for path in sessions_dir().glob("*.md") if sessions_dir().exists() else []:
+        s = _load(path)
+        if s is None or not s.incognito:
+            continue
+        try:
+            age = (datetime.now() - datetime.fromisoformat(s.updated or s.created)).total_seconds()
+        except ValueError:
+            age = max_age_s + 1  # no readable time: it is not worth keeping
+        if age > max_age_s:
+            removed += delete(s.id)
+    return removed
 
 
 def unassign_project(slug: str) -> int:

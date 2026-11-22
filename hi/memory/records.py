@@ -10,6 +10,8 @@ or stops the other sinks.
     extraction   only for an answered turn you were part of: learn durable facts in the background
     artifacts    pages, documents and diagrams the answer marked with `artifact`, saved as versions
     session      the chat session the turn belongs to: its count, time and title
+
+An incognito chat (hi/memory/sessions.py) skips conversation, journal and extraction.
 """
 
 from __future__ import annotations
@@ -88,11 +90,19 @@ def _session(rec: TurnRecord) -> None:
 SINKS: list[Callable[[TurnRecord], None]] = [_transcript, _artifacts, _conversation, _journal, _extraction, _session]
 
 
+# Not written for an incognito chat: the readable log, the activity journal and what is learned about you.
+PRIVATE_SKIPS = (_conversation, _journal, _extraction)
+
+
 def record_turn(rec: TurnRecord) -> None:
     rec.id = rec.id or uuid.uuid4().hex[:12]
     if rec.parent is None:
         rec.parent = sessions.head_of(rec.session) if rec.session else ""
+    chat = sessions.get(rec.session) if rec.session else None
+    private = bool(chat and chat.incognito)  # an incognito chat is kept only as far as it needs to continue
     for sink in SINKS:
+        if private and sink in PRIVATE_SKIPS:
+            continue
         try:
             sink(rec)
         except Exception:  # boundary: a failing log must not break the turn or the other logs

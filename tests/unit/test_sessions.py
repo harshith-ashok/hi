@@ -607,3 +607,41 @@ def test_query_passes_a_known_parent_on_and_refuses_an_unknown_one(tmp_vault, cl
     client.post("/query", json={"text": "plain", "session": s})
     assert "parent" not in seen  # not sent: the turn follows the chat's latest turn
     assert client.post("/query", json={"text": "x", "session": s, "parent": "nope"}).status_code == 400
+
+
+# --- incognito chats ---------------------------------------------------------------------------------------------
+
+def test_an_incognito_chat_is_hidden_and_leaves_no_log_journal_or_memory(tmp_vault, client, monkeypatch):
+    learned = []
+    monkeypatch.setattr(records.extraction, "extract_async", lambda *a: learned.append(a))
+    s = client.post("/sessions", json={"incognito": True}).json()
+    assert s["incognito"] is True
+    turn(s["id"], "a secret question", "a secret answer")
+    assert learned == []
+    assert transcript.session_turns(s["id"])[0]["ask"] == "a secret question"  # kept only so the chat can carry on
+    assert not list((tmp_vault / "hi" / "conversations").glob("*.md")) and not list((tmp_vault / "hi" / "journal").glob("*"))
+    assert s["id"] not in [x["id"] for x in client.get("/sessions").json()]
+    assert client.get(f"/sessions/{s['id']}").status_code == 200  # still open while you are in it
+    turn(sessions.create().id, "an ordinary question")
+    assert len(learned) == 1  # an ordinary chat is still learned from
+
+
+def test_deleting_an_incognito_chat_removes_everything_of_it(tmp_vault, client):
+    s = client.post("/sessions", json={"incognito": True}).json()["id"]
+    turn(s, "q", '```html artifact title="x"\n<p>x</p>\n```')
+    assert client.delete(f"/sessions/{s}").status_code == 204
+    assert transcript._session_entries(s) == [] and not sessions._path(s).exists()
+
+
+def test_the_sweep_deletes_only_old_incognito_chats(tmp_vault):
+    old, fresh, normal = (sessions.create(incognito=True), sessions.create(incognito=True), sessions.create())
+    for chat in (old, fresh, normal):
+        turn(chat.id, "q")
+    stale = sessions.get(old.id)
+    stale.updated = "2020-01-01T00:00:00"
+    sessions._write(stale)
+    older_normal = sessions.get(normal.id)
+    older_normal.updated = "2020-01-01T00:00:00"
+    sessions._write(older_normal)
+    assert sessions.sweep_incognito() == 1
+    assert sessions.get(old.id) is None and sessions.get(fresh.id) is not None and sessions.get(normal.id) is not None

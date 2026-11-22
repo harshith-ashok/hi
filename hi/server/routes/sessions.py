@@ -45,7 +45,8 @@ async def create_session(request: Request) -> JSONResponse:
     project = str(body.get("project") or "")
     if project and projects.get(project) is None:
         raise HTTPException(400, "No such project")
-    return JSONResponse(asdict(await run_in_threadpool(sessions.create, str(body.get("title") or ""), project)), status_code=201)
+    incognito = body.get("incognito") is True
+    return JSONResponse(asdict(await run_in_threadpool(sessions.create, str(body.get("title") or ""), project, incognito)), status_code=201)
 
 
 async def get_session(request: Request) -> JSONResponse:

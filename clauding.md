@@ -297,7 +297,7 @@ always sees the latest version in full.
 
 ## Phase 5 — Privacy, export, notifications
 
-### - [ ] 5.1 Incognito chats
+### - [x] 5.1 Incognito chats
 
 - Session flag `incognito: true`. `records.py` skips `_conversation`, `_journal` and `_extraction` for such turns
   (the transcript is still written, because history needs it).
