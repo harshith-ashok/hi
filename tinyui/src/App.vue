@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import AppSidebar from '@/components/app/AppSidebar.vue'
+import ShortcutsHost from '@/components/app/ShortcutsHost.vue'
 import ChatView from '@/components/chat/ChatView.vue'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
@@ -37,6 +38,7 @@ onMounted(() => {
 <template>
   <TooltipProvider :delay-duration="300">
     <SidebarProvider class="h-svh">
+      <ShortcutsHost @new-chat="newChat" @navigate="view = $event" />
       <AppSidebar :view="view" @navigate="view = $event" @open="openSession" @fresh="newChat" />
       <SidebarInset class="h-svh min-w-0 overflow-hidden">
         <ChatView v-show="view === 'chat'" :active="view === 'chat'" />

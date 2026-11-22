@@ -204,7 +204,16 @@ const onScroll = () => {
 const toEnd = (smooth = false) => nextTick(() => scroller.value?.scrollTo({ top: scroller.value.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }))
 useResizeObserver(content, () => stick.value && toEnd()) // diagrams and images change height after they arrive
 
+async function copyLast() {
+  const turn = lastTurn.value
+  const text = turn ? answerOf(turn) : ''
+  if (!text) return notify('There is no reply to copy yet.')
+  await navigator.clipboard?.writeText(text)
+  notify('Copied the last reply.')
+}
+
 onMounted(async () => {
+  window.addEventListener('hi:copy-last', copyLast)
   window.addEventListener('keydown', onKey)
   window.addEventListener('dragenter', onEnter)
   window.addEventListener('dragover', onOver)
@@ -223,6 +232,7 @@ onUnmounted(() => {
   window.removeEventListener('dragenter', onEnter)
   window.removeEventListener('dragover', onOver)
   window.removeEventListener('dragleave', onLeave)
+  window.removeEventListener('hi:copy-last', copyLast)
   window.removeEventListener('drop', onDrop)
   window.removeEventListener('paste', onPaste)
 })

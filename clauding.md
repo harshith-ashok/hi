@@ -115,7 +115,7 @@ estimate(system prompt + this message + attached context)`. Use a plain estimate
 
 ## Phase 1 — The chat loop
 
-### - [ ] 1.1 Keyboard shortcuts
+### - [x] 1.1 Keyboard shortcuts
 
 - `tinyui/src/composables/useShortcuts.ts`: one `keydown` listener on `window`, one table of `{keys, label, run}`.
   Use `metaKey` on macOS, `ctrlKey` elsewhere.
