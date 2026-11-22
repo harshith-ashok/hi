@@ -26,6 +26,7 @@ hi/llm/           providers (local + tailscale Ollama), tier registry with fallb
 hi/memory/        the vault: notes, conversation log, journal, transcript, extraction, reflection, context
 hi/agents/        agent factory (base.py) and the personas: term, butler, docs, web
 hi/orchestrator/  multi-step plans run as a DAG of scoped subagents
+hi/canvas/        the drop box: dropped text/images/voice notes sorted into groups on an Obsidian canvas
 hi/automation/    background work: scheduler, heartbeat, drop folder, delivery, limits (never imports hi.server)
 hi/server/        Starlette app: routes/ (one module per area), turn.py (one query end to end)
 hi/cli.py         `hi` launcher and daemon flags

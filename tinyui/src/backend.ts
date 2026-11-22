@@ -165,3 +165,31 @@ export async function* streamQuery(text: string, persona: string | null, signal:
 /** A Mermaid diagram of an answer (null when there is nothing to draw). `error` asks for a fix of a diagram that failed to parse. */
 export const drawVisual = (question: string, answer: string, error = '') =>
   postJson<{ mermaid: string | null }>('/visual', { question, answer, error })
+
+export interface CanvasItem { id: string; kind: 'text' | 'image' | 'voice' | 'file'; group: string; created: string; name: string; text: string; summary: string; pending: boolean; url: string; x: number; y: number; width: number; height: number }
+export interface CanvasGroup { id: string; label: string; x: number; y: number; width: number; height: number; items: CanvasItem[] }
+export interface Canvas { groups: CanvasGroup[]; pending: number }
+
+export const fetchCanvas = () => getJson<Canvas>('/canvas')
+export const dropText = (text: string) => postJson<{ id: string }>('/canvas/text', { text })
+export const regroupCanvas = (all: boolean) => postJson<Canvas & { moved: number }>('/canvas/regroup', { all })
+export const moveCanvasItem = (id: string, groupId: string) => patchJson<Canvas>(`/canvas/items/${id}`, { group_id: groupId })
+export const renameCanvasGroup = (id: string, label: string) => patchJson<Canvas>(`/canvas/groups/${id}`, { label })
+export async function deleteCanvasItem(id: string): Promise<Canvas | null> {
+  try {
+    const res = await fetch(`${BASE_URL}/canvas/items/${id}`, { method: 'DELETE', headers: CLIENT })
+    return res.ok ? ((await res.json()) as Canvas) : null
+  } catch {
+    return null
+  }
+}
+
+// Drops a file (or a recorded voice note, kind=audio) onto the board: hi describes it and sorts it into a group.
+export async function dropCanvasFile(file: Blob, name: string, kind = ''): Promise<void> {
+  const res = await fetch(`${BASE_URL}/canvas/file?name=${encodeURIComponent(name)}${kind ? `&kind=${kind}` : ''}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', ...CLIENT },
+    body: file,
+  })
+  if (!res.ok) throw new Error(`could not add ${name} (${res.status})`)
+}

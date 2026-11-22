@@ -50,7 +50,7 @@ def dependency_is_up(tool_name: str) -> bool:
 # Tools that only read: a background run may call these without asking. Anything not listed here (and not
 # marked readOnlyHint by its MCP server) is not read-only, so an unattended run turns it into a proposal.
 READ_ONLY = frozenset({
-    "search_vault", "read_vault_note", "read_project_file", "list_project_files", "search_files", "read_note", "list_notes",
+    "search_vault", "read_vault_note", "read_project_file", "list_project_files", "search_files", "read_note", "list_notes", "list_vault_folder",
     "current_context", "use_skill", "read_workspace_file", "get_person_info", "list_people", "list_conversations", "read_conversation",
     "leetcode_stats", "list_applications", "list_pipeline_entries", "list_deadlines", "list_tasks",
     "what_next", "check_suggestions", "show_last_run_trace",
@@ -90,6 +90,7 @@ GROUPS: tuple[Group, ...] = (
     Group("core", 1, (
         "run_shell_command", "run_mac_shell", "search_vault", "read_vault_note", "read_project_file", "list_project_files", "search_files",
         "edit_project_file", "write_project_file",
+        "list_vault_folder", "write_vault_note", "edit_vault_note", "append_vault_note", "move_vault_note",
         "read_note", "list_notes", "create_note", "append_note", "current_context", "use_skill", "read_workspace_file", "create_skill", "update_skill", "git_on_mac", "git_push",
     )),
     # ---- term: native, on keyword ----------------------------------------

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Archive, Brain, Folder, Inbox, ListChecks, MoreHorizontal, Moon, Pencil, Pin, PinOff, Plus, ScrollText, Search, Settings, Sun, SunMoon, Trash2, Activity, X } from '@lucide/vue'
+import { Archive, Brain, Folder, LayoutDashboard, Inbox, ListChecks, MoreHorizontal, Moon, Pencil, Pin, PinOff, Plus, ScrollText, Search, Settings, Sun, SunMoon, Trash2, Activity, X } from '@lucide/vue'
 import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,7 @@ const { theme, cycle } = useTheme()
 const nav = computed<{ view: View; label: string; icon: Component; badge: number }[]>(() => [
   { view: 'projects', label: 'Projects', icon: Folder, badge: 0 },
   { view: 'inbox', label: 'Inbox', icon: Inbox, badge: status.waitingActions.value },
+  { view: 'dropbox', label: 'Drop box', icon: LayoutDashboard, badge: 0 },
   { view: 'tasks', label: 'Tasks', icon: ListChecks, badge: status.activeTasks.value },
   { view: 'memory', label: 'Memory', icon: Brain, badge: 0 },
   { view: 'logs', label: 'Daily logs', icon: ScrollText, badge: 0 },
