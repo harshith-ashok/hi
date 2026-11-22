@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useArtifact } from '@/composables/useArtifact'
+import { askOnce, notifyHidden } from '@/composables/useNotifications'
 import { answerOf, toolsOf, useChat, type Turn } from '@/composables/useChat'
 import { useProjects } from '@/composables/useProjects'
 import { useSessions } from '@/composables/useSessions'
@@ -56,7 +57,9 @@ const artifact = useArtifact()
 const chat = useChat({
   onArtifact: (saved) => { if (artifact.autoOpen.value && sessions.currentId.value) void artifact.openSaved(sessions.currentId.value, saved.slug, saved.version) },
   onSpoken: (text) => void voice.reply(text),
-  onDone: () => {
+  onDone: (turn) => {
+    if (turn.status === 'done') notifyHidden('hi replied', answerOf(turn) || 'Your reply is ready.', 'reply')
+    else if (turn.status === 'error') notifyHidden('hi hit a problem', turn.error ?? 'The reply failed.', 'reply')
     void sessions.refresh()
     setTimeout(() => void sessions.refresh(), 6000) // the model-written title arrives a few seconds later
   },
@@ -152,6 +155,7 @@ function runCommand(name: string, arg: string) {
 }
 
 async function submit(override?: string, branch?: { parent: string }) {
+  void askOnce() // the first message you send is the click that lets us ask about notifications
   const command = override === undefined ? parseCommand(input.value) : null
   if (command) {
     input.value = ''
@@ -246,7 +250,10 @@ const pending = ref<Pending[]>([])
 watch(chat.busy, (isBusy) => {
   if (isBusy) {
     const poll = window.setInterval(async () => {
-      pending.value = await fetchPending()
+      const found = await fetchPending()
+      const fresh = found.filter((p) => !pending.value.some((q) => q.id === p.id))
+      if (fresh.length) notifyHidden('hi needs your approval', fresh[0].description, 'approval')
+      pending.value = found
       if (!chat.busy.value) clearInterval(poll)
     }, 800)
   } else pending.value = []

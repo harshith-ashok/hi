@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { autoOpen } from '@/composables/useArtifact'
+import { askOnce, notificationsOn, permission } from '@/composables/useNotifications'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { BASE_URL, fetchConfig, fetchModels, fetchVoices, getJson, saveConfig, saveConfigChecked } from '@/backend'
@@ -227,6 +228,15 @@ onMounted(async () => {
             <CardHeader><CardTitle>Artifacts</CardTitle><CardDescription>Pages, documents and diagrams a reply writes for you to keep.</CardDescription></CardHeader>
             <CardContent class="space-y-4">
               <div class="flex items-center justify-between gap-4"><div><Label for="auto-artifact">Open artifacts automatically</Label><p class="text-xs text-muted-foreground">Show each one beside the chat as soon as it is written. This browser only.</p></div><Switch id="auto-artifact" v-model="autoOpen" /></div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Notifications</CardTitle><CardDescription>Hear about things while you are in another tab.</CardDescription></CardHeader>
+            <CardContent class="space-y-4">
+              <div class="flex items-center justify-between gap-4">
+                <div><Label for="notify">Notify me</Label><p class="text-xs text-muted-foreground">When a reply finishes or an approval is waiting while this tab is hidden. This browser only.<template v-if="permission === 'denied'"> The browser is blocking them: allow notifications for this site in its settings.</template><template v-else-if="permission === 'unsupported'"> This browser does not support them.</template></p></div>
+                <Switch id="notify" :model-value="notificationsOn" :disabled="permission === 'unsupported'" @update:model-value="notificationsOn = !!$event; if ($event) void askOnce()" />
+              </div>
             </CardContent>
           </Card>
           <Card class="md:col-span-2">

@@ -311,7 +311,7 @@ always sees the latest version in full.
 - `GET /sessions/{id}/export` returns Markdown of the active path (questions, answers, artifact links). A header menu
   item downloads it.
 
-### - [ ] 5.3 Notifications
+### - [x] 5.3 Notifications
 
 - Browser Notification API: when a reply finishes or an approval is waiting while the tab is hidden. Ask permission
   on first use, from a click. Setting to turn it off.
