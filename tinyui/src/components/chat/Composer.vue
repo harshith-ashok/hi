@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Gauge, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, TextCursorInput, Volume2, Wand2, Workflow, X, Zap } from '@lucide/vue'
+import { ArrowUp, AudioLines, BrainCircuit, ChevronDown, Ear, FileUp, Folder, NotebookText, Plus, Slash, Gauge, Loader2, MessagesSquare, Mic, Paperclip, Sparkles, Square, TextCursorInput, Volume2, Wand2, Workflow, X, Zap } from '@lucide/vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { getJson, postJson } from '@/backend'
 import type { Attachment } from '@/attachments'
 import type { ContextWindow } from '@/composables/useChat'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { useVoice } from '@/composables/useVoice'
 import { COMMANDS } from '@/lib/commands'
+import VaultNotePicker, { type VaultNote } from '@/components/chat/VaultNotePicker.vue'
+import { useProjects } from '@/composables/useProjects'
 import { cn } from '@/lib/utils'
 
 type Voice = ReturnType<typeof useVoice>
@@ -34,6 +36,7 @@ const props = defineProps<{
   attachments: Attachment[]
   history?: string[]
   contextWindow?: ContextWindow | null
+  projectSlug?: string
 }>()
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -45,10 +48,19 @@ const emit = defineEmits<{
   attach: [files: FileList]
   removeAttachment: [key: number]
   fileIt: [attachment: Attachment]
+  addNote: [note: VaultNote]
+  projectChange: [slug: string]
 }>()
 
 const box = ref<InstanceType<typeof Textarea> | null>(null)
 const picker = ref<HTMLInputElement>()
+const notePicker = ref(false)
+const NO_PROJECT = '__none' // a radio item needs a value; "no project" is the empty slug
+const projectStore = useProjects()
+function useSkill() {
+  emit('update:modelValue', '/')
+  void nextTick(() => (box.value?.$el as HTMLTextAreaElement | undefined)?.focus())
+}
 // How full the model's context window is: shown from half full, or as soon as earlier messages have been left out.
 const RING = 2 * Math.PI * 7
 const fill = computed(() => Math.min(1, (props.contextWindow?.used ?? 0) / (props.contextWindow?.limit || 1)))
@@ -222,7 +234,23 @@ defineExpose({ focus: () => (box.value?.$el as HTMLTextAreaElement | undefined)?
 
     <div class="flex flex-wrap items-center gap-1 px-2 pb-2">
       <input ref="picker" type="file" multiple class="sr-only" tabindex="-1" aria-hidden="true" @change="pick" />
-      <Tooltip><TooltipTrigger as-child><Button variant="ghost" size="icon" class="size-8" aria-label="Attach files" @click="picker?.click()"><FileUp class="size-4" /></Button></TooltipTrigger><TooltipContent>Attach files as context</TooltipContent></Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child><Button variant="ghost" size="icon" class="size-8" aria-label="Add to this message" title="Add files, notes, a skill or a project"><Plus class="size-4" /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" class="w-64">
+          <DropdownMenuItem @select="picker?.click()"><FileUp class="size-4" /> Upload files</DropdownMenuItem>
+          <DropdownMenuItem @select="notePicker = true"><NotebookText class="size-4" /> Add a note from your vault</DropdownMenuItem>
+          <DropdownMenuItem @select="useSkill"><Slash class="size-4" /> Use a skill</DropdownMenuItem>
+          <template v-if="projectStore.projects.value.length">
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel class="flex items-center gap-1.5 text-xs font-normal text-muted-foreground"><Folder class="size-3.5" /> Project for this chat</DropdownMenuLabel>
+            <DropdownMenuRadioGroup :model-value="projectSlug || NO_PROJECT" @update:model-value="emit('projectChange', $event === NO_PROJECT ? '' : String($event))">
+              <DropdownMenuRadioItem :value="NO_PROJECT">None</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem v-for="p in projectStore.projects.value" :key="p.slug" :value="p.slug"><span class="truncate">{{ p.name }}</span></DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </template>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <VaultNotePicker v-model:open="notePicker" @pick="emit('addNote', $event)" />
 
       <DropdownMenu>
         <DropdownMenuTrigger as-child>

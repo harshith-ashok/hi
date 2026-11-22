@@ -3,7 +3,7 @@ import { ArrowDown, BarChart3, Folder, FolderGit2, Lightbulb, Network, Pencil, S
 import { useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { toast } from 'vue-sonner'
-import { drawVisual, fetchPending, fileAttachment, patchJson, resolvePending, type Pending } from '@/backend'
+import { drawVisual, fetchPending, fileAttachment, getJson, patchJson, resolvePending, type Pending } from '@/backend'
 import { useAttachments, type Attachment } from '@/attachments'
 import ApprovalBar from '@/components/chat/ApprovalBar.vue'
 import Composer from '@/components/chat/Composer.vue'
@@ -72,9 +72,17 @@ const title = computed(() => sessions.titles[sessions.currentId.value] ?? (chat.
 // the project this chat belongs to (or, before the first message, the one it will be made in)
 const projectSlug = computed(() => (sessions.currentId.value ? sessions.sessions.value.find((s) => s.id === sessions.currentId.value)?.project : projectStore.startIn.value) ?? '')
 const projectName = computed(() => projectStore.projects.value.find((p) => p.slug === projectSlug.value)?.name ?? '')
-async function leaveProject() {
-  if (sessions.currentId.value) await sessions.setProject(sessions.currentId.value, '')
-  else projectStore.startIn.value = ''
+async function setChatProject(slug: string) {
+  if (sessions.currentId.value) await sessions.setProject(sessions.currentId.value, slug)
+  else projectStore.startIn.value = slug // a chat that has no first message yet: it is made inside the project
+}
+const leaveProject = () => setChatProject('')
+
+/** Add one of your notes to the next message, the way a dropped file is. */
+async function addNote(note: { path: string; title: string }) {
+  const found = await getJson<{ path: string; text: string }>(`/vault/note?path=${encodeURIComponent(note.path)}`)
+  if (!found) return notify(`Could not read ${note.title}.`, 'error')
+  attached.addFiles([new File([found.text], `${note.title}.md`, { type: 'text/markdown' })])
 }
 const editing = ref(false)
 const draft = ref('')
@@ -383,12 +391,15 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
           :attachments="attached.items.value"
           :history="history"
           :context-window="chat.contextWindow.value"
+          :project-slug="projectSlug"
           @submit="submit()"
           @cancel="chat.cancel"
           @recall="recall"
           @attach="attached.addFiles($event)"
           @remove-attachment="attached.remove($event)"
           @file-it="fileIt"
+          @add-note="addNote"
+          @project-change="setChatProject"
         />
         <p class="text-center text-[11px] text-muted-foreground">Esc stops a reply · ↑ recalls your last message · Tab accepts a suggestion · drop files anywhere to add context</p>
       </div>

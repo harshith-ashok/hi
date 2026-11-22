@@ -272,7 +272,7 @@ always sees the latest version in full.
 - Note in the skill-creator docs (not in code): its eval scripts assume Claude Code and subagents and are not supported.
 - **Tests:** writes the file, rejects bad and built-in names, refuses to overwrite.
 
-### - [ ] 4.4 `+` menu in the composer
+### - [x] 4.4 `+` menu in the composer
 
 - Replace the paperclip with a `+` menu: Upload files (existing), Add from vault (a note picker over `GET /memory` or
   the vault file list; adds the note as an attachment), Use a skill (inserts `/`), Use a project (assigns the chat).
