@@ -231,6 +231,10 @@ def image_url() -> str:
 # SearXNG, the private search engine (the `searxng` compose service; natively, publish it on 8888).
 SEARXNG_URL = _env.get("SEARXNG_URL") or "http://127.0.0.1:8888"
 SEARXNG_SECRET = _env.get("SEARXNG_SECRET") or ""
+# The model's context window in tokens, sent to Ollama as num_ctx on every chat model. Ollama's own default is small and
+# truncates silently. 16384 is also as much as the tailscale box can take: do not raise the default.
+CONTEXT_TOKENS = int(_number("CONTEXT_TOKENS", 16384))
+
 # The heartbeat: every HEARTBEAT_EVERY seconds, between the hours in HEARTBEAT_HOURS ("08-22"), look for work to prepare.
 HEARTBEAT = _flag("HEARTBEAT", True)
 HEARTBEAT_EVERY = int(_number("HEARTBEAT_EVERY", 1800))
@@ -270,12 +274,19 @@ def _image_backend(value: object) -> str:
     return text
 
 
+def _context_tokens(value: object) -> int:
+    number = int(str(value).strip())
+    if not 2048 <= number <= 262144:
+        raise ValueError("must be between 2048 and 262144")
+    return number
+
+
 # How a setting saved from the UI is turned into the type the rest of the code reads (the .env file holds text).
 _COERCE = {
     "HEARTBEAT": to_flag, "SCREENSHOT_WATCH": to_flag, "HEARTBEAT_HOURS": _to_hours,
     "HEARTBEAT_EVERY": _positive_int, "PROPOSAL_TTL_DAYS": _positive_int, "MAX_BACKGROUND_RUNS_PER_HOUR": _positive_int,
     "MAX_HOSTED_CALLS_PER_DAY": _positive_int, "MAX_NOTIFICATIONS_PER_HOUR": _positive_int,
-    "IMAGE_BACKEND": _image_backend,
+    "IMAGE_BACKEND": _image_backend, "CONTEXT_TOKENS": _context_tokens,
 }
 
 

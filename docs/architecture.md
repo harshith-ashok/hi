@@ -60,6 +60,8 @@ inbox gate (`hi/context/inbox.py`) to the island. Decisions: [adr/0002-automatio
 | The Mac bridge or island is down | the report is still written; the pop-up is lost (a macOS notification if the app is closed) |
 | An unattended run wants a risky tool | it is not run; a proposal waits for approval |
 
+The model context window is `CONTEXT_TOKENS` (default 16384), sent to Ollama as `num_ctx`. A larger window costs memory on the Ollama host (this machine or the tailscale box), so raise it only where the host has room.
+
 `GET /health` reports Ollama, the Mac bridge, the sandbox and the vault.
 
 ## Background jobs

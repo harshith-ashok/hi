@@ -63,7 +63,7 @@ Phase 0 fixes both before anything is built on top.
 
 ## Phase 0 — Context foundations
 
-### - [ ] 0.1 Set the model context window explicitly
+### - [x] 0.1 Set the model context window explicitly
 
 - Add `CONTEXT_TOKENS` to `hi/config.py` (default `16384`, which is also the ceiling for the tailscale box; overridable in the settings like the other model settings).
   Pass `num_ctx=config.CONTEXT_TOKENS` from `build_chat_model`, unless the caller passes its own.
