@@ -58,8 +58,8 @@ def describe(mode: str | None = None) -> str:
 
 
 def signature(mode: str | None = None) -> str:
-    """Changes whenever the mode or endpoint does — use in cache keys."""
-    return f"{mode or config.AI_MODE}|{ollama_host(mode)}"
+    """Changes whenever the mode, endpoint or context window does — use in cache keys."""
+    return f"{mode or config.AI_MODE}|{ollama_host(mode)}|{config.CONTEXT_TOKENS}"
 
 
 def configured_modes() -> list[str]:
@@ -82,13 +82,14 @@ def build_chat_model(name: str, *, thinking: bool = False, mode: str | None = No
 
     `thinking` asks for streamed reasoning (surfaced as
     `additional_kwargs["reasoning_content"]`). `kwargs` such as
-    temperature/keep_alive pass through.
+    temperature/keep_alive pass through. The context window is `config.CONTEXT_TOKENS` unless `num_ctx` is given.
     """
     host = ollama_host(mode)
     if not host:
         raise RuntimeError("Tailscale Ollama URL not set — add it in settings.")
     if thinking:
         kwargs["reasoning"] = True
+    kwargs.setdefault("num_ctx", config.CONTEXT_TOKENS)
     return ChatOllama(model=name, base_url=host, client_kwargs={"headers": APP_HEADERS}, **kwargs)
 
 

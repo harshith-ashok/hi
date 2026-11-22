@@ -48,6 +48,8 @@ from hi.context.tools import current_context, pause_screen_context, resume_scree
 from hi.context.now import describe as screen_context
 from hi.agents.term.host_git import git_on_mac, git_push
 from hi.memory.skills import hint_for, index as skills_index, use_skill
+from hi.agents.term.project_files import read_workspace_file
+from hi.agents.term.skill_tools import create_skill, update_skill
 from hi.memory.context import build_context, search_vault
 from hi.agents.docs.vault_rag import read_vault_note
 from hi.orchestrator.graph import latest_run_trace
@@ -220,6 +222,9 @@ TOOLS = passthrough([
     git_on_mac,
     git_push,
     use_skill,
+    read_workspace_file,
+    create_skill,
+    update_skill,
     current_context,
     pause_screen_context,
     resume_screen_context,
@@ -338,8 +343,15 @@ class _StatefulAgent:
     def reset(self) -> None:
         self._messages = []
 
+    def _incoming(self, messages: list) -> list:
+        """The messages to add to memory. The server (hi/server/turn.py) sends the chat's saved history followed by the
+        new message on every turn. Once this agent remembers the conversation, only that last message is new: adding the
+        history again would repeat every earlier exchange in each prompt. Right after a reset or a restart the memory is
+        empty, so the history is taken from the transcript instead."""
+        return messages[-1:] if self._messages and len(messages) > 1 else messages
+
     def invoke(self, input: dict, *args, **kwargs) -> dict:
-        self._messages.extend(input["messages"])
+        self._messages.extend(self._incoming(input["messages"]))
         result = self._agent.invoke(
             {"messages": self._messages}, *args, **kwargs)
         self._messages = _trim_history(result["messages"], self._max_history)
@@ -352,7 +364,7 @@ class _StatefulAgent:
         it goes — the last one seen by the time the caller finishes
         consuming the stream is the final state, same as .invoke() would
         have returned, with no redundant second call."""
-        self._messages.extend(input["messages"])
+        self._messages.extend(self._incoming(input["messages"]))
         for item in self._agent.stream({"messages": self._messages}, *args, **kwargs):
             _ns, mode, payload = item
             if mode == "values":

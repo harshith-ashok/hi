@@ -11,10 +11,10 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from hi import visuals
-from hi.memory import sessions, transcript
+from hi.memory import artifacts, export, projects, sessions, transcript
 from hi.server.http import json_body, require_client
 
-TURN_FIELDS = ("time", "ask", "answer", "tools", "persona", "tier", "seconds", "visual", "error", "plan")
+TURN_FIELDS = ("id", "parent", "time", "ask", "answer", "tools", "persona", "tier", "seconds", "visual", "error", "plan")
 
 
 def _session_or_404(session_id: str) -> sessions.Session:
@@ -42,13 +42,28 @@ async def list_sessions(request: Request) -> JSONResponse:
 async def create_session(request: Request) -> JSONResponse:
     require_client(request)
     body = await json_body(request)
-    return JSONResponse(asdict(await run_in_threadpool(sessions.create, str(body.get("title") or ""))), status_code=201)
+    project = str(body.get("project") or "")
+    if project and projects.get(project) is None:
+        raise HTTPException(400, "No such project")
+    incognito = body.get("incognito") is True
+    return JSONResponse(asdict(await run_in_threadpool(sessions.create, str(body.get("title") or ""), project, incognito)), status_code=201)
 
 
 async def get_session(request: Request) -> JSONResponse:
     s = _session_or_404(request.path_params["session_id"])
-    turns = await run_in_threadpool(transcript.session_turns, s.id)
-    return JSONResponse({**asdict(s), "turns": [{k: t.get(k, "") for k in TURN_FIELDS} for t in turns]})
+    turns = await run_in_threadpool(transcript.session_turns, s.id, s.head)
+    versions = await run_in_threadpool(transcript.versions, s.id)
+    made = await run_in_threadpool(artifacts.by_turn, s.id)
+    return JSONResponse({**asdict(s), "turns": [
+        {**{k: t.get(k, "") for k in TURN_FIELDS}, "versions": versions.get(t["id"]), "artifacts": made.get(t["id"], [])} for t in turns]})
+
+
+async def export_session(request: Request) -> Response:
+    """GET /sessions/{id}/export: the chat as a Markdown download."""
+    s = _session_or_404(request.path_params["session_id"])
+    text = await run_in_threadpool(export.markdown, s.id)
+    return Response(text, media_type="text/markdown; charset=utf-8", headers={
+        "Content-Disposition": f'attachment; filename="{export.filename(s.title)}.md"', "X-Content-Type-Options": "nosniff"})
 
 
 async def patch_session(request: Request) -> JSONResponse:
@@ -58,7 +73,17 @@ async def patch_session(request: Request) -> JSONResponse:
     for value in (pinned, archived):
         if value is not None and not isinstance(value, bool):
             raise HTTPException(400, "pinned and archived must be true or false")
-    s = await run_in_threadpool(sessions.update, request.path_params["session_id"], body.get("title"), pinned, archived)
+    session_id = request.path_params["session_id"]
+    project = body.get("project")
+    if project is not None and (not isinstance(project, str) or (project and projects.get(project) is None)):
+        raise HTTPException(400, "project must be the slug of an existing project, or an empty string")
+    head = body.get("head")
+    if head is not None:
+        # Switching to another attempt: show the newest branch that goes through the turn chosen.
+        if not isinstance(head, str) or not await run_in_threadpool(transcript.has_turn, session_id, head):
+            raise HTTPException(400, "head must be the id of a turn in this chat")
+        head = await run_in_threadpool(transcript.newest_leaf, session_id, head)
+    s = await run_in_threadpool(sessions.update, session_id, body.get("title"), pinned, archived, head, project)
     if s is None:
         raise HTTPException(404, "No such session")
     return JSONResponse(asdict(s))
@@ -86,6 +111,7 @@ routes = [
     Route("/sessions", list_sessions, methods=["GET"]),
     Route("/sessions", create_session, methods=["POST"]),
     Route("/sessions/{session_id}", get_session, methods=["GET"]),
+    Route("/sessions/{session_id}/export", export_session, methods=["GET"]),
     Route("/sessions/{session_id}", patch_session, methods=["PATCH"]),
     Route("/sessions/{session_id}", delete_session, methods=["DELETE"]),
     Route("/visual", draw, methods=["POST"]),

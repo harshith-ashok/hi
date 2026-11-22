@@ -52,3 +52,19 @@ def test_the_same_pull_is_only_started_once(monkeypatch):
     assert providers._start_pull("big", "local", "http://h") is True
     assert providers._start_pull("big", "local", "http://h") is False
     assert started == ["pull-big"]
+
+
+def test_chat_models_get_an_explicit_context_window(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(providers, "ChatOllama", lambda **kw: seen.update(kw) or object())
+    monkeypatch.setattr(config, "CONTEXT_TOKENS", 12345)
+    providers.build_chat_model("m", mode="tailscale")
+    assert seen["num_ctx"] == 12345
+    providers.build_chat_model("m", mode="tailscale", num_ctx=999)  # a caller's own value wins
+    assert seen["num_ctx"] == 999
+
+
+def test_changing_the_context_window_changes_the_cache_signature(monkeypatch):
+    before = providers.signature("tailscale")
+    monkeypatch.setattr(config, "CONTEXT_TOKENS", config.CONTEXT_TOKENS + 1)
+    assert providers.signature("tailscale") != before

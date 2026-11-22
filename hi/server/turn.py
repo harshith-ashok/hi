@@ -20,7 +20,8 @@ from hi.core import runpolicy
 from hi.core.runpolicy import BACKGROUND_ORIGINS
 from hi.llm.registry import TIERS, get_tier_model, get_tier_model_fast
 from hi.memory import extraction as memory
-from hi.memory import records, reflection as reflection_agent, transcript
+from hi.memory import artifacts, projects, records, reflection as reflection_agent, sessions, summary, transcript
+from hi.memory.skills import expand_slash
 from hi.orchestrator.complexity import classify_or_default
 from hi.personas import PERSONAS, get_agent_builder
 from hi.router import collapse, fast_route, remember_route
@@ -56,11 +57,15 @@ _cache_lock = threading.Lock()
 MAX_CACHED_AGENTS = 16  # one per (persona, tier, session) in use; the least recently used is dropped
 
 
-def _get_agent(persona_name: str, tier: str, isolated: bool = False, session: str = ""):
+ARTIFACT_SHARE = 0.6  # at most this much of what is left of the context window goes to the chat's artifacts
+
+
+def _get_agent(persona_name: str, tier: str, isolated: bool = False, session: str = "", think: bool = True):
     """The cached agent for (persona, tier, session). term remembers its conversation, so each chat session gets its
-    own, and `isolated` gives background runs theirs: a background run must neither read your chat nor reset it."""
-    model = get_tier_model(tier)
-    key = (persona_name, tier, llm.model_name(model), llm.signature(), isolated, session)
+    own, and `isolated` gives background runs theirs: a background run must neither read your chat nor reset it.
+    `think=False` builds it on the tier's model without streamed reasoning (the "Think" switch in the composer)."""
+    model = get_tier_model(tier) if think else get_tier_model_fast(tier)
+    key = (persona_name, tier, llm.model_name(model), llm.signature(), isolated, session, think)
     with _cache_lock:
         if key in _agent_cache:
             _agent_cache[key] = _agent_cache.pop(key)  # most recently used goes last
@@ -83,15 +88,17 @@ def _context_used(text: str) -> dict | None:
 def stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
     origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
+    parent: str | None = None, style: str = "", think: bool | None = None,
 ):
     """Wraps `_stream_query_as_agui` so a failure while setting up the turn
     (unreachable Ollama, missing model) reaches the client
     as a RUN_ERROR event instead of a silently dropped connection."""
     try:
-        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier, session, visualize)
+        yield from _stream_query_as_agui(text, forced_persona, fresh, context, origin, forced_tier, session, visualize, parent, style, think)
     except Exception as e:
         records.record_turn(records.TurnRecord(
             forced_persona or "", "", text, error=llm.friendly_error(e), detail=repr(e), origin=origin, session=session,
+            parent=parent,
         ))
         yield ag.RunErrorEvent(message=llm.friendly_error(e))
 
@@ -99,6 +106,7 @@ def stream_query_as_agui(
 def _stream_query_as_agui(
     text: str, forced_persona: str | None = None, fresh: bool = False, context: str = "",
     origin: str = "ui", forced_tier: str | None = None, session: str = "", visualize: bool = False,
+    parent: str | None = None, style: str = "", think: bool | None = None,
 ):
     """Yields AG-UI events for one query — a `persona_selected` CUSTOM
     event first (this project's own extension; AG-UI has no built-in
@@ -116,6 +124,10 @@ def _stream_query_as_agui(
     too, and (see module docstring) never triggers an orchestrated plan.
     """
     started = time.monotonic()
+    if slash := expand_slash(text):  # "/skill-name request": the skill's instructions ride along as context
+        skill_name, _rest, instructions = slash
+        context += f"\n\nThe user invoked the '{skill_name}' skill. Follow these instructions for their request:\n\n{instructions}"
+        forced_persona = forced_persona or "term"
     reflection_agent.maybe_reflect_yesterday()  # background, at most once a day
     if forced_persona in PERSONAS:
         persona_name, tier, needs_plan = forced_persona, _FORCED_PERSONA_TIER, False
@@ -127,6 +139,7 @@ def _stream_query_as_agui(
         persona_name, tier, needs_plan = (*routed, False) if routed else classify_or_default(text)
         persona_name = collapse(persona_name)
     prof = profiles.profile(origin)
+    style_note = profiles.style_text(style) if style and origin not in BACKGROUND_ORIGINS else ""  # the style chosen in the chat
     routed_tier = tier  # what the router chose, before the user's choice is applied
     if forced_tier in TIERS:  # the user (or a background run) asked for a specific tier
         tier = forced_tier
@@ -146,14 +159,42 @@ def _stream_query_as_agui(
         yield ag.CustomEvent(name="context_used", value=used)
 
     thread_id = uuid.uuid4().hex
+    turn_id = uuid.uuid4().hex[:12]
+    head = sessions.head_of(session) if session else ""
+    branched = parent is not None and parent != head  # an edit or "ask again": not a continuation of the latest turn
+    if parent is None:
+        parent = head  # the turn this one follows in its chat
+    dropped = 0  # earlier turns of the chat that did not fit the context window
+    if session and (project_info := projects.context_block(session)):
+        context += "\n\n" + project_info  # the chat's project: its instructions and files
     if needs_plan:
-        events = stream_orchestrated_as_agui_sync(text + context + prof.style, thread_id)
+        events = stream_orchestrated_as_agui_sync(text + context + prof.style + style_note, thread_id)
         log_persona = "orchestrator"
     else:
-        agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS, session=session)
+        agent = _get_agent(persona_name, tier, isolated=origin in BACKGROUND_ORIGINS, session=session, **({"think": False} if think is False else {}))
         if fresh and hasattr(agent, "reset"):
             agent.reset()  # a question about the screen right now must not be answered from an earlier one
-        events = stream_agent_as_agui(agent, text + context + prof.style, thread_id, [] if fresh else transcript.history(session=session))
+        if session and not fresh:
+            on_branch = set() if branched and not parent else {e["id"] for e in transcript.session_path(session, parent)}
+            share = int(max(transcript.history_budget(text + context + prof.style + style_note), 0) * ARTIFACT_SHARE)
+            if block := artifacts.context_block(session, share, on_branch):
+                context += "\n\n" + block
+        message = text + context + prof.style + style_note
+        if branched and hasattr(agent, "reset"):
+            agent.reset()  # its memory holds the other branch; the transcript has the right one
+        if fresh or (branched and not parent):
+            earlier: list[dict] = []
+        elif session:
+            saved = (sessions.get(session) or sessions.Session(session)).summary
+            budget = transcript.history_budget(message) - (transcript.estimate_tokens(saved) + 40 if saved else 0)
+            earlier, dropped = transcript.history_within(budget, session, parent)
+            if dropped and saved:
+                earlier = summary.messages(saved) + earlier
+            used = transcript.PROMPT_OVERHEAD_TOKENS + transcript.estimate_tokens(message) + sum(transcript.estimate_tokens(m["content"]) for m in earlier)
+            yield ag.CustomEvent(name="context_window", value={"used": used, "limit": config.CONTEXT_TOKENS, "dropped_turns": dropped})
+        else:
+            earlier = transcript.history()
+        events = stream_agent_as_agui(agent, message, thread_id, earlier)
         log_persona = persona_name
 
     final_answer = ""
@@ -208,7 +249,7 @@ def _stream_query_as_agui(
         # The client pressed Stop (or went away). Keep what was said: a stopped turn stays in its chat session.
         records.record_turn(records.TurnRecord(
             log_persona, tier, text, "".join(streamed), list(journal_tools.values()), time.monotonic() - started,
-            needs_plan, error=records.STOPPED, origin=origin, session=session,
+            needs_plan, error=records.STOPPED, origin=origin, session=session, id=turn_id, parent=parent,
         ))
         raise
 
@@ -235,10 +276,17 @@ def _stream_query_as_agui(
         },
     )
 
-    records.record_turn(records.TurnRecord(
+    record = records.TurnRecord(
         log_persona, tier, text, final_answer, list(journal_tools.values()), time.monotonic() - started, needs_plan,
         error="" if final_answer else run_error, detail=run_error, origin=origin, session=session, visual=visual,
-    ))
+        id=turn_id, parent=parent,
+    )
+    records.record_turn(record)
+    yield ag.CustomEvent(name="turn", value={"id": turn_id, "parent": parent})
+    for saved in record.artifacts:
+        yield ag.CustomEvent(name="artifact", value=saved)
+    if dropped and origin not in BACKGROUND_ORIGINS:
+        summary.summarise_async(session, parent, dropped)  # for the next turn: what fell out of the window
     if final_answer and speaks:
         if not speaker.has_spoken:  # nothing sayable streamed (tool-only answer, one-liner): summarize
             yield ag.CustomEvent(name="spoken_summary", value={"text": make_spoken_summary(final_answer)})

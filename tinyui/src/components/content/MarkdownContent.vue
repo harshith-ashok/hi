@@ -2,14 +2,17 @@
 // A reply as the chat draws it: prose, code blocks with a copy button, and Mermaid blocks as real diagrams.
 import { Box, Workflow } from '@lucide/vue'
 import { computed } from 'vue'
+import ArtifactCard from '@/components/content/ArtifactCard.vue'
 import CodeBlock from '@/components/content/CodeBlock.vue'
 import MermaidDiagram from '@/components/content/MermaidDiagram.vue'
 import Viewer3D from '@/components/content/Viewer3D.vue'
 import { Skeleton } from '@/components/ui/skeleton'
-import { segments } from '@/lib/markdown'
+import { slugify, type SavedArtifact } from '@/composables/useArtifact'
+import { kindOf, segments } from '@/lib/markdown'
 import { parseScene } from '@/lib/scene3d'
 
-const props = defineProps<{ source: string; streaming?: boolean }>()
+const props = defineProps<{ source: string; streaming?: boolean; artifacts?: SavedArtifact[] }>()
+const savedFor = (title: string) => props.artifacts?.find((a) => a.slug === slugify(title))
 const parts = computed(() => segments(props.source))
 const sceneOf = (text: string) => parseScene(text)
 </script>
@@ -19,10 +22,11 @@ const sceneOf = (text: string) => parseScene(text)
     <template v-for="(part, i) in parts" :key="i">
       <div
         v-if="part.kind === 'html'"
-        class="prose prose-sm max-w-none break-words dark:prose-invert prose-headings:font-semibold prose-pre:bg-muted prose-img:rounded-lg prose-table:block prose-table:overflow-x-auto prose-a:text-primary"
+        class="reply-prose prose prose-sm max-w-none break-words dark:prose-invert prose-headings:font-semibold prose-pre:bg-muted prose-img:rounded-lg prose-table:block prose-table:overflow-x-auto prose-a:text-primary"
         v-html="part.html"
       />
-      <CodeBlock v-else-if="part.kind === 'code'" :lang="part.lang" :text="part.text" />
+      <ArtifactCard v-else-if="part.kind === 'artifact'" :title="part.title" :kind="savedFor(part.title)?.kind ?? kindOf(part.lang)" :lang="part.lang" :text="part.text" :writing="streaming && !part.closed" :saved="savedFor(part.title)" />
+      <CodeBlock v-else-if="part.kind === 'code'" :lang="part.lang" :text="part.text" :previewable="!streaming" />
       <template v-else-if="part.kind === 'scene3d'">
         <template v-if="part.closed || !streaming">
           <Viewer3D v-if="'scene' in sceneOf(part.text)" :scene="(sceneOf(part.text) as { scene: import('@/lib/scene3d').SceneData }).scene" />

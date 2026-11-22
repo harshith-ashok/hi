@@ -41,7 +41,7 @@ def announce_pending_approval(action) -> None:
 def start_background_jobs(run_turn=None) -> None:
     """Start every background job. `run_turn` is the server's headless runner (hi/server/headless.py); automation
     jobs use it to run agent turns without importing the server."""
-    from hi.memory import proposals
+    from hi.memory import proposals, sessions
     from hi.orchestrator.pending_actions import set_on_pending
 
     set_on_pending(announce_pending_approval)
@@ -58,3 +58,4 @@ def start_background_jobs(run_turn=None) -> None:
         drop.start()
     jobs.every("triage-inbox", HOUR_S, triage_inbox)
     jobs.every("weekly-retro", HOUR_S, maybe_generate_weekly_retro)
+    jobs.every("sweep-incognito", HOUR_S, sessions.sweep_incognito)  # incognito chats do not outlive a day

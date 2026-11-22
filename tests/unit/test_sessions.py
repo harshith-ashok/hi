@@ -509,3 +509,159 @@ def test_a_stopped_turn_with_tools_is_still_remembered(tmp_vault):
     sid = sessions.create().id
     turn(sid, "go", "", tools=[{"name": "show_ui", "args": json.dumps({"ui": {"type": "form", "title": "T"}}), "result": "x"}], error="stopped")
     assert len(transcript.history(session=sid)) == 2
+
+
+# --- turn ids and parents ----------------------------------------------------------------------------------------
+
+def test_turns_get_ids_chained_by_parent_and_the_session_head_follows(tmp_vault):
+    s = sessions.create().id
+    turn(s, "first")
+    turn(s, "second")
+    a, b = transcript.session_turns(s)
+    assert a["id"] and b["id"] and a["id"] != b["id"]
+    assert a["parent"] == "" and b["parent"] == a["id"]
+    assert sessions.get(s).head == b["id"] and sessions.head_of(s) == b["id"]
+
+
+def test_a_sibling_turn_is_left_out_of_the_branch_that_is_showing(tmp_vault):
+    s = sessions.create().id
+    turn(s, "q1")
+    (first,) = transcript.session_turns(s)
+    turn(s, "q2 v1", id="v1", parent=first["id"])
+    turn(s, "q2 v2", id="v2", parent=first["id"])  # a second attempt at the same question
+    assert [t["ask"] for t in transcript.session_turns(s)] == ["q1", "q2 v2"]
+    assert [t["ask"] for t in transcript.session_turns(s, head="v1")] == ["q1", "q2 v1"]
+    assert [m["content"] for m in transcript.history(session=s, head="v1") if m["role"] == "user"] == ["q1", "q2 v1"]
+
+
+def test_turns_written_before_ids_read_as_a_chain_and_new_turns_follow_them(tmp_vault):
+    s = sessions.create().id
+    day = transcript._day_file(transcript.date.today())
+    day.parent.mkdir(parents=True, exist_ok=True)
+    old = [{"time": f"2026-01-01T10:0{i}:00", "ask": f"old {i}", "answer": "ok", "tools": [], "session": s} for i in range(2)]
+    day.write_text("".join(json.dumps(e) + "\n" for e in old))
+    first, second = transcript.session_turns(s)
+    assert first["parent"] == "" and second["parent"] == first["id"]
+    assert sessions.head_of(s) == second["id"]  # no head saved yet: the newest turn is it
+    turn(s, "new")
+    assert [t["ask"] for t in transcript.session_turns(s)] == ["old 0", "old 1", "new"]
+    assert transcript.session_turns(s)[-1]["parent"] == second["id"]
+
+
+# --- edit and "ask again": versions ------------------------------------------------------------------------------
+
+def two_attempts(client):
+    s = sessions.create().id
+    turn(s, "q1", id="a")
+    turn(s, "q2 first try", id="b1", parent="a")
+    turn(s, "q3", id="c", parent="b1")
+    turn(s, "q2 second try", id="b2", parent="a")  # an edit of q2: a sibling of b1, now showing
+    return s
+
+
+def test_versions_list_the_attempts_at_each_turn(tmp_vault, client):
+    s = two_attempts(client)
+    body = client.get(f"/sessions/{s}").json()
+    assert [t["ask"] for t in body["turns"]] == ["q1", "q2 second try"]
+    assert body["turns"][0]["versions"] == {"index": 0, "count": 1, "ids": ["a"]}
+    assert body["turns"][1]["versions"] == {"index": 1, "count": 2, "ids": ["b1", "b2"]}
+
+
+def test_switching_versions_shows_the_newest_branch_through_the_chosen_turn(tmp_vault, client):
+    s = two_attempts(client)
+    assert client.patch(f"/sessions/{s}", json={"head": "b1"}).status_code == 200
+    body = client.get(f"/sessions/{s}").json()
+    assert [t["ask"] for t in body["turns"]] == ["q1", "q2 first try", "q3"]  # b1's branch goes on to q3
+    assert body["head"] == "c"
+    assert sessions.head_of(s) == "c"  # the next turn follows what is showing
+
+
+def test_switching_to_a_turn_that_is_not_in_the_chat_is_refused(tmp_vault, client):
+    s = two_attempts(client)
+    assert client.patch(f"/sessions/{s}", json={"head": "nope"}).status_code == 400
+    assert client.patch(f"/sessions/{s}", json={"head": 5}).status_code == 400
+
+
+def test_deleting_a_chat_removes_every_branch(tmp_vault, client):
+    s = two_attempts(client)
+    assert client.delete(f"/sessions/{s}").status_code == 204
+    assert transcript.session_turns(s) == [] and transcript._session_entries(s) == []
+
+
+def test_query_passes_a_known_parent_on_and_refuses_an_unknown_one(tmp_vault, client, monkeypatch):
+    from hi.server import turn
+    from ag_ui import core as ag
+
+    s = two_attempts(client)
+    seen = {}
+
+    def fake(text, **kw):
+        seen.update(kw)
+        yield ag.RunStartedEvent(thread_id="t", run_id="r")
+        yield ag.RunFinishedEvent(thread_id="t", run_id="r", result="x")
+
+    monkeypatch.setattr(turn, "stream_query_as_agui", fake)
+    assert client.post("/query", json={"text": "q2 again", "session": s, "parent": "a"}).status_code == 200
+    assert seen["parent"] == "a"
+    seen.clear()
+    client.post("/query", json={"text": "plain", "session": s})
+    assert "parent" not in seen  # not sent: the turn follows the chat's latest turn
+    assert client.post("/query", json={"text": "x", "session": s, "parent": "nope"}).status_code == 400
+
+
+# --- incognito chats ---------------------------------------------------------------------------------------------
+
+def test_an_incognito_chat_is_hidden_and_leaves_no_log_journal_or_memory(tmp_vault, client, monkeypatch):
+    learned = []
+    monkeypatch.setattr(records.extraction, "extract_async", lambda *a: learned.append(a))
+    s = client.post("/sessions", json={"incognito": True}).json()
+    assert s["incognito"] is True
+    turn(s["id"], "a secret question", "a secret answer")
+    assert learned == []
+    assert transcript.session_turns(s["id"])[0]["ask"] == "a secret question"  # kept only so the chat can carry on
+    assert not list((tmp_vault / "hi" / "conversations").glob("*.md")) and not list((tmp_vault / "hi" / "journal").glob("*"))
+    assert s["id"] not in [x["id"] for x in client.get("/sessions").json()]
+    assert client.get(f"/sessions/{s['id']}").status_code == 200  # still open while you are in it
+    turn(sessions.create().id, "an ordinary question")
+    assert len(learned) == 1  # an ordinary chat is still learned from
+
+
+def test_deleting_an_incognito_chat_removes_everything_of_it(tmp_vault, client):
+    s = client.post("/sessions", json={"incognito": True}).json()["id"]
+    turn(s, "q", '```html artifact title="x"\n<p>x</p>\n```')
+    assert client.delete(f"/sessions/{s}").status_code == 204
+    assert transcript._session_entries(s) == [] and not sessions._path(s).exists()
+
+
+def test_the_sweep_deletes_only_old_incognito_chats(tmp_vault):
+    old, fresh, normal = (sessions.create(incognito=True), sessions.create(incognito=True), sessions.create())
+    for chat in (old, fresh, normal):
+        turn(chat.id, "q")
+    stale = sessions.get(old.id)
+    stale.updated = "2020-01-01T00:00:00"
+    sessions._write(stale)
+    older_normal = sessions.get(normal.id)
+    older_normal.updated = "2020-01-01T00:00:00"
+    sessions._write(older_normal)
+    assert sessions.sweep_incognito() == 1
+    assert sessions.get(old.id) is None and sessions.get(fresh.id) is not None and sessions.get(normal.id) is not None
+
+
+# --- export ------------------------------------------------------------------------------------------------------
+
+def test_a_chat_exports_as_markdown_on_the_branch_showing(tmp_vault, client):
+    s = sessions.create(title="Trip plan").id
+    turn(s, "where to?", "Lisbon.", id="a")
+    turn(s, "how long? (first try)", "Three days.", id="b1", parent="a")
+    turn(s, "how long?", 'Five days.\n```html artifact title="Itinerary"\n<p>x</p>\n```', id="b2", parent="a")
+    r = client.get(f"/sessions/{s}/export")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/markdown")
+    assert r.headers["content-disposition"] == 'attachment; filename="Trip-plan.md"'
+    text = r.text
+    assert text.startswith("# Trip plan") and "## You\n\nwhere to?" in text and "## hi\n\nLisbon." in text
+    assert "Five days." in text and "first try" not in text and "Three days." not in text
+    assert "> Artifact: Itinerary (version 1)" in text and f"hi/artifacts/{s}/itinerary/v1" in text
+
+
+def test_exporting_an_unknown_chat_is_a_404(tmp_vault, client):
+    assert client.get("/sessions/20260101-000000-abcd/export").status_code == 404
