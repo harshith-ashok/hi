@@ -14,5 +14,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 COPY --from=build /src/build/bin/whisper-server /usr/local/bin/whisper-server
 COPY entrypoint.sh /entrypoint.sh
 ENV WHISPER_MODEL=base.en
-EXPOSE 8080
+EXPOSE 8083
 ENTRYPOINT ["sh", "/entrypoint.sh"]

@@ -24,7 +24,7 @@ from hi.menubar.lock import already_running
 from hi.menubar.supervisor import Supervisor
 from hi.perception import privacy
 
-BACKEND_QUERY = "http://127.0.0.1:8765/query"
+BACKEND_QUERY = "http://127.0.0.1:8768/query"
 
 
 def _write_pinned(app: str, title: str, screen: str) -> None:

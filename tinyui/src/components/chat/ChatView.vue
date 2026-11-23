@@ -1,21 +1,27 @@
 <script setup lang="ts">
-import { ArrowDown, BarChart3, FolderGit2, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow } from '@lucide/vue'
+import { ArrowDown, BarChart3, Download, Folder, FolderGit2, Ghost, Lightbulb, Network, Pencil, Search, SlidersHorizontal, Workflow, X } from '@lucide/vue'
 import { useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { toast } from 'vue-sonner'
-import { drawVisual, fetchPending, fileAttachment, resolvePending, type Pending } from '@/backend'
+import { BASE_URL, drawVisual, fetchPending, fileAttachment, getJson, patchJson, resolvePending, type Pending } from '@/backend'
 import { useAttachments, type Attachment } from '@/attachments'
 import ApprovalBar from '@/components/chat/ApprovalBar.vue'
 import Composer from '@/components/chat/Composer.vue'
+import ArtifactPanel from '@/components/chat/ArtifactPanel.vue'
 import TurnView from '@/components/chat/TurnView.vue'
 import VoiceOverlay from '@/components/chat/VoiceOverlay.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useArtifact } from '@/composables/useArtifact'
+import { askOnce, notifyHidden } from '@/composables/useNotifications'
 import { answerOf, toolsOf, useChat, type Turn } from '@/composables/useChat'
+import { useProjects } from '@/composables/useProjects'
 import { useSessions } from '@/composables/useSessions'
 import { useStatus } from '@/composables/useStatus'
 import { useVoice } from '@/composables/useVoice'
+import { parseCommand, TIER_NAMES } from '@/lib/commands'
 import { getWakePhrase } from '@/voice'
 
 const props = defineProps<{ active: boolean }>()
@@ -30,21 +36,30 @@ const SUGGESTIONS: { icon: Component; title: string; text: string }[] = [
 ]
 
 const sessions = useSessions()
+const projectStore = useProjects()
 const status = useStatus()
 const attached = useAttachments()
 const input = ref('')
 const tier = ref(['haiku', 'sonnet', 'opus'].includes(localStorage.getItem('tier') ?? '') ? localStorage.getItem('tier')! : 'auto')
 localStorage.removeItem('persona') // an older version chose an agent here; what you choose now is the model size
 const visualize = ref(localStorage.getItem('visualize') === '1')
+const style = ref(localStorage.getItem('style') || 'normal') // the writing style (GET /styles)
+watch(style, (v) => localStorage.setItem('style', v))
+const think = ref(localStorage.getItem('think') !== '0') // stream the model's reasoning (off = faster)
+watch(think, (v) => localStorage.setItem('think', v ? '1' : '0'))
 watch(tier, (v) => localStorage.setItem('tier', v))
 watch(visualize, (v) => localStorage.setItem('visualize', v ? '1' : '0'))
 const composer = ref<InstanceType<typeof Composer> | null>(null)
 
 const notify = (text: string, kind: 'info' | 'error' = 'info') => (kind === 'error' ? toast.error(text) : toast(text))
 
+const artifact = useArtifact()
 const chat = useChat({
+  onArtifact: (saved) => { if (artifact.autoOpen.value && sessions.currentId.value) void artifact.openSaved(sessions.currentId.value, saved.slug, saved.version) },
   onSpoken: (text) => void voice.reply(text),
-  onDone: () => {
+  onDone: (turn) => {
+    if (turn.status === 'done') notifyHidden('hi replied', answerOf(turn) || 'Your reply is ready.', 'reply')
+    else if (turn.status === 'error') notifyHidden('hi hit a problem', turn.error ?? 'The reply failed.', 'reply')
     void sessions.refresh()
     setTimeout(() => void sessions.refresh(), 6000) // the model-written title arrives a few seconds later
   },
@@ -61,11 +76,51 @@ const voice = useVoice({
 
 // --- sessions ------------------------------------------------------------------------------------------------------
 let loadedId = sessions.currentId.value
+// the empty-state greeting: the time of day and, if your preferences say what to call you, your first name
+const firstName = ref('')
+const NAME_IN_PREFERENCES = /(?:[Mm]y name is|[Cc]all me|[Ii]'m called|[Nn]ame:)\s*\**(\p{Lu}[\p{L}'-]{1,24})/u
+onMounted(async () => {
+  const found = await getJson<{ text: string }>('/preferences')
+  firstName.value = (found && NAME_IN_PREFERENCES.exec(found.text)?.[1]) || ''
+})
+const greeting = computed(() => {
+  const hour = new Date().getHours()
+  const part = hour < 5 ? 'Up late' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  return firstName.value ? `${part}, ${firstName.value}` : part
+})
+// incognito: not saved in the list, not remembered, deleted when you leave
+const incognito = computed(() => (sessions.currentId.value ? sessions.currentId.value === sessions.incognitoId.value : sessions.nextIncognito.value))
+/** Download the chat as Markdown (the backend sends it as an attachment). */
+function exportChat() {
+  const id = sessions.currentId.value
+  if (id) Object.assign(document.createElement('a'), { href: `${BASE_URL}/sessions/${id}/export` }).click()
+}
+function startIncognito() {
+  projectStore.startIn.value = ''
+  sessions.select('') // leaves the current chat; this also clears the flag, so set it after
+  sessions.nextIncognito.value = true
+}
 const title = computed(() => sessions.titles[sessions.currentId.value] ?? (chat.turns.value.length ? 'Chat' : 'New chat'))
+// the project this chat belongs to (or, before the first message, the one it will be made in)
+const projectSlug = computed(() => (sessions.currentId.value ? sessions.sessions.value.find((s) => s.id === sessions.currentId.value)?.project : projectStore.startIn.value) ?? '')
+const projectName = computed(() => projectStore.projects.value.find((p) => p.slug === projectSlug.value)?.name ?? '')
+async function setChatProject(slug: string) {
+  if (sessions.currentId.value) await sessions.setProject(sessions.currentId.value, slug)
+  else projectStore.startIn.value = slug // a chat that has no first message yet: it is made inside the project
+}
+const leaveProject = () => setChatProject('')
+
+/** Add one of your notes to the next message, the way a dropped file is. */
+async function addNote(note: { path: string; title: string }) {
+  const found = await getJson<{ path: string; text: string }>(`/vault/note?path=${encodeURIComponent(note.path)}`)
+  if (!found) return notify(`Could not read ${note.title}.`, 'error')
+  attached.addFiles([new File([found.text], `${note.title}.md`, { type: 'text/markdown' })])
+}
 const editing = ref(false)
 const draft = ref('')
 
 async function switchTo(id: string) {
+  queued.value = ''
   if (chat.busy.value) {
     chat.cancel()
     toast('Stopped the reply that was running.')
@@ -94,19 +149,47 @@ async function commitTitle() {
 const history: string[] = []
 let historyPos = 0
 let suggested: string | null = null
+const queued = ref('') // a message typed while a reply was streaming; it goes out when that reply ends
 
-async function submit(override?: string) {
+/** Run a built-in "/" command. None of them is sent to the model. */
+function runCommand(name: string, arg: string) {
+  if (name === 'new' || name === 'clear') {
+    projectStore.startIn.value = ''
+    sessions.select('')
+  } else if (name === 'help' || name === 'skills') window.dispatchEvent(new CustomEvent('hi:help'))
+  else if (name === 'config') window.dispatchEvent(new CustomEvent('hi:go', { detail: 'settings' }))
+  else if (name === 'model' || name === 'tier') {
+    const picked = TIER_NAMES[arg.toLowerCase()]
+    if (!picked) return notify(`Use /${name} fast, balanced, deep or auto. It is ${TIER_NAMES[tier.value]?.label ?? 'Auto'} now.`)
+    tier.value = picked.id
+    notify(`Model size: ${picked.label}.`)
+  }
+}
+
+async function submit(override?: string, branch?: { parent: string }) {
+  void askOnce() // the first message you send is the click that lets us ask about notifications
+  const command = override === undefined ? parseCommand(input.value) : null
+  if (command) {
+    input.value = ''
+    return runCommand(command.name, command.arg)
+  }
   const files = attached.ready()
   const text = (override ?? input.value).trim() || (files.length ? 'Look at the attached files.' : '')
   if (!text) return
   if (attached.reading()) return notify('Still reading the attached files…')
-  if (chat.busy.value) return notify('Still replying. Press Esc or Stop to cancel.')
+  if (chat.busy.value) {
+    if (override !== undefined) return notify('Still replying. Press Esc or Stop to cancel.')
+    queued.value = text // typing ahead: one message waits, a newer one replaces it
+    input.value = ''
+    return
+  }
   input.value = ''
   history.push(text)
   historyPos = history.length
   let session = sessions.currentId.value
   if (!session) {
-    const made = await sessions.create()
+    const made = await sessions.create('', projectStore.startIn.value, sessions.nextIncognito.value)
+    projectStore.startIn.value = ''
     if (!made) return notify('Could not start a chat: is the backend running?', 'error')
     session = made.id
     loadedId = session // so selecting it below does not reload an empty chat over this one
@@ -119,7 +202,33 @@ async function submit(override?: string) {
   const ids = files.map((f) => f.id!)
   attached.clear()
   stick.value = true
-  await chat.ask(message, { tier: tier.value, attachments: ids, names, session, visualize: visualize.value })
+  await chat.ask(message, { tier: tier.value, attachments: ids, names, session, visualize: visualize.value, parent: branch?.parent, style: style.value, think: think.value })
+  if (branch) await reload() // the other attempts at this point are listed with the saved chat
+}
+
+/** Draw the open chat again from what the backend saved (so the attempt switchers are right). */
+async function reload() {
+  const id = sessions.currentId.value
+  const turns = id ? await sessions.open(id) : null
+  if (turns) chat.load(turns)
+}
+
+/** Edit a message, or ask for another answer: send it again as a new attempt after the turn before it. */
+async function again(index: number, text: string) {
+  if (chat.busy.value) return notify('Still replying. Press Esc or Stop to cancel.')
+  const target = chat.turns.value[index]
+  const draft = input.value
+  chat.truncate(index)
+  await submit(text, { parent: target.parent ?? '' })
+  if (chat.turns.value.length <= index) await reload() // it never started: put the turns back
+  input.value = draft // submit clears the box; what you were typing is still yours
+}
+
+async function switchVersion(id: string) {
+  const session = sessions.currentId.value
+  if (!session || chat.busy.value) return
+  if (await patchJson(`/sessions/${session}`, { head: id })) await reload()
+  else notify('Could not switch to that attempt.', 'error')
 }
 
 function recall(step: number) {
@@ -153,7 +262,10 @@ const pending = ref<Pending[]>([])
 watch(chat.busy, (isBusy) => {
   if (isBusy) {
     const poll = window.setInterval(async () => {
-      pending.value = await fetchPending()
+      const found = await fetchPending()
+      const fresh = found.filter((p) => !pending.value.some((q) => q.id === p.id))
+      if (fresh.length) notifyHidden('hi needs your approval', fresh[0].description, 'approval')
+      pending.value = found
       if (!chat.busy.value) clearInterval(poll)
     }, 800)
   } else pending.value = []
@@ -203,7 +315,16 @@ const onScroll = () => {
 const toEnd = (smooth = false) => nextTick(() => scroller.value?.scrollTo({ top: scroller.value.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }))
 useResizeObserver(content, () => stick.value && toEnd()) // diagrams and images change height after they arrive
 
+async function copyLast() {
+  const turn = lastTurn.value
+  const text = turn ? answerOf(turn) : ''
+  if (!text) return notify('There is no reply to copy yet.')
+  await navigator.clipboard?.writeText(text)
+  notify('Copied the last reply.')
+}
+
 onMounted(async () => {
+  window.addEventListener('hi:copy-last', copyLast)
   window.addEventListener('keydown', onKey)
   window.addEventListener('dragenter', onEnter)
   window.addEventListener('dragover', onOver)
@@ -222,33 +343,47 @@ onUnmounted(() => {
   window.removeEventListener('dragenter', onEnter)
   window.removeEventListener('dragover', onOver)
   window.removeEventListener('dragleave', onLeave)
+  window.removeEventListener('hi:copy-last', copyLast)
   window.removeEventListener('drop', onDrop)
   window.removeEventListener('paste', onPaste)
+})
+// When a reply ends, send what was typed meanwhile. If the reply was stopped, give the text back instead.
+watch(chat.busy, (busy) => {
+  if (busy || !queued.value) return
+  const text = queued.value
+  queued.value = ''
+  if (lastTurn.value?.status === 'cancelled') input.value = input.value || text
+  else void submit(text)
 })
 watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col">
+  <div class="flex h-full min-h-0">
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col">
     <header class="flex h-14 shrink-0 items-center gap-2 border-b px-3">
       <SidebarTrigger />
       <div class="min-w-0 flex-1">
         <Input v-if="editing" v-model="draft" class="h-8 max-w-md" aria-label="Chat title" autofocus @keydown.enter.prevent="commitTitle" @keydown.esc.prevent="editing = false" @blur="commitTitle" />
         <button v-else class="group flex max-w-full items-center gap-2 text-left" :disabled="!sessions.currentId.value" title="Rename" @click="draft = title; editing = true">
-          <h1 class="truncate text-sm font-semibold">{{ title }}</h1>
+          <h1 class="truncate font-serif text-base font-semibold">{{ title }}</h1>
           <Pencil v-if="sessions.currentId.value" class="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
         </button>
         <p v-if="lastTurn?.route" class="truncate text-xs text-muted-foreground">{{ lastTurn.route.persona }} · {{ lastTurn.route.tier }}</p>
+        <button v-if="projectName" class="mt-0.5 flex w-fit max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent" :title="`In the project ${projectName}. Click to take this chat out.`" @click="leaveProject"><Folder class="size-3 shrink-0" /><span class="truncate">{{ projectName }}</span><X class="size-3 shrink-0" /></button>
       </div>
+      <Tooltip v-if="sessions.currentId.value && chat.turns.value.length"><TooltipTrigger as-child><Button variant="ghost" size="icon" class="size-8" aria-label="Export this chat as Markdown" @click="exportChat"><Download class="size-4" /></Button></TooltipTrigger><TooltipContent>Export as Markdown</TooltipContent></Tooltip>
+      <span v-if="incognito" class="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground" role="status"><Ghost class="size-3.5" /> Incognito: not saved or remembered</span>
+      <Tooltip v-else><TooltipTrigger as-child><Button variant="ghost" size="icon" class="size-8" aria-label="Start an incognito chat" @click="startIncognito"><Ghost class="size-4" /></Button></TooltipTrigger><TooltipContent>Incognito chat: not saved or remembered</TooltipContent></Tooltip>
       <span v-if="!['ready', 'thinking', 'acting'].includes(voice.state.value)" class="rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground" role="status">{{ voice.state.value }}</span>
     </header>
 
     <div ref="scroller" class="relative min-h-0 flex-1 overflow-y-auto" @scroll.passive="onScroll">
-      <div ref="content" class="mx-auto w-full max-w-3xl space-y-8 px-4 py-6">
+      <div ref="content" class="mx-auto w-full max-w-[46rem] space-y-8 px-4 py-6">
         <div v-if="!chat.turns.value.length" class="flex flex-col items-center gap-6 py-10 text-center">
-          <div class="flex size-12 items-center justify-center rounded-2xl bg-primary text-lg font-bold text-primary-foreground">hi</div>
           <div>
-            <h2 class="text-2xl font-semibold tracking-tight">What can I do for you?</h2>
+            <h2 class="font-serif text-3xl font-medium tracking-tight">{{ greeting }}</h2>
+            <p class="mt-1 text-lg text-muted-foreground">What can I do for you?</p>
             <p class="mt-1 text-sm text-muted-foreground">Ask anything. Turn on <span class="inline-flex items-center gap-1 font-medium text-foreground"><Workflow class="size-3.5" /> Visualize</span> to see every answer as a diagram.</p>
           </div>
           <div class="grid w-full gap-2 sm:grid-cols-2">
@@ -266,7 +401,9 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
           :busy="chat.busy.value"
           :answered="answeredForm(i)"
           @answer="submit($event)"
-          @regenerate="submit(turn.ask)"
+          @regenerate="again(i, turn.ask)"
+          @edit="again(i, $event)"
+          @switch-version="switchVersion"
           @draw="draw(turn)"
           @redraw="draw(turn, $event)"
         />
@@ -275,26 +412,37 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
     </div>
 
     <div class="shrink-0 border-t bg-background/80 px-4 pb-4 pt-3 backdrop-blur">
-      <div class="mx-auto w-full max-w-3xl space-y-2">
+      <div class="mx-auto w-full max-w-[46rem] space-y-2">
         <ApprovalBar :pending="pending" @answer="answerPending" />
+        <div v-if="queued" class="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground" role="status">
+          <span class="shrink-0">Sends when the reply ends:</span><span class="truncate text-foreground">{{ queued }}</span>
+          <button type="button" class="ml-auto rounded p-0.5 hover:bg-background" aria-label="Remove the queued message" @click="queued = ''"><X class="size-3.5" /></button>
+        </div>
         <Composer
           ref="composer"
           v-model="input"
           v-model:tier="tier"
+          v-model:style="style"
+          v-model:think="think"
           :models="status.models.value"
           v-model:visualize="visualize"
           :busy="chat.busy.value"
           :voice="voice"
           :wake-phrase="getWakePhrase()"
           :attachments="attached.items.value"
+          :history="history"
+          :context-window="chat.contextWindow.value"
+          :project-slug="projectSlug"
           @submit="submit()"
           @cancel="chat.cancel"
           @recall="recall"
           @attach="attached.addFiles($event)"
           @remove-attachment="attached.remove($event)"
           @file-it="fileIt"
+          @add-note="addNote"
+          @project-change="setChatProject"
         />
-        <p class="text-center text-[11px] text-muted-foreground">Esc stops a reply · ↑ recalls your last message · drop files anywhere to add context</p>
+        <p class="text-center text-[11px] text-muted-foreground">Esc stops a reply · ↑ recalls your last message · Tab accepts a suggestion · drop files anywhere to add context</p>
       </div>
     </div>
 
@@ -303,5 +451,7 @@ watch(() => props.active, (on) => on && nextTick(() => composer.value?.focus()))
     </div>
 
     <VoiceOverlay v-if="voice.voiceMode.value" :state="voice.state.value" :caption="voice.caption.value" :pending="pending" @leave="voice.toggleVoiceMode" @answer="answerPending" />
+  </div>
+  <ArtifactPanel />
   </div>
 </template>

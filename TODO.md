@@ -36,7 +36,7 @@ Actions are never narrated aloud.
 
 Status: backend + tinyui written; needs a live test with a real
 `whisper-server` (`brew install whisper-cpp`, then
-`whisper-server -m ggml-base.en.bin --port 8080`) and a real mic.
+`whisper-server -m ggml-base.en.bin --port 8083`) and a real mic.
 
 Goal: press a key (or click the mic in tinyui), talk, get a reply — no
 typing, no wake word needed for short exchanges.
@@ -172,7 +172,7 @@ typing, no wake word needed for short exchanges.
 ## 7. Cleanup
 - [ ] Decide whether to remove slash commands from the TUI.
 - [ ] Commit the current work; `frontend/` is still deleted in the tree.
-- [ ] Resolve the port 5173 clash with checklister (use `HI_WEB_PORT`).
+- [ ] Resolve the port 5176 clash with checklister (use `HI_WEB_PORT`).
 
 ## 8. Automation (GAMEPLAN.md; guide in docs/automation.md)
 - [x] Web search through a private SearXNG (`web_search`, secret-safe, hidden while down).

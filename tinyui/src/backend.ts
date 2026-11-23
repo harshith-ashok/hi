@@ -1,7 +1,7 @@
 // Talks to `hi --voice-daemon` (hi/ipc/server.py). One POST per query,
 // streamed back as AG-UI SSE and parsed by hand (EventSource can't POST).
 
-export const BASE_URL: string = import.meta.env.VITE_HI_BACKEND ?? 'http://127.0.0.1:8765' // the override is for testing
+export const BASE_URL: string = import.meta.env.VITE_HI_BACKEND ?? 'http://127.0.0.1:8768' // the override is for testing
 
 // Sent on every request that changes something. A browser only sends a custom header after a CORS preflight, which the
 // backend answers for tinyui's own origin only, so another web page cannot approve or delete anything.
@@ -121,7 +121,7 @@ export async function uploadContext(file: Blob, name: string, kind = ''): Promis
   return body
 }
 
-export interface QueryOptions { attachments?: string[]; session?: string; visualize?: boolean; tier?: string }
+export interface QueryOptions { attachments?: string[]; session?: string; visualize?: boolean; tier?: string; parent?: string; style?: string; think?: boolean }
 
 export async function* streamQuery(text: string, persona: string | null, signal: AbortSignal, options: QueryOptions = {}): AsyncGenerator<AguiEvent> {
   const res = await fetch(`${BASE_URL}/query`, {
@@ -133,6 +133,9 @@ export async function* streamQuery(text: string, persona: string | null, signal:
       attachments: options.attachments?.length ? options.attachments : undefined,
       session: options.session || undefined,
       visualize: options.visualize || undefined,
+      style: options.style && options.style !== 'normal' ? options.style : undefined, // a writing style from GET /styles
+      think: options.think === false ? false : undefined, // false turns streamed reasoning off
+      parent: options.parent, // set for an edit or "ask again": the turn it follows ('' = the start of the chat)
       tier: options.tier && options.tier !== 'auto' ? options.tier : undefined, // fast, balanced or deep; omitted = the router chooses
     }),
     signal,
@@ -162,3 +165,31 @@ export async function* streamQuery(text: string, persona: string | null, signal:
 /** A Mermaid diagram of an answer (null when there is nothing to draw). `error` asks for a fix of a diagram that failed to parse. */
 export const drawVisual = (question: string, answer: string, error = '') =>
   postJson<{ mermaid: string | null }>('/visual', { question, answer, error })
+
+export interface CanvasItem { id: string; kind: 'text' | 'image' | 'voice' | 'file'; group: string; created: string; name: string; text: string; summary: string; pending: boolean; url: string; x: number; y: number; width: number; height: number }
+export interface CanvasGroup { id: string; label: string; x: number; y: number; width: number; height: number; items: CanvasItem[] }
+export interface Canvas { groups: CanvasGroup[]; pending: number }
+
+export const fetchCanvas = () => getJson<Canvas>('/canvas')
+export const dropText = (text: string) => postJson<{ id: string }>('/canvas/text', { text })
+export const regroupCanvas = (all: boolean) => postJson<Canvas & { moved: number }>('/canvas/regroup', { all })
+export const moveCanvasItem = (id: string, groupId: string) => patchJson<Canvas>(`/canvas/items/${id}`, { group_id: groupId })
+export const renameCanvasGroup = (id: string, label: string) => patchJson<Canvas>(`/canvas/groups/${id}`, { label })
+export async function deleteCanvasItem(id: string): Promise<Canvas | null> {
+  try {
+    const res = await fetch(`${BASE_URL}/canvas/items/${id}`, { method: 'DELETE', headers: CLIENT })
+    return res.ok ? ((await res.json()) as Canvas) : null
+  } catch {
+    return null
+  }
+}
+
+// Drops a file (or a recorded voice note, kind=audio) onto the board: hi describes it and sorts it into a group.
+export async function dropCanvasFile(file: Blob, name: string, kind = ''): Promise<void> {
+  const res = await fetch(`${BASE_URL}/canvas/file?name=${encodeURIComponent(name)}${kind ? `&kind=${kind}` : ''}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', ...CLIENT },
+    body: file,
+  })
+  if (!res.ok) throw new Error(`could not add ${name} (${res.status})`)
+}

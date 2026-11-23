@@ -6,4 +6,4 @@ if [ ! -s "$model" ]; then
   curl -fL -o "$model.part" "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${WHISPER_MODEL}.bin"
   mv "$model.part" "$model"
 fi
-exec whisper-server -m "$model" --host 0.0.0.0 --port 8080
+exec whisper-server -m "$model" --host 0.0.0.0 --port 8083

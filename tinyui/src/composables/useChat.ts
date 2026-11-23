@@ -3,16 +3,24 @@
 
 import { reactive, ref } from 'vue'
 import { streamQuery, type AguiEvent } from '@/backend'
+import type { SavedArtifact } from '@/composables/useArtifact'
 
 export interface ToolBlock { kind: 'tool'; id: string; name: string; args: string; result?: string; t0: number; t1?: number }
 export interface ThinkBlock { kind: 'thinking'; text: string; t0: number; t1?: number }
 export interface TextBlock { kind: 'text'; text: string; t0: number; t1?: number }
 export type Block = ToolBlock | ThinkBlock | TextBlock
 
+/** The attempts at one point in a chat: this turn is number `index` of `count` (ids oldest first). */
+export interface Versions { index: number; count: number; ids: string[] }
+
 export interface Visual { state: 'none' | 'pending' | 'ready' | 'failed'; mermaid: string; t0?: number; t1?: number }
 
 export interface Turn {
   id: number
+  serverId?: string // the backend's id for this turn (hi/memory/transcript.py); known once the turn is saved
+  parent?: string // the id of the turn it follows in its chat
+  artifacts?: SavedArtifact[] // pages, documents and diagrams this turn made (saved by the backend)
+  versions?: Versions // other attempts at this point (after an edit or "ask again")
   ask: string
   files: string[]
   t0: number
@@ -31,6 +39,10 @@ export interface Turn {
 
 /** A turn as the backend saves it (hi/memory/transcript.py). */
 export interface StoredTurn {
+  id: string
+  parent: string
+  versions?: Versions | null
+  artifacts?: SavedArtifact[]
   time: string
   ask: string
   answer: string
@@ -43,12 +55,18 @@ export interface StoredTurn {
   plan: boolean
 }
 
+/** How full the model's context window was for the latest turn (the backend estimates tokens). */
+export interface ContextWindow { used: number; limit: number; dropped_turns: number }
+
 export interface AskOptions {
   persona?: string | null
   attachments?: string[]
   names?: string[]
   session?: string
   visualize?: boolean
+  parent?: string // the turn this one follows; set for an edit or "ask again"
+  think?: boolean // false: answer without streamed reasoning
+  style?: string // a writing style id from GET /styles ('normal' or none = how hi usually writes)
   tier?: string // haiku | sonnet | opus, or 'auto' to let the router choose
 }
 
@@ -62,7 +80,7 @@ export function fromStored(stored: StoredTurn): Turn {
   const blocks: Block[] = stored.tools.map((t, i) => ({ kind: 'tool', id: `r${nextId}-${i}`, name: t.name, args: t.args, result: t.result, t0: at, t1: at }))
   if (stored.answer) blocks.push({ kind: 'text', text: stored.answer, t0: at, t1: at })
   return reactive<Turn>({
-    id: nextId++, ask: stored.ask, files: [], t0: at, t1: at + (stored.seconds || 0) * 1000,
+    id: nextId++, serverId: stored.id || undefined, parent: stored.parent || undefined, versions: stored.versions ?? undefined, artifacts: stored.artifacts?.length ? stored.artifacts : undefined, ask: stored.ask, files: [], t0: at, t1: at + (stored.seconds || 0) * 1000,
     status: stored.error === 'stopped' ? 'cancelled' : stored.error && !stored.answer ? 'error' : 'done',
     route: stored.persona ? { persona: stored.persona, tier: stored.tier, plan: stored.plan, at } : undefined,
     blocks, visual: { state: stored.visual ? 'ready' : 'none', mermaid: stored.visual },
@@ -70,9 +88,10 @@ export function fromStored(stored: StoredTurn): Turn {
   })
 }
 
-export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (turn: Turn) => void } = {}) {
+export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (turn: Turn) => void; onArtifact?: (saved: SavedArtifact) => void } = {}) {
   const turns = ref<Turn[]>([])
   const busy = ref(false)
+  const contextWindow = ref<ContextWindow | null>(null)
   let controller: AbortController | null = null
 
   const current = () => turns.value[turns.value.length - 1]
@@ -93,6 +112,16 @@ export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (tu
         } else if (e.name === 'context_used') {
           const v = e.value as { memory: number; notes: string[] }
           turn.context = { memory: v.memory, notes: v.notes, at: now }
+        } else if (e.name === 'artifact') {
+          const saved = e.value as unknown as SavedArtifact
+          turn.artifacts = [...(turn.artifacts ?? []).filter((a) => a.slug !== saved.slug), saved]
+          hooks.onArtifact?.(saved)
+        } else if (e.name === 'context_window') {
+          contextWindow.value = e.value as unknown as ContextWindow
+        } else if (e.name === 'turn') {
+          const v = e.value as { id: string; parent: string }
+          turn.serverId = v.id
+          turn.parent = v.parent || undefined
         } else if (e.name === 'timing') {
           turn.server = e.value as Turn['server']
         } else if (e.name === 'phase' && e.value?.name === 'visualizing') {
@@ -189,8 +218,9 @@ export function useChat(hooks: { onSpoken?: (text: string) => void; onDone?: (tu
   }
 
   const cancel = () => controller?.abort()
-  const clear = () => (turns.value = [])
-  const load = (stored: StoredTurn[]) => (turns.value = stored.map(fromStored))
+  const truncate = (count: number) => { turns.value = turns.value.slice(0, count) } // drop this turn and the ones after it from view
+  const clear = () => { turns.value = []; contextWindow.value = null }
+  const load = (stored: StoredTurn[]) => { turns.value = stored.map(fromStored); contextWindow.value = null }
 
-  return { turns, busy, ask, cancel, clear, load }
+  return { turns, busy, contextWindow, ask, cancel, truncate, clear, load }
 }

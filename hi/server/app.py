@@ -17,7 +17,7 @@ from hi.server.routes import ALL
 log = logging.getLogger(__name__)
 
 HOST = os.environ.get("HI_HOST", "127.0.0.1")  # 0.0.0.0 inside the container; compose publishes it loopback-only
-DEFAULT_PORT = 8765
+DEFAULT_PORT = 8768
 
 
 @asynccontextmanager
@@ -40,7 +40,7 @@ def create_app() -> Starlette:
     return Starlette(
         routes=ALL,
         middleware=[
-            Middleware(CORSMiddleware, allow_origins=allowed_origins(), allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "X-Hi-Client"]),
+            Middleware(CORSMiddleware, allow_origins=allowed_origins(), allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "X-Hi-Client"]),
         ],
         lifespan=lifespan,
     )

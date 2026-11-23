@@ -12,7 +12,7 @@ from hi.server import turn
 from hi.server.app import create_app
 from hi.server.http import iterate_in_one_thread
 
-ORIGIN = "http://localhost:5173"
+ORIGIN = "http://localhost:5176"
 
 
 @pytest.fixture
@@ -50,6 +50,13 @@ def test_cors_allows_tinyui_and_nobody_else(client):
 def test_cors_preflight(client):
     r = client.options("/query", headers={"Origin": ORIGIN, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type"})
     assert r.status_code == 200 and "POST" in r.headers["access-control-allow-methods"]
+
+
+def test_cors_preflight_allows_every_method_tinyui_uses(client):
+    """tinyui is on another origin than the API, so each method it sends is preflighted. PUT saves the preferences."""
+    for method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
+        r = client.options("/preferences", headers={"Origin": ORIGIN, "Access-Control-Request-Method": method, "Access-Control-Request-Headers": "content-type,x-hi-client"})
+        assert r.status_code == 200 and method in r.headers["access-control-allow-methods"], method
 
 
 def test_memory_routes_validate_input(client):

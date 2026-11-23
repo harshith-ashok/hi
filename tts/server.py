@@ -23,7 +23,7 @@ from transformers import AutoProcessor, GradiumPhononTTSForConditionalGeneration
 
 MODEL_ID = os.environ.get("TTS_HF_MODEL", "gradium/phonon-40m-en")
 VOICES_REPO = "gradium/phonon-voices"
-PORT = int(os.environ.get("TTS_PORT", 8780))
+PORT = int(os.environ.get("TTS_PORT", 8783))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 SAMPLE_RATE = 24000
 MAX_CHUNK_TOKENS = 50  # long text is split into sentences and spoken one after the other

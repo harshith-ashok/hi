@@ -1,4 +1,4 @@
-# `docker compose up --build` starts everything; open http://localhost:5173
+# `docker compose up --build` starts everything; open http://localhost:5176
 #
 # Optional settings go in a `.env` file next to this one:
 #   HI_VAULT=/path/to/your/obsidian/vault   (`hi` sets this from VAULT_PATH in ~/.hi/.env;
@@ -7,7 +7,7 @@
 #   OLLAMA_HOST=http://host.docker.internal:11434
 #   TAILSCALE_OLLAMA_URL=http://my-desktop:11434
 #   GITHUB_PERSONAL_ACCESS_TOKEN=ghp_...   (`hi` copies it from ~/.hi/.env for you)
-#   HI_WEB_PORT=5173
+#   HI_WEB_PORT=5176
 #   HI_HOST_ROOT=C:/Users/your-name   (your home folder; `hi` sets it, else USERPROFILE/HOME is used)
 # Your Dev, Documents, Desktop and Downloads folders appear in the container under /host on every OS.
 services:
@@ -15,7 +15,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8765:8765" # loopback only on the host
+      - "127.0.0.1:8768:8768" # loopback only on the host
     environment:
       AI_MODE: ${AI_MODE:-local}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
@@ -25,27 +25,27 @@ services:
       MEMORY_EXTRACTION: ${MEMORY_EXTRACTION:-on}   # off = stop learning from turns
       REFLECTION: ${REFLECTION:-on}                 # off = no daily reflection
       GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
-      SANDBOX_URL: http://host.docker.internal:8000 # the sandbox's loopback-published port
+      SANDBOX_URL: http://host.docker.internal:8003 # the sandbox's loopback-published port
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
-      GOOGLE_MCP_URL: http://google:8777/mcp
+      GOOGLE_MCP_URL: http://google:8780/mcp
       N8N_MCP_URL: ${N8N_MCP_URL:-}
       N8N_MCP_TOKEN: ${N8N_MCP_TOKEN:-}
       TTS_BACKEND: ${TTS_BACKEND:-ollama}           # huggingface = the GPU `tts` service below
-      TTS_URL: http://tts:8780
-      WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://whisper:8080} # the `whisper` service below
-      SEARXNG_URL: http://searxng:8080              # the `searxng` service below
+      TTS_URL: http://tts:8783
+      WHISPER_CPP_URL: ${WHISPER_CPP_URL:-http://whisper:8083} # the `whisper` service below
+      SEARXNG_URL: http://searxng:8083              # the `searxng` service below
       IMAGE_URL: ${IMAGE_URL:-}                      # image generation: blank = the tailscale box in tailscale mode, else the service below
-      IMAGE_URL_DEFAULT: http://imagegen:8790       # the `imagegen` service below (profile gpu)
+      IMAGE_URL_DEFAULT: http://imagegen:8793       # the `imagegen` service below (profile gpu)
       TZ: ${TZ:-UTC}                                # schedules fire in this zone; `hi` sets it from your Mac
       HI_LAUNCH_CWD: ${HI_LAUNCH_CWD:-/host/Dev/Projects} # where shell commands start
       HI_HOST_HOME: /host
       GIT_CONFIG_GLOBAL: /host/.gitconfig
-      HI_CORS_ORIGINS: http://localhost:${HI_WEB_PORT:-5173},http://127.0.0.1:${HI_WEB_PORT:-5173}
+      HI_CORS_ORIGINS: http://localhost:${HI_WEB_PORT:-5176},http://127.0.0.1:${HI_WEB_PORT:-5176}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck: # Docker restarts a backend that is up but no longer answering (restart: unless-stopped)
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8765/livez', timeout=4)"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8768/livez', timeout=4)"]
       interval: 30s
       timeout: 6s
       retries: 3
@@ -75,7 +75,7 @@ services:
         target: /run/hi-host.env
         read_only: true
 
-  # Google Workspace MCP, kept running: its sign-in callback (localhost:8777) must stay up while
+  # Google Workspace MCP, kept running: its sign-in callback (localhost:8780) must stay up while
   # you approve access in the browser, which a per-call subprocess cannot do. The login token
   # lives in the hi-google volume.
   google:
@@ -83,9 +83,9 @@ services:
     restart: unless-stopped
     command: ["sh", "/google-mcp.sh"] # reads the OAuth client from ~/.hi/.env, mounted below
     ports:
-      - "127.0.0.1:8777:8777"
+      - "127.0.0.1:8780:8780"
     environment:
-      WORKSPACE_MCP_PORT: "8777"
+      WORKSPACE_MCP_PORT: "8780"
       WORKSPACE_MCP_HOST: 0.0.0.0 # inside its container; published to this machine only
       WORKSPACE_MCP_ALLOWED_HOSTS: localhost,127.0.0.1,google
       WORKSPACE_MCP_BASE_URI: http://localhost
@@ -110,7 +110,7 @@ services:
       HF_TOKEN: ${HF_TOKEN:-} # `hi` forwards it from ~/.hi/.env
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8780:8780"
+      - "127.0.0.1:8783:8783"
     volumes:
       - hi-tts-models:/models
     deploy:
@@ -125,8 +125,8 @@ services:
   # IMAGE_MODEL=black-forest-labs/FLUX.2-klein-4B. Needs an NVIDIA GPU and the NVIDIA container toolkit:
   # `docker compose --profile gpu up -d --build imagegen`. The first request downloads the weights (about 12 GB) into
   # hi-image-models and loads them, which takes minutes. On a Mac run `python imagegen/server.py` natively instead
-  # (Apple GPU) and set IMAGE_URL=http://host.docker.internal:8790. In AI_MODE=tailscale, run this service on the
-  # tailscale box instead: hi then calls http://<that host>:8790 on its own (set IMAGE_API_KEY on both sides).
+  # (Apple GPU) and set IMAGE_URL=http://host.docker.internal:8793. In AI_MODE=tailscale, run this service on the
+  # tailscale box instead: hi then calls http://<that host>:8793 on its own (set IMAGE_API_KEY on both sides).
   imagegen:
     build: ./imagegen
     profiles: [gpu]
@@ -135,7 +135,7 @@ services:
       HF_TOKEN: ${HF_TOKEN:-}
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8790:8790"
+      - "127.0.0.1:8793:8793"
     volumes:
       - hi-image-models:/models
     deploy:
@@ -148,27 +148,27 @@ services:
 
   # Speech-to-text: whisper.cpp's `whisper-server` on CPU (hi/stt.py). The model (WHISPER_MODEL,
   # default base.en) downloads on first start into hi-whisper-models. For Metal speed on a Mac, run
-  # `whisper-server` natively instead and set WHISPER_CPP_URL=http://host.docker.internal:8080.
+  # `whisper-server` natively instead and set WHISPER_CPP_URL=http://host.docker.internal:8083.
   whisper:
     build: ./whisper
     restart: unless-stopped
     environment:
       WHISPER_MODEL: ${WHISPER_MODEL:-base.en}
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8083:8083"
     volumes:
       - hi-whisper-models:/models
 
   # Web search for the agent (hi/agents/web/search.py): a private SearXNG that only the backend reaches, on the
   # compose network (nothing published). Natively (`hi --voice-daemon`) publish it with a docker-compose.override.yml
-  # (ports: ["127.0.0.1:8888:8080"]) and the backend's default SEARXNG_URL finds it. Tag is pinned on purpose:
+  # (ports: ["127.0.0.1:8891:8083"]) and the backend's default SEARXNG_URL finds it. Tag is pinned on purpose:
   # bump it deliberately, never `latest`.
   searxng:
     image: searxng/searxng:2026.11.15-2d500cb6b
     restart: unless-stopped
     environment:
       SEARXNG_SECRET: ${SEARXNG_SECRET:-} # `hi` creates one in ~/.hi/.env on first start
-      SEARXNG_BASE_URL: http://searxng:8080/
+      SEARXNG_BASE_URL: http://searxng:8083/
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     cap_drop: [ALL]
@@ -187,7 +187,7 @@ services:
     extra_hosts:
       - "host.docker.internal:0.0.0.0" # not a way back to the host by name
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8003:8003"
     read_only: true
     tmpfs: ["/tmp:size=256m"]
     cap_drop: [ALL]
@@ -200,7 +200,7 @@ services:
     build: ./tinyui
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${HI_WEB_PORT:-5173}:80"
+      - "127.0.0.1:${HI_WEB_PORT:-5176}:80"
     depends_on:
       - backend
 

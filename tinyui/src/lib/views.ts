@@ -1,1 +1,1 @@
-export type View = 'chat' | 'inbox' | 'tasks' | 'memory' | 'logs' | 'status' | 'settings'
+export type View = 'chat' | 'projects' | 'inbox' | 'dropbox' | 'tasks' | 'memory' | 'logs' | 'status' | 'settings'

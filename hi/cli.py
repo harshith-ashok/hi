@@ -33,7 +33,7 @@ VOICE_DAEMON_MARKER = "voice-daemon"
 WAKE_DAEMON_MARKER = "wake-daemon"
 
 COMPOSE_FILE = Path(__file__).resolve().parent.parent / "docker-compose.yml"
-BACKEND_URL = "http://127.0.0.1:8765/config"
+BACKEND_URL = "http://127.0.0.1:8768/config"
 
 
 def parse_mode(argv: list[str]) -> str | None:
@@ -222,7 +222,7 @@ def start_stack() -> None:
 def open_web_ui() -> None:
     """The default `hi`: make sure the stack is running, open tinyui."""
     start_stack()
-    url = f"http://localhost:{os.environ.get('HI_WEB_PORT', '5173')}"
+    url = f"http://localhost:{os.environ.get('HI_WEB_PORT', '5176')}"
     print(f"hi is running at {url}")
     webbrowser.open(url)
 

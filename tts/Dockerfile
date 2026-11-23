@@ -9,5 +9,5 @@ RUN pip install --no-cache-dir --default-timeout=120 --retries 10 torch "transfo
 WORKDIR /srv
 COPY server.py ./
 ENV HF_HOME=/models PYTHONUNBUFFERED=1
-EXPOSE 8780
+EXPOSE 8783
 CMD ["python", "server.py"]

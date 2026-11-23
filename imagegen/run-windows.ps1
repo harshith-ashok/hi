@@ -1,6 +1,6 @@
 # Sets up and runs the image service on the Windows tailscale box (NVIDIA GPU). Run from anywhere:
 #   powershell -ExecutionPolicy Bypass -File imagegen\run-windows.ps1 -Key <secret>
-# The first run creates imagegen\.venv, installs CUDA torch and diffusers, and opens port 8790 to Tailscale only.
+# The first run creates imagegen\.venv, installs CUDA torch and diffusers, and opens port 8793 to Tailscale only.
 param(
     [string]$Key = $env:IMAGE_API_KEY,
     [string]$Model = "Tongyi-MAI/Z-Image-Turbo",
@@ -27,12 +27,12 @@ if ($LASTEXITCODE -ne 0) { throw "torch cannot see the GPU. Reinstall with a CUD
 
 if (-not (Get-NetFirewallRule -DisplayName "hi imagegen" -ErrorAction SilentlyContinue)) {
     try {
-        New-NetFirewallRule -DisplayName "hi imagegen" -Direction Inbound -Protocol TCP -LocalPort 8790 -Action Allow -Profile Any -RemoteAddress 100.64.0.0/10 | Out-Null
-        Write-Host "Opened port 8790 to the tailnet."
+        New-NetFirewallRule -DisplayName "hi imagegen" -Direction Inbound -Protocol TCP -LocalPort 8793 -Action Allow -Profile Any -RemoteAddress 100.64.0.0/10 | Out-Null
+        Write-Host "Opened port 8793 to the tailnet."
     } catch { Write-Warning "Could not open the firewall (run once as administrator): $_" }
 }
 
 $env:IMAGE_API_KEY = $Key
 $env:IMAGE_MODEL = $Model
-Write-Host "Starting the image service on :8790 (the first picture downloads the model and takes minutes)..."
+Write-Host "Starting the image service on :8793 (the first picture downloads the model and takes minutes)..."
 & $py server.py

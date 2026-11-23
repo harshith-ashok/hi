@@ -1,4 +1,4 @@
-# Backend: `hi --voice-daemon` (HTTP + AG-UI SSE on :8765).
+# Backend: `hi --voice-daemon` (HTTP + AG-UI SSE on :8768).
 # Linux image — macOS-only tools (Bluetooth/volume/screen control) and voice are
 # not available inside it; run `hi` natively for those.
 FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
@@ -25,5 +25,5 @@ COPY hi ./hi
 COPY README.md ./
 RUN uv sync --frozen --no-dev --no-group desktop
 
-EXPOSE 8765
+EXPOSE 8768
 CMD ["hi", "--voice-daemon"]

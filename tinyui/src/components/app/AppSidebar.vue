@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Archive, Brain, Inbox, ListChecks, MoreHorizontal, Moon, Pencil, Pin, PinOff, Plus, ScrollText, Search, Settings, Sun, SunMoon, Trash2, Activity, X } from '@lucide/vue'
-import { computed, nextTick, ref, watch, type Component } from 'vue'
+import { Archive, Brain, Folder, LayoutDashboard, Inbox, ListChecks, MoreHorizontal, Moon, Pencil, Pin, PinOff, Plus, ScrollText, Search, Settings, Sun, SunMoon, Trash2, Activity, X } from '@lucide/vue'
+import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -11,6 +11,7 @@ import {
   SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarRail,
 } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useProjects } from '@/composables/useProjects'
 import { useSessions, type SessionInfo } from '@/composables/useSessions'
 import { useStatus } from '@/composables/useStatus'
 import { useTheme } from '@/composables/useTheme'
@@ -20,11 +21,19 @@ const props = defineProps<{ view: View }>()
 const emit = defineEmits<{ navigate: [view: View]; open: [id: string]; fresh: [] }>()
 
 const sessions = useSessions()
+const projectStore = useProjects()
+onMounted(() => void projectStore.refresh())
+function openProject(slug: string) {
+  projectStore.selected.value = slug
+  emit('navigate', 'projects')
+}
 const status = useStatus()
 const { theme, cycle } = useTheme()
 
 const nav = computed<{ view: View; label: string; icon: Component; badge: number }[]>(() => [
+  { view: 'projects', label: 'Projects', icon: Folder, badge: 0 },
   { view: 'inbox', label: 'Inbox', icon: Inbox, badge: status.waitingActions.value },
+  { view: 'dropbox', label: 'Drop box', icon: LayoutDashboard, badge: 0 },
   { view: 'tasks', label: 'Tasks', icon: ListChecks, badge: status.activeTasks.value },
   { view: 'memory', label: 'Memory', icon: Brain, badge: 0 },
   { view: 'logs', label: 'Daily logs', icon: ScrollText, badge: 0 },
@@ -99,6 +108,16 @@ const isActive = (id: string) => props.view === 'chat' && sessions.currentId.val
     </SidebarHeader>
 
     <SidebarContent>
+      <SidebarGroup v-if="projectStore.projects.value.length">
+        <SidebarGroupLabel>Projects</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem v-for="p in projectStore.projects.value" :key="p.slug">
+              <SidebarMenuButton :is-active="view === 'projects' && projectStore.selected.value === p.slug" :tooltip="p.name" @click="openProject(p.slug)"><Folder /><span class="truncate">{{ p.name }}</span></SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
       <SidebarGroup v-for="group in sessions.grouped.value" :key="group.name">
         <SidebarGroupLabel>{{ group.name }}</SidebarGroupLabel>
         <SidebarGroupContent>

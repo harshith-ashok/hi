@@ -48,15 +48,15 @@ database, voice fallback across TTS engines. Don't add them.
 
 `hi` runs in two places, and this plan keeps that split:
 
-- **The Docker backend** (`hi/server/`, port 8765). It has the vault mounted at `/vault`, the models, the agents
+- **The Docker backend** (`hi/server/`, port 8768). It has the vault mounted at `/vault`, the models, the agents
   and the background jobs (`hi/startup.py`). Its `~/.hi` is the `hi-home` Docker volume, **not** the Mac's
   `~/.hi`.
 - **The Mac.** The menu bar app (`hi/menubar/`) supervises the context daemon (which writes
   `~/.hi/context/now.json` and `history.jsonl`, and runs the 5-minute `proactive.nudge`) and the host bridge
-  (port 8766, `hi/host_bridge.py`). The island shows messages posted to `~/.hi/context/inbox.jsonl`.
+  (port 8769, `hi/host_bridge.py`). The island shows messages posted to `~/.hi/context/inbox.jsonl`.
 
 The backend reaches the Mac **only through the host bridge** (`hi/host.py`, `HOST_TOOLS`). The Mac reaches
-the backend over `http://127.0.0.1:8765`.
+the backend over `http://127.0.0.1:8768`.
 
 ### Target picture
 
@@ -65,11 +65,11 @@ the backend over `http://127.0.0.1:8765`.
 │ menu bar app  (LaunchAgent, KeepAlive)                              [Phase 8]         │
 │   island ── toasts, replies, Approve/Deny buttons, "open full report" link [2, 4]     │
 │   context daemon ── now.json, history.jsonl; proactive.nudge every 5 min (unchanged) │
-│   host bridge :8766 ── current_context, recent_activity [6], post_to_inbox [0]       │
+│   host bridge :8769 ── current_context, recent_activity [6], post_to_inbox [0]       │
 │ inbox gate  hi/context/inbox.py ── dedupe · interruption budget · quiet_for  [0, 8]  │
 └──────────────▲─────────────────────────────────────────────┬──────────────────────────┘
                │ bridge (bearer token)                       │ POST /pending/{id}/..., /proposals/{id}/...
-┌──────────────┴──────────────── Docker backend :8765 ───────▼──────────────────────────┐
+┌──────────────┴──────────────── Docker backend :8768 ───────▼──────────────────────────┐
 │ lifespan → hi/startup.py start_background_jobs()                                      │
 │                                                                                       │
 │   scheduler tick, 30 s ─────┐                                                         │
@@ -255,13 +255,13 @@ ADR is written.
   - `restart: unless-stopped`, mount `./searxng/settings.yml:/etc/searxng/settings.yml:ro`,
     `SEARXNG_SECRET` from `~/.hi/.env`. `hi` generates the secret on first start, the same way
     `host_bridge.ensure_token` does.
-  - Not published to the host by default. The backend reaches it at `http://searxng:8080`. For native mode
+  - Not published to the host by default. The backend reaches it at `http://searxng:8083`. For native mode
     (`hi --voice-daemon`), document `docker compose up -d searxng` plus an optional loopback publish
-    `127.0.0.1:8888:8080`.
+    `127.0.0.1:8891:8083`.
 - `searxng/settings.yml`: `use_default_settings: true`, `search.formats: [html, json]` (JSON is off by
   default and the tool needs it), `server.limiter: false` (private instance, no Redis), `server.secret_key`
   from the environment. Keep the default engines; make sure `wikipedia`, `github` and `stackoverflow` are on.
-- `config.SEARXNG_URL` (default `http://searxng:8080` in compose, `http://127.0.0.1:8888` natively).
+- `config.SEARXNG_URL` (default `http://searxng:8083` in compose, `http://127.0.0.1:8891` natively).
 
 ### Tool
 
@@ -354,9 +354,9 @@ Two kinds of approval, one UI.
 
 - When `wait_for_approval` queues an action, also `deliver(Delivery(kind="approval", priority="urgent",
   headline=description, dedupe_key=f"approval:{id}"))`. The island shows Approve/Deny and calls
-  `POST http://127.0.0.1:8765/pending/{id}/approve|deny`. tinyui keeps its card. The first answer wins
+  `POST http://127.0.0.1:8768/pending/{id}/approve|deny`. tinyui keeps its card. The first answer wins
   (`resolve` already returns False for the second).
-- Remove the `curl … :8766` reminder prints from `pending_actions.py`: that port is now the host bridge, so
+- Remove the `curl … :8769` reminder prints from `pending_actions.py`: that port is now the host bridge, so
   the hint is wrong.
 
 **Proposals** (from unattended runs; they wait for you, possibly for days):

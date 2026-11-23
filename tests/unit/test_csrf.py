@@ -8,7 +8,7 @@ from hi.memory.schedules import Schedule
 from hi.server.app import create_app
 
 EVIL = "https://evil.example"
-TINYUI = "http://localhost:5173"
+TINYUI = "http://localhost:5176"
 
 MUTATING = [
     ("POST", "/pending/abc/approve"), ("POST", "/pending/abc/deny"),
@@ -76,5 +76,5 @@ def test_the_island_sends_the_header(monkeypatch):
             return False
 
     monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout=0: seen.update(headers=dict(request.header_items())) or Done())
-    inbox._http_post("http://127.0.0.1:8765/proposals/P-1/approve")
+    inbox._http_post("http://127.0.0.1:8768/proposals/P-1/approve")
     assert seen["headers"].get("X-hi-client") == "island"

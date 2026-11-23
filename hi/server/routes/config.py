@@ -21,7 +21,7 @@ CONFIG_FIELDS = (
     "AI_MODE", "OLLAMA_HOST", "TAILSCALE_OLLAMA_URL", "TTS_MODEL", "TTS_VOICE", "TTS_BACKEND",
     "HEARTBEAT", "HEARTBEAT_EVERY", "HEARTBEAT_HOURS", "SCREENSHOT_WATCH", "DROP_PATH", "PROPOSAL_TTL_DAYS",
     "MAX_BACKGROUND_RUNS_PER_HOUR", "MAX_HOSTED_CALLS_PER_DAY", "MAX_NOTIFICATIONS_PER_HOUR",
-    "IMAGE_BACKEND", "IMAGE_URL", "IMAGE_MODEL",
+    "IMAGE_BACKEND", "IMAGE_URL", "IMAGE_MODEL", "CONTEXT_TOKENS",
 )
 FLAGS = {"HEARTBEAT", "SCREENSHOT_WATCH"}  # shown as on / off
 CLEARABLE = {"TAILSCALE_OLLAMA_URL", "DROP_PATH"}  # may be set to an empty value; other empty values are ignored
@@ -72,6 +72,14 @@ async def post_config(request: Request) -> JSONResponse:
     return JSONResponse({"updated": updated, "note": "Written to ~/.hi/.env and applied immediately — no restart needed."})
 
 
+async def reasoning_support(request: Request) -> JSONResponse:
+    """{haiku, sonnet, opus: true | false | null}: whether the model behind each size streams its thinking (null = not probed)."""
+    from hi.llm import reasoning
+
+    names = {"haiku": config.HAIKU_MODEL, "sonnet": config.SONNET_MODEL, "opus": config.OPUS_MODEL}
+    return JSONResponse({tier: reasoning.supports(name) for tier, name in names.items()})
+
+
 async def models(request: Request) -> JSONResponse:
     mode = request.query_params.get("mode")
     host = request.query_params.get("host")
@@ -102,5 +110,6 @@ routes = [
     Route("/config", get_config, methods=["GET"]),
     Route("/config", post_config, methods=["POST"]),
     Route("/models", models, methods=["GET"]),
+    Route("/reasoning", reasoning_support, methods=["GET"]),
     Route("/health", health, methods=["GET"]),
 ]

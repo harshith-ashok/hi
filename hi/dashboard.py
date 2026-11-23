@@ -41,6 +41,7 @@ def get_vitals(active_model: str) -> dict:
         "battery_percent": battery.percent if battery else None,
         "wifi_ssid": _wifi_ssid(),
         "active_model": active_model,
+        "context_tokens": config.CONTEXT_TOKENS,
         "last_latency_ms": _last_query_latency_ms,
     }
 

@@ -1,9 +1,9 @@
 """Speech-to-text via a whisper.cpp `whisper-server` running natively on the
 Mac (Metal). The backend may live in Docker, so it only talks HTTP to it:
-`WHISPER_CPP_URL` (default: the host's port 8080).
+`WHISPER_CPP_URL` (default: the host's port 8083).
 
 Start the server with e.g.
-    whisper-server -m ~/.hi/models/ggml-base.en.bin --port 8080
+    whisper-server -m ~/.hi/models/ggml-base.en.bin --port 8083
 """
 
 from __future__ import annotations

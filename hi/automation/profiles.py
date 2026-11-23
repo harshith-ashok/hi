@@ -40,6 +40,14 @@ PROFILES: dict[str, Profile] = {
 }
 _TIER_ORDER = ("haiku", "sonnet", "opus")
 
+# Writing styles the user can choose in the chat (one at a time, for every message until changed). "normal" adds nothing.
+STYLES: dict[str, tuple[str, str, str]] = {  # id: (label, one-line description, instruction)
+    "normal": ("Normal", "How hi usually writes", ""),
+    "concise": ("Concise", "Short answers, no preamble", "Be brief. Lead with the answer, skip preamble and recaps, use short sentences, and add detail only when asked."),
+    "explanatory": ("Explanatory", "Reasoning and background", "Explain as you go: give the reasoning and background, define a term the first time it appears, and use a small example where it helps."),
+    "formal": ("Formal", "Professional and precise", "Write formally: complete sentences, a professional tone, no slang or contractions and no emoji."),
+}
+
 
 def profile(name: str) -> Profile:
     """The profile for an origin or a `origin.role` name; an unknown name is treated as an ordinary UI turn."""
@@ -51,3 +59,24 @@ def cap_tier(tier: str, max_tier: str | None) -> str:
     if max_tier is None or tier not in _TIER_ORDER or max_tier not in _TIER_ORDER:
         return tier
     return min(tier, max_tier, key=_TIER_ORDER.index)
+
+
+def list_styles() -> list[dict[str, str]]:
+    """[{id, label, description, source}]: the built-in styles, then the ones in <vault>/hi/styles. A built-in id wins."""
+    from hi.memory import styles
+
+    out = [{"id": i, "label": label, "description": desc, "source": "built-in"} for i, (label, desc, _ins) in STYLES.items()]
+    out += [{"id": i, "label": v["label"], "description": v["instruction"][:80], "source": "vault"}
+            for i, v in styles.vault_styles().items() if i not in STYLES]
+    return out
+
+
+def style_text(style_id: str) -> str:
+    """The sentence to add after a message for style `style_id` ("" for normal or an id nobody has)."""
+    from hi.memory import styles
+
+    if style_id in STYLES:
+        instruction = STYLES[style_id][2]
+    else:
+        instruction = styles.vault_styles().get(style_id, {}).get("instruction", "")
+    return f"\n\n(Writing style: {instruction})" if instruction else ""

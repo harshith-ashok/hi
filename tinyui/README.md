@@ -5,7 +5,7 @@ The web UI for `hi`. Vue 3, TypeScript, Vite, Tailwind CSS v4 and [shadcn-vue](h
 
 ```bash
 npm install
-npm run dev                         # http://localhost:5173 (the backend only allows this origin)
+npm run dev                         # http://localhost:5176 (the backend only allows this origin)
 npx vue-tsc --noEmit -p tsconfig.app.json
 npm run build
 npx shadcn-vue@latest add <name>    # add another component
