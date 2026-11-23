@@ -12,7 +12,7 @@ from hi.server import turn
 from hi.server.app import create_app
 from hi.server.http import iterate_in_one_thread
 
-ORIGIN = "http://localhost:5173"
+ORIGIN = "http://localhost:5176"
 
 
 @pytest.fixture

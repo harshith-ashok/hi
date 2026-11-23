@@ -1,7 +1,7 @@
 // Talks to `hi --voice-daemon` (hi/ipc/server.py). One POST per query,
 // streamed back as AG-UI SSE and parsed by hand (EventSource can't POST).
 
-export const BASE_URL: string = import.meta.env.VITE_HI_BACKEND ?? 'http://127.0.0.1:8765' // the override is for testing
+export const BASE_URL: string = import.meta.env.VITE_HI_BACKEND ?? 'http://127.0.0.1:8768' // the override is for testing
 
 // Sent on every request that changes something. A browser only sends a custom header after a CORS preflight, which the
 // backend answers for tinyui's own origin only, so another web page cannot approve or delete anything.

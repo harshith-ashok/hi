@@ -19,7 +19,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"fake image bytes"
 def clean(monkeypatch):
     health.reset()
     monkeypatch.setattr(config, "IMAGE_BACKEND", "service")
-    monkeypatch.setattr(config, "IMAGE_URL", "http://images.test:8790")
+    monkeypatch.setattr(config, "IMAGE_URL", "http://images.test:8793")
     monkeypatch.setattr(config, "IMAGE_MODEL", "Tongyi-MAI/Z-Image-Turbo")
     monkeypatch.setattr(config, "IMAGE_API_KEY", "")
 
@@ -42,7 +42,7 @@ def test_a_request_goes_to_the_images_endpoint_in_the_openai_shape():
         return ok(request)
 
     assert imagegen.generate("a red fox  in snow", "1024x768", seed=7, client=client_for(handler)) == PNG
-    assert seen["url"] == "http://images.test:8790/v1/images/generations" and seen["auth"] is None
+    assert seen["url"] == "http://images.test:8793/v1/images/generations" and seen["auth"] is None
     assert seen["body"] == {"model": "Tongyi-MAI/Z-Image-Turbo", "prompt": "a red fox in snow", "size": "1024x768", "n": 1,
                             "response_format": "b64_json", "seed": 7}
 
@@ -245,7 +245,7 @@ def test_routes_and_models_listing(server):
 def test_the_compose_service_and_dockerfile_exist():
     root = Path(__file__).resolve().parents[2]
     compose = (root / "docker-compose.yml").read_text()
-    assert "imagegen:" in compose and "IMAGE_URL_DEFAULT: http://imagegen:8790" in compose and "hi-image-models" in compose
+    assert "imagegen:" in compose and "IMAGE_URL_DEFAULT: http://imagegen:8793" in compose and "hi-image-models" in compose
     assert "diffusers" in (root / "imagegen" / "Dockerfile").read_text()
 
 
@@ -262,11 +262,11 @@ def test_image_url_follows_the_tailscale_box(monkeypatch):
     monkeypatch.setattr(config, "IMAGE_URL", "")
     monkeypatch.setattr(config, "AI_MODE", "tailscale")
     monkeypatch.setattr(config, "TAILSCALE_OLLAMA_URL", "http://gpu-box.tail1234.ts.net:11434")
-    assert config.image_url() == "http://gpu-box.tail1234.ts.net:8790"
+    assert config.image_url() == "http://gpu-box.tail1234.ts.net:8793"
     monkeypatch.setattr(config, "TAILSCALE_OLLAMA_URL", "100.64.0.5:11434")
-    assert config.image_url() == "http://100.64.0.5:8790"
+    assert config.image_url() == "http://100.64.0.5:8793"
     monkeypatch.setattr(config, "IMAGE_URL", "http://other:9000/")
     assert config.image_url() == "http://other:9000"  # an explicit setting wins
     monkeypatch.setattr(config, "IMAGE_URL", "")
     monkeypatch.setattr(config, "AI_MODE", "local")
-    assert config.image_url().endswith(":8790")
+    assert config.image_url().endswith(":8793")

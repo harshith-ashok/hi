@@ -93,21 +93,21 @@ uv tool install --editable .     # puts `hi` on your PATH
 hi                               # starts the stack and opens tinyui
 ```
 
-`hi` runs `docker compose up -d --build` when the backend is not already answering, then opens tinyui at <http://localhost:5173>. The backend listens on `127.0.0.1:8765`, loopback only.
+`hi` runs `docker compose up -d --build` when the backend is not already answering, then opens tinyui at <http://localhost:5176>. The backend listens on `127.0.0.1:8768`, loopback only.
 
 Without Docker, run the two halves yourself:
 
 ```bash
-hi --voice-daemon                # the backend, natively, on :8765
-cd tinyui && npm install && npm run dev   # tinyui on :5173
+hi --voice-daemon                # the backend, natively, on :8768
+cd tinyui && npm install && npm run dev   # tinyui on :5176
 ```
 
 Notes:
 
-- Set `HI_VAULT=/path/to/your/vault` in a `.env` next to `docker-compose.yml` to use your real notes. Otherwise the container keeps its own vault in a Docker volume. Set `HI_WEB_PORT` if 5173 is taken.
+- Set `HI_VAULT=/path/to/your/vault` in a `.env` next to `docker-compose.yml` to use your real notes. Otherwise the container keeps its own vault in a Docker volume. Set `HI_WEB_PORT` if 5176 is taken.
 - The Docker image is Linux. Shell, notes, files, web, documents and orchestration work there; macOS control (Bluetooth, volume, screen) and the menu bar app need `hi` run natively on the Mac.
 - On Windows, install Docker Desktop and Git, then run `uv sync` and `uv run hi`. Mac-only tools do not apply.
-- `tinyui` allows one origin to call the backend (`localhost:5173`). A different dev port needs `HI_CORS_ORIGINS`.
+- `tinyui` allows one origin to call the backend (`localhost:5176`). A different dev port needs `HI_CORS_ORIGINS`.
 
 ## Models
 
@@ -235,7 +235,7 @@ State-changing routes need the `X-Hi-Client` header (tinyui sends it), and CORS 
 uv sync                                                  # install (desktop group = Mac voice extras; dev group = pytest)
 uv run pytest                                            # unit tests
 cd tinyui && npx vue-tsc --noEmit -p tsconfig.app.json   # type-check the UI
-cd tinyui && npm run dev                                 # the UI on :5173
+cd tinyui && npm run dev                                 # the UI on :5176
 ```
 
 Working rules are in [CLAUDE.md](CLAUDE.md): the filesystem is the source of truth, importing a module does nothing, read settings live (`import hi.config as config`), every outside dependency can fail and is recorded in `hi/core/health.py`, and tests never touch the real vault (use the `tmp_vault` fixture). Add or update a test next to any behaviour you change.

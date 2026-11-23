@@ -128,7 +128,7 @@ TTS_MODEL = _env.get("TTS_MODEL") or "phonon"
 # Which engine speaks: "ollama" (phonon) or "huggingface" (phonon-40m-en from Hugging Face on a CUDA GPU, the `tts` compose
 # service, hi/tts_hf.py), for machines where phonon has no GPU build.
 TTS_BACKEND = (_env.get("TTS_BACKEND") or "ollama").lower()
-TTS_URL = _env.get("TTS_URL") or "http://localhost:8780"
+TTS_URL = _env.get("TTS_URL") or "http://localhost:8783"
 # How the assistant addresses you in replies and speech ("" turns it off).
 USER_ADDRESS = _env.get("USER_ADDRESS", "sir").strip()
 TTS_VOICE = _env.get("TTS_VOICE") or "default"
@@ -136,14 +136,14 @@ TTS_VOICE = _env.get("TTS_VOICE") or "default"
 ISLAND_MODE = (_env.get("ISLAND_MODE") or "notch").lower()
 # whisper.cpp `whisper-server` (hi/stt.py): the `whisper` compose service, or one run natively for Metal.
 # The Mac bridge (hi/host_bridge.py): the Dockerized backend's way to run Mac-only tools.
-HOST_BRIDGE_PORT = int(_env.get("HOST_BRIDGE_PORT") or 8766)
+HOST_BRIDGE_PORT = int(_env.get("HOST_BRIDGE_PORT") or 8769)
 HOST_BRIDGE_BIND = _env.get("HOST_BRIDGE_BIND") or "127.0.0.1"
 HOST_BRIDGE_URL = _env.get("HOST_BRIDGE_URL") or f"http://host.docker.internal:{HOST_BRIDGE_PORT}"
 HOST_BRIDGE_TOKEN = _env.get("HOST_BRIDGE_TOKEN") or ""
 
 # The code-execution sandbox container (sandbox/, docker-compose.yml).
-SANDBOX_URL = _env.get("SANDBOX_URL") or "http://127.0.0.1:8000"
-WHISPER_CPP_URL = _env.get("WHISPER_CPP_URL") or "http://127.0.0.1:8080"
+SANDBOX_URL = _env.get("SANDBOX_URL") or "http://127.0.0.1:8003"
+WHISPER_CPP_URL = _env.get("WHISPER_CPP_URL") or "http://127.0.0.1:8083"
 
 # hi/perception/vision.py's ask_about_screen — a real vision-capable
 # model, not a tier (haiku/sonnet/opus below are all text-only), per
@@ -170,7 +170,7 @@ GITHUB_PERSONAL_ACCESS_TOKEN = _env.get("GITHUB_PERSONAL_ACCESS_TOKEN") or None
 # Google Cloud Console. The server stays absent until both are set; sign in once when asked.
 GOOGLE_OAUTH_CLIENT_ID = _env.get("GOOGLE_OAUTH_CLIENT_ID") or None
 GOOGLE_OAUTH_CLIENT_SECRET = _env.get("GOOGLE_OAUTH_CLIENT_SECRET") or None
-GOOGLE_MCP_PORT = int(_env.get("GOOGLE_MCP_PORT") or 8777)  # the sign-in callback; published on loopback
+GOOGLE_MCP_PORT = int(_env.get("GOOGLE_MCP_PORT") or 8780)  # the sign-in callback; published on loopback
 GOOGLE_MCP_URL = _env.get("GOOGLE_MCP_URL") or None  # a running workspace-mcp (docker-compose.yml); unset = start one per call
 OBSIDIAN_REST_API_KEY = _env.get("OBSIDIAN_REST_API_KEY") or None
 # n8n's own MCP server needs two values, not one credential — the
@@ -211,13 +211,13 @@ def _number(name: str, default: float) -> float:
 # any OpenAI-compatible images endpoint (set IMAGE_API_KEY), "off" = no image generation.
 IMAGE_BACKEND = (_env.get("IMAGE_BACKEND") or "service").lower()
 IMAGE_URL = _env.get("IMAGE_URL") or ""  # blank: image_url() picks one
-IMAGE_PORT = 8790
+IMAGE_PORT = 8793
 IMAGE_MODEL = _env.get("IMAGE_MODEL") or "Tongyi-MAI/Z-Image-Turbo"
 IMAGE_API_KEY = _env.get("IMAGE_API_KEY") or ""
 
 
 def image_url() -> str:
-    """Where the image service is: IMAGE_URL if set; in tailscale mode the Ollama box on port 8790 (the GPU is there);
+    """Where the image service is: IMAGE_URL if set; in tailscale mode the Ollama box on port 8793 (the GPU is there);
     else the compose `imagegen` service (IMAGE_URL_DEFAULT) or this machine."""
     if IMAGE_URL:
         return IMAGE_URL.rstrip("/")
@@ -228,8 +228,8 @@ def image_url() -> str:
         if host:
             return f"http://{host}:{IMAGE_PORT}"
     return (_env.get("IMAGE_URL_DEFAULT") or f"http://127.0.0.1:{IMAGE_PORT}").rstrip("/")
-# SearXNG, the private search engine (the `searxng` compose service; natively, publish it on 8888).
-SEARXNG_URL = _env.get("SEARXNG_URL") or "http://127.0.0.1:8888"
+# SearXNG, the private search engine (the `searxng` compose service; natively, publish it on 8891).
+SEARXNG_URL = _env.get("SEARXNG_URL") or "http://127.0.0.1:8891"
 SEARXNG_SECRET = _env.get("SEARXNG_SECRET") or ""
 # The model's context window in tokens, sent to Ollama as num_ctx on every chat model. Ollama's own default is small and
 # truncates silently. 16384 is also as much as the tailscale box can take: do not raise the default.

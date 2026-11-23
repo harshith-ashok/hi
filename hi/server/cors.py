@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 
-DEV_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")  # tinyui/vite.config.ts pins this port
+DEV_ORIGINS = ("http://localhost:5176", "http://127.0.0.1:5176")  # tinyui/vite.config.ts pins this port
 
 
 def allowed_origins() -> list[str]:

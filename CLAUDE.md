@@ -45,7 +45,7 @@ The restructuring plan and what is done are in `MAKE.md`. The package overview i
 uv sync                       # install (desktop group = Mac voice extras; dev group = pytest)
 uv run pytest                 # unit tests
 hi                            # start the stack (Docker) and open tinyui
-hi --voice-daemon             # run the backend natively on :8765, no Docker
+hi --voice-daemon             # run the backend natively on :8768, no Docker
 cd tinyui && npx vue-tsc --noEmit -p tsconfig.app.json    # type-check the UI
 ```
 

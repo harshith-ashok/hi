@@ -8,5 +8,5 @@ RUN pip install --no-cache-dir numpy pandas scipy scikit-learn matplotlib seabor
 WORKDIR /srv
 COPY server.py ./
 USER nobody
-EXPOSE 8000
+EXPOSE 8003
 CMD ["python", "server.py"]

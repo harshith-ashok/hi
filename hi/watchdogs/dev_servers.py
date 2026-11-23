@@ -68,7 +68,7 @@ def check_dev_servers(port: int | None = None) -> str:
     still running or working.
 
     Args:
-        port: Optional local port to check with a real HTTP request, e.g. 5173.
+        port: Optional local port to check with a real HTTP request, e.g. 5176.
     """
     first = _ps_snapshot()
     if not first:

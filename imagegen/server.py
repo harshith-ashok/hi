@@ -23,7 +23,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 
-PORT = int(os.environ.get("IMAGE_PORT", 8790))
+PORT = int(os.environ.get("IMAGE_PORT", 8793))
 MODEL = os.environ.get("IMAGE_MODEL", "Tongyi-MAI/Z-Image-Turbo")
 MAX_SIDE = 1536
 MIN_SIDE = 256
