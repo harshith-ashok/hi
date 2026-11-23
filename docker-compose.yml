@@ -28,7 +28,7 @@ services:
       SANDBOX_URL: http://host.docker.internal:8003 # the sandbox's loopback-published port
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
-      GOOGLE_MCP_URL: http://google:8780/mcp
+      GOOGLE_MCP_URL: http://google:8777/mcp
       N8N_MCP_URL: ${N8N_MCP_URL:-}
       N8N_MCP_TOKEN: ${N8N_MCP_TOKEN:-}
       TTS_BACKEND: ${TTS_BACKEND:-ollama}           # huggingface = the GPU `tts` service below
@@ -75,7 +75,7 @@ services:
         target: /run/hi-host.env
         read_only: true
 
-  # Google Workspace MCP, kept running: its sign-in callback (localhost:8780) must stay up while
+  # Google Workspace MCP, kept running: its sign-in callback (localhost:8777) must stay up while
   # you approve access in the browser, which a per-call subprocess cannot do. The login token
   # lives in the hi-google volume.
   google:
@@ -83,9 +83,9 @@ services:
     restart: unless-stopped
     command: ["sh", "/google-mcp.sh"] # reads the OAuth client from ~/.hi/.env, mounted below
     ports:
-      - "127.0.0.1:8780:8780"
+      - "127.0.0.1:8777:8777"
     environment:
-      WORKSPACE_MCP_PORT: "8780"
+      WORKSPACE_MCP_PORT: "8777"
       WORKSPACE_MCP_HOST: 0.0.0.0 # inside its container; published to this machine only
       WORKSPACE_MCP_ALLOWED_HOSTS: localhost,127.0.0.1,google
       WORKSPACE_MCP_BASE_URI: http://localhost

@@ -170,7 +170,7 @@ GITHUB_PERSONAL_ACCESS_TOKEN = _env.get("GITHUB_PERSONAL_ACCESS_TOKEN") or None
 # Google Cloud Console. The server stays absent until both are set; sign in once when asked.
 GOOGLE_OAUTH_CLIENT_ID = _env.get("GOOGLE_OAUTH_CLIENT_ID") or None
 GOOGLE_OAUTH_CLIENT_SECRET = _env.get("GOOGLE_OAUTH_CLIENT_SECRET") or None
-GOOGLE_MCP_PORT = int(_env.get("GOOGLE_MCP_PORT") or 8780)  # the sign-in callback; published on loopback
+GOOGLE_MCP_PORT = int(_env.get("GOOGLE_MCP_PORT") or 8777)  # the sign-in callback; published on loopback
 GOOGLE_MCP_URL = _env.get("GOOGLE_MCP_URL") or None  # a running workspace-mcp (docker-compose.yml); unset = start one per call
 OBSIDIAN_REST_API_KEY = _env.get("OBSIDIAN_REST_API_KEY") or None
 # n8n's own MCP server needs two values, not one credential — the
